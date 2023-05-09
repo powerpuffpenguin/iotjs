@@ -1,7 +1,4 @@
-#include <stdio.h>
-
-#include "vm.h"
-#include "duktape.h"
+#include <iotjs/core/vm.h>
 
 int main(int argc, char *argv[])
 {
@@ -14,7 +11,6 @@ int main(int argc, char *argv[])
     {
         filename = "main.js";
     }
-
     int errno = 0;
     vm_t *vm = vm_new(&errno);
     if (errno)
@@ -33,6 +29,5 @@ int main(int argc, char *argv[])
         return errno;
     }
     duk_pop(ctx);
-
     return 0;
 }

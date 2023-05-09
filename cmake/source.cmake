@@ -1,10 +1,10 @@
 include_directories(src/core)
 set(dirs
-    src/core
+    src/iotjs/core
     src
 )
+include_directories(src)
 foreach(dir ${dirs})
-    include_directories(${dir})
     file(GLOB  files 
         "${dir}/*.c"
     )

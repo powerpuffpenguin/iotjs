@@ -1,4 +1,6 @@
-#include "vm.h"
+#include <iotjs/core/vm.h>
+#include <iotjs/core/path.h>
+
 #include <stdlib.h>
 #include <string.h>
 #include "duk_module_node.h"
@@ -59,17 +61,40 @@ void vm_delete(vm_t *vm)
 
 duk_ret_t cb_resolve_module(duk_context *ctx)
 {
-    puts("cb_resolve_module");
     /*
      *  Entry stack: [ requested_id parent_id ]
      */
 
-    const char *requested_id = duk_get_string(ctx, 0);
-    const char *parent_id = duk_get_string(ctx, 1); /* calling module */
+    size_t requested_len;
+    const char *requested_id = duk_get_lstring(ctx, 0, &requested_len);
+    if (!requested_len)
+    {
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "require expects a valid module id");
+        duk_throw(ctx);
+    }
+    size_t parent_len;
+    const char *parent_id = duk_get_lstring(ctx, 1, &parent_len); /* calling module */
     const char *resolved_id;
 
     /* Arrive at the canonical module ID somehow. */
-    printf("id=%s pid=%s\n", requested_id, parent_id);
+    if (parent_len)
+    {
+        char *path = (char *)malloc(parent_len + 1 + requested_len);
+        if (!path)
+        {
+            duk_push_error_object(ctx, DUK_ERR_ERROR, "require malloc error");
+            duk_throw(ctx);
+        }
+        memcpy(path, parent_id, parent_len);
+        path[parent_len] = '/';
+        memcpy(path + parent_len + 1, requested_id, requested_len);
+        
+    }
+    else
+    {
+        // resolved_id = path_clean(requested_id);
+    }
+    printf("pid=%s id=%s resolved=%s\n", parent_id, requested_id, resolved_id);
 
     duk_push_string(ctx, resolved_id);
     return 1; /*nrets*/
