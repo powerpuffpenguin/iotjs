@@ -1,5 +1,4 @@
 #include <iotjs/core/vm.h>
-#include <iotjs/core/path.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -88,7 +87,6 @@ duk_ret_t cb_resolve_module(duk_context *ctx)
         memcpy(path, parent_id, parent_len);
         path[parent_len] = '/';
         memcpy(path + parent_len + 1, requested_id, requested_len);
-        
     }
     else
     {

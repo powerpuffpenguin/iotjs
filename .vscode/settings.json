@@ -46,6 +46,12 @@
         "mutex": "c",
         "ostream": "c",
         "string": "c",
-        "unordered_map": "c"
+        "unordered_map": "c",
+        "chrono": "c",
+        "__functional_base_03": "c",
+        "limits": "c",
+        "__bit_reference": "c",
+        "queue": "c",
+        "assert.h": "c"
     }
 }

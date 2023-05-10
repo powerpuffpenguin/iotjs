@@ -2,7 +2,7 @@
 set -e
 
 cd `dirname "$BASH_SOURCE"`
-
+rootDir=`pwd`
 
 source scripts/lib/core.sh
 source scripts/lib/log.sh
@@ -17,6 +17,7 @@ on_main(){
     local exec_cmake=(cmake 
         '../../'
         -DCMAKE_SYSTEM_NAME=Linux
+        -DCMAKE_BUILD_TYPE=$build_type
     )
     case "$target" in
         linux_csky)
@@ -55,6 +56,11 @@ on_main(){
             core_call_assert make
         fi
     fi
+    if [[ $test == true ]];then
+        log_info "test for $target"
+        cd "$rootDir"
+        "$dir/bin/iotjs_test"
+    fi
 
     core_call_assert time_since "$start"
     local used=$result
@@ -83,6 +89,13 @@ core_call_assert    command_flags -t bool -d 'Execute cmake' \
     -v cmake -s c
 core_call_assert    command_flags -t bool -d 'Execute make' \
     -v make -s m
+core_call_assert    command_flags -t bool -d 'Run test' \
+    -v test -s t
+
+core_call_assert    command_flags -t string -d 'set CMAKE_BUILD_TYPE' \
+    -v build_type -l build-type \
+    -V None -V Debug -V Release -V RelWithDebInfo -V MinSizeRel \
+    -D Release
 
 core_call_assert    command_commit
 core_call_assert    command_execute $root "$@"

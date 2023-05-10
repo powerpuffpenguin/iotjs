@@ -3,25 +3,55 @@
 #include <stddef.h>
 #include <iotjs/core/defines.h>
 
+// 字符串引用
 typedef struct
 {
-    char *p;
-    size_t reference;
-} strings_reference_t;
-typedef struct
-{
+    // 字符串內存容量
     size_t cap;
-    size_t len;
-    size_t offset;
-} strings_metadata_t;
+    // 當前被多少變量引用，爲0表示沒有引用系統應該釋放它，否則它正在被使用不能釋放
+    size_t count;
+    // 實際的內存
+    char *ptr;
+} strings_reference_t;
+// 字符串用於替代 c 過時且難用的 char*
 typedef struct
 {
+    // 字符串大小寫
+    size_t len;
+    // 字符串的真實內存地址
+    size_t offset;
+    // 內存引用，如果爲 NULL 則表示此字符串無效，通常是申請內存失敗所以無法創建
     strings_reference_t *reference;
-    strings_metadata_t metadata;
-} strings_t;
+} string_t;
+// 創建長度容量都爲 len 的字符串
+string_t strings_make(size_t len);
+// 以指定長度和容量創建字符串，如果 cap < len 則自動設置 cap = len
+string_t strings_make_cap(size_t len, size_t cap);
+// 由 c 字符串創建 string_t
+string_t strings_from_c_str(const char *s);
+// 由指定長度的 char* 創建 string_t
+string_t strings_from_str(const char *s, size_t n);
 
-BOOL strings_new(strings_t *s, size_t len);
-BOOL strings_new_cap(strings_t *s, size_t len, size_t cap);
-strings_t *append(strings_t *s, strings_t *o);
+// 創建一個 s 的副本並將內存引用 reference++
+// 如果 s 無效，將返回一個同樣無效的 string_t
+string_t strings_increment(const string_t *s);
+// 表示變量不再使用字符串，它會將內存引用 reference--,
+// 如果此後 reference 便爲 0 將會自動釋放內存
+BOOL strings_decrement(string_t *s);
 
+// 取一個字符串的切片s[start:]
+// 如果 s/start 無效，返回一個無效的字符串
+string_t strings_slice(const string_t *s, size_t start);
+// 取一個字符串的切片s[start:end>=start?end:start]
+// 如果 s/start/end 無效，返回一個無效的字符串
+string_t strings_slice2(const string_t *s, size_t start, size_t end);
+// 複製字符串並返回實際複製的數據長度
+size_t strings_copy(const string_t *dst, const string_t *src);
+
+// 在字符串末尾添加字符並返回添加後的切片
+string_t strings_append_str(const string_t *s, const char *o, size_t n);
+// 在字符串末尾添加字符並返回添加後的切片
+string_t strings_append_c_str(const string_t *s, const char *o);
+// 在字符串末尾添加字符並返回添加後的切片
+string_t strings_append(const string_t *s, const string_t *o);
 #endif

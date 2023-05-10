@@ -1,14 +1,14 @@
 include_directories(src/core)
 set(dirs
     src/iotjs/core
-    src
+    src/iotjs/assert
 )
-include_directories(src)
+include_directories("${CMAKE_SOURCE_DIR}/src")
 foreach(dir ${dirs})
     file(GLOB  files 
-        "${dir}/*.c"
+        "${CMAKE_SOURCE_DIR}/${dir}/*.c"
     )
     list(APPEND target_sources
-        ${files}
+        "${files}"
     )
 endforeach()
