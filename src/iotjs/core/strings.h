@@ -48,10 +48,14 @@ string_t strings_slice2(const string_t *s, size_t start, size_t end);
 // 複製字符串並返回實際複製的數據長度
 size_t strings_copy(const string_t *dst, const string_t *src);
 
+// 在字符串末尾添加字符並返回添加後的切
+// 如果 delete_s 爲 true，自動爲 s 調用 strings_decrement
+string_t strings_append_str(string_t *s, const char *o, size_t n, BOOL delete_s);
 // 在字符串末尾添加字符並返回添加後的切片
-string_t strings_append_str(const string_t *s, const char *o, size_t n);
+// 如果 delete_s 爲 true，自動爲 s 調用 strings_decrement
+string_t strings_append_c_str(string_t *s, const char *o, BOOL delete_s);
 // 在字符串末尾添加字符並返回添加後的切片
-string_t strings_append_c_str(const string_t *s, const char *o);
-// 在字符串末尾添加字符並返回添加後的切片
-string_t strings_append(const string_t *s, const string_t *o);
+// 如果 delete_s 爲 true，自動爲 s 調用 strings_decrement
+// 如果 delete_o 爲 true，自動爲 o 調用 strings_decrement
+string_t strings_append(string_t *s, string_t *o, BOOL delete_s, BOOL delete_o);
 #endif

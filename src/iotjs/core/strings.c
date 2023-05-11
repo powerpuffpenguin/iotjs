@@ -64,7 +64,7 @@ string_t strings_from_str(const char *s, size_t n)
 
 string_t strings_increment(const string_t *s)
 {
-    if (!s->reference)
+    if (!s || !s->reference)
     {
         IOTJS_VAR_STRUCT(string_t, result);
         return result;
@@ -74,7 +74,7 @@ string_t strings_increment(const string_t *s)
 }
 BOOL strings_decrement(string_t *s)
 {
-    if (!s->reference)
+    if (!s || !s->reference)
     {
         return FALSE;
     }
@@ -97,7 +97,7 @@ BOOL strings_decrement(string_t *s)
 }
 string_t strings_slice(const string_t *s, size_t start)
 {
-    if (!s->reference)
+    if (!s || !s->reference)
     {
         IOTJS_VAR_STRUCT(string_t, s0);
         return s0;
@@ -107,7 +107,7 @@ string_t strings_slice(const string_t *s, size_t start)
 }
 string_t strings_slice2(const string_t *s, size_t start, size_t end)
 {
-    if (!s->reference)
+    if (!s || !s->reference)
     {
         IOTJS_VAR_STRUCT(string_t, s0);
         return s0;
@@ -123,10 +123,10 @@ string_t strings_slice2(const string_t *s, size_t start, size_t end)
         IOTJS_VAR_STRUCT(string_t, s0);
         return s0;
     }
-
+    size_t max = s->reference->cap - start;
     string_t s0 = {
         .offset = start,
-        .len = len,
+        .len = len > max ? max : len,
         .reference = s->reference,
     };
     s->reference->count++;
@@ -134,6 +134,10 @@ string_t strings_slice2(const string_t *s, size_t start, size_t end)
 }
 size_t strings_copy(const string_t *dst, const string_t *src)
 {
+    if (!dst || !src || !dst->reference || !src->reference)
+    {
+        return 0;
+    }
     size_t n = dst->len < src->len ? dst->len : src->len;
     if (n > 0)
     {
@@ -141,47 +145,96 @@ size_t strings_copy(const string_t *dst, const string_t *src)
     }
     return n;
 }
-string_t strings_append_str(const string_t *s, const char *o, size_t n)
+string_t strings_append_str(string_t *s, const char *o, size_t n, BOOL delete_s)
 {
-    if (!s->reference)
+    string_t result;
+    if (n == 0)
     {
-        return strings_from_str(o, n);
+        if (s && s->reference)
+        {
+            result = strings_increment(s);
+            if (delete_s)
+            {
+                strings_decrement(s);
+            }
+        }
+        else
+        {
+            memset(&result, 0, sizeof(string_t));
+        }
+        return result;
     }
-    size_t cap = s->reference->cap - s->offset;
-    size_t len = s->len + n;
+    size_t cap = 0;
+    size_t len = n;
+    if (s && s->reference)
+    {
+        cap = s->reference->cap - s->offset;
+        len += s->len;
+    }
     if (len <= cap)
     {
-        string_t s0 = {
-            .len = len,
-            .offset = s->offset,
-            .reference = s->reference,
-        };
-        memmove(s->reference->ptr + s->offset + s->len, o, n);
-        s0.reference->count++;
-        return s0;
+        result.len = len;
+        result.offset = s->offset;
+        result.reference = s->reference;
+        if (n)
+        {
+            memmove(s->reference->ptr + s->offset + s->len, o, n);
+        }
+        s->reference->count++;
+        if (delete_s)
+        {
+            strings_decrement(s);
+        }
+        return result;
     }
     // malloc
-    cap *= 2;
+    if (cap < 32)
+    {
+        cap = 64;
+    }
+    else
+    {
+        cap *= 2;
+    }
     if (len > cap)
     {
         cap = len;
     }
-
-    string_t s0 = strings_make_cap(len, cap);
-    if (s0.reference)
+    result = strings_make_cap(len, cap);
+    if (result.reference)
     {
-        memcpy(s0.reference->ptr, s->reference->ptr + s->offset, s->len);
-        memmove(s->reference->ptr + s->offset + s->len, o, n);
+        if (s && s->reference)
+        {
+            memcpy(result.reference->ptr, s->reference->ptr + s->offset, s->len);
+            memcpy(result.reference->ptr + s->len, o, n);
+        }
+        else
+        {
+            memcpy(result.reference->ptr, o, n);
+        }
     }
-    return s0;
+    if (delete_s)
+    {
+        strings_decrement(s);
+    }
+    return result;
 }
 
-string_t strings_append_c_str(const string_t *s, const char *o)
+string_t strings_append_c_str(string_t *s, const char *o, BOOL delete_s)
 {
-    return o ? strings_append_str(s, o, strlen(o)) : strings_increment(s);
+    return strings_append_str(s, o, o ? strlen(o) : 0, delete_s);
 }
 
-string_t strings_append(const string_t *s, const string_t *o)
+string_t strings_append(string_t *s, string_t *o, BOOL delete_s, BOOL delete_o)
 {
-    return o && o->reference ? strings_append_str(s, o->reference->ptr + o->offset, o->len) : strings_increment(s);
+    if (!o || !o->reference)
+    {
+        return strings_append_str(s, NULL, 0, delete_s);
+    }
+    string_t result = strings_append_str(s, o->reference->ptr + o->offset, o->len, delete_s);
+    if (delete_o)
+    {
+        strings_decrement(o);
+    }
+    return result;
 }
