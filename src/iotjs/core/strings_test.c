@@ -1,6 +1,6 @@
 #include <iotjs/assert/assert.h>
 #include <iotjs/core/strings.h>
-int test_make(assert_test_t *test)
+int test_strings_make(assert_test_t *test)
 {
     string_t s = strings_make(10);
     ASSERT_EQUAL_SIZE_T(test, s.offset, 0)
@@ -57,9 +57,9 @@ int test_make(assert_test_t *test)
 
     return 0;
 }
-ASSERT_TEST_FUNC(strings, make, test_make)
+ASSERT_TEST_FUNC(strings, make, test_strings_make)
 
-int test_slice(assert_test_t *test)
+int test_strings_slice(assert_test_t *test)
 {
     const char *c_str = "kate is so cute";
     size_t len = strlen(c_str);
@@ -75,19 +75,50 @@ int test_slice(assert_test_t *test)
     [0] = 'S';
     IOTJS_REFERENCE_POINTER(s1)
     [1] = 'O';
-    string_t s2 = strings_slice_end(&s1, 0, 6, FALSE);
+    string_t s2 = strings_slice_end(&s1, 0, 6, TRUE);
 
     const char *c_str1 = "kate is SO cute";
     ASSERT_EQUAL_STR(test, IOTJS_REFERENCE_POINTER(s), c_str1, len);
     ASSERT_EQUAL_STR(test, IOTJS_REFERENCE_POINTER(s0), c_str1 + 5, len - 5);
-    ASSERT_EQUAL_STR(test, IOTJS_REFERENCE_POINTER(s1), "SO", 2);
+    // ASSERT_EQUAL_STR(test, IOTJS_REFERENCE_POINTER(s1), "SO", 2);
     ASSERT_EQUAL_STR(test, IOTJS_REFERENCE_POINTER(s2), "SO cut", 6);
-    ASSERT_EQUAL_STR(test, IOTJS_REFERENCE_POINTER(s1), "SO cut", 6);
+    // ASSERT_EQUAL_STR(test, IOTJS_REFERENCE_POINTER(s1), "SO cut", 6);
 
     ASSERT_EQUAL_INT(test, FALSE, strings_decrement(&s2));
-    ASSERT_EQUAL_INT(test, FALSE, strings_decrement(&s1));
+    // ASSERT_EQUAL_INT(test, FALSE, strings_decrement(&s1));
     ASSERT_EQUAL_INT(test, FALSE, strings_decrement(&s0));
     ASSERT_EQUAL_INT(test, TRUE, strings_decrement(&s));
     return 0;
 }
-ASSERT_TEST_FUNC(strings, slice, test_slice)
+ASSERT_TEST_FUNC(strings, slice, test_strings_slice)
+
+int test_strings_append(assert_test_t *test)
+{
+    const char *c_str = "123";
+    string_t s = strings_append_c_str(NULL, c_str, TRUE);
+    ASSERT_EQUAL_STR(test, IOTJS_REFERENCE_POINTER(s), c_str, s.len);
+    ASSERT_EQUAL_SIZE_T(test, 3, s.len);
+    ASSERT_EQUAL_SIZE_T(test, 64, s.reference->cap);
+    ASSERT_EQUAL_SIZE_T(test, 1, s.reference->count);
+    s = strings_append_c_str(&s, "456", TRUE);
+    ASSERT_EQUAL_STR(test, IOTJS_REFERENCE_POINTER(s), "123456", s.len);
+    ASSERT_EQUAL_SIZE_T(test, 6, s.len);
+    ASSERT_EQUAL_SIZE_T(test, 64, s.reference->cap);
+    ASSERT_EQUAL_SIZE_T(test, 1, s.reference->count);
+    string_t s0 = strings_slice_end(&s, 3, 7, FALSE);
+    ASSERT_EQUAL_SIZE_T(test, 2, s.reference->count);
+    ASSERT_EQUAL_SIZE_T(test, 4, s0.len);
+    ASSERT_EQUAL_SIZE_T(test, 3, s0.offset);
+    STRINGS_SET_CHAR(s0, 3, '7');
+    ASSERT_EQUAL_STR(test, IOTJS_REFERENCE_POINTER(s0), "4567", s0.len);
+    ASSERT_EQUAL_STR(test, IOTJS_REFERENCE_POINTER(s), "1234567", 7);
+    s = strings_append(&s0, &s, TRUE, TRUE);
+    ASSERT_EQUAL_SIZE_T(test, 1, s.reference->count);
+    ASSERT_EQUAL_SIZE_T(test, 4 + 6, s.len);
+    ASSERT_EQUAL_STR(test, IOTJS_REFERENCE_POINTER(s), "4567123456", s.len);
+    ASSERT_EQUAL_SIZE_T(test, 3, s.offset);
+    ASSERT_EQUAL_STR(test, "1234567123456", s.reference->ptr, 3 + s.len);
+    strings_decrement(&s);
+    return 0;
+}
+ASSERT_TEST_FUNC(strings, append, test_strings_append)

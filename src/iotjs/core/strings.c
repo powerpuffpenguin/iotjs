@@ -95,7 +95,7 @@ BOOL strings_decrement(string_t *s)
     memset(s, 0, sizeof(string_t));
     return deleted;
 }
-string_t strings_slice(const string_t *s, size_t start, BOOL delete_s)
+string_t strings_slice(string_t *s, size_t start, BOOL delete_s)
 {
     if (!s || !s->reference)
     {
@@ -105,7 +105,7 @@ string_t strings_slice(const string_t *s, size_t start, BOOL delete_s)
     size_t end = s->len;
     return strings_slice_end(s, start, end, delete_s);
 }
-string_t strings_slice_end(const string_t *s, size_t start, size_t end, BOOL delete_s)
+string_t strings_slice_end(string_t *s, size_t start, size_t end, BOOL delete_s)
 {
     if (!s || !s->reference)
     {
