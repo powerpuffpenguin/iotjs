@@ -40,5 +40,4 @@ path_split_t path_split(string_t *path, BOOL delete_path);
 // 如果 path 完全由 / 和 非斜線字節組成，則返回一個/。
 // 在任何其他情況下，返回的路徑不會以 / 結尾
 string_t path_dir(string_t *path, BOOL delete_path);
-
 #endif

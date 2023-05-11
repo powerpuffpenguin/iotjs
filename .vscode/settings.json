@@ -52,6 +52,7 @@
         "limits": "c",
         "__bit_reference": "c",
         "queue": "c",
-        "assert.h": "c"
+        "assert.h": "c",
+        "duk_module_node.h": "c"
     }
 }
