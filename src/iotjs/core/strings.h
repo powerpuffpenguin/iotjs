@@ -49,6 +49,10 @@ string_t strings_slice(string_t *s, size_t start, BOOL delete_s);
 string_t strings_slice_end(string_t *s, size_t start, size_t end, BOOL delete_s);
 // 複製字符串並返回實際複製的數據長度
 size_t strings_copy(const string_t *dst, const string_t *src);
+// 複製字符串並返回實際複製的數據長度
+size_t strings_copy_str(const string_t *dst, const char *src, size_t n);
+// 複製字符串並返回實際複製的數據長度
+size_t strings_copy_c_str(const string_t *dst, const char *src);
 
 // 在字符串末尾添加字符並返回添加後的切
 // 如果 delete_s 爲 true，自動爲 s 調用 strings_decrement
@@ -60,7 +64,11 @@ string_t strings_append_c_str(string_t *s, const char *o, BOOL delete_s);
 // 如果 delete_s 爲 true，自動爲 s 調用 strings_decrement
 // 如果 delete_o 爲 true，自動爲 o 調用 strings_decrement
 string_t strings_append(string_t *s, string_t *o, BOOL delete_s, BOOL delete_o);
+// 返回一個字符串常量 ""，它永遠不會被釋放
+string_t strings_const_empty();
 
-#define STRINGS_SET_CHAR(s, i, c) IOTJS_REFERENCE_POINTER(s)[i] = c
-
+#define IOTJS_STRINGS_SET_CHAR(s, i, c) IOTJS_REFERENCE_PTR(s)[i] = c
+#define IOTJS_STRINGS_GET_CHAR(s, i) IOTJS_REFERENCE_PTR(s)[i]
+#define IOTJS_STRINGS_PTR_SET_CHAR(s, i, c) IOTJS_REFERENCE_PTR_PTR(s)[i] = c
+#define IOTJS_STRINGS_PTR_GET_CHAR(s, i) IOTJS_REFERENCE_PTR_PTR(s)[i]
 #endif

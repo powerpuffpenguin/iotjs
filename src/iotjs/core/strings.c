@@ -1,6 +1,22 @@
 #include <iotjs/core/strings.h>
 #include <memory.h>
 #include <stdlib.h>
+strings_reference_t _strings_const_empty = {
+    .ptr = "",
+    .count = 1,
+    .cap = 0,
+};
+
+string_t strings_const_empty()
+{
+    string_t s = {
+        .len = 0,
+        .offset = 0,
+        .reference = &_strings_const_empty,
+    };
+    _strings_const_empty.count++;
+    return s;
+}
 
 string_t strings_make(size_t len)
 {
@@ -14,8 +30,7 @@ string_t strings_make_cap(size_t len, size_t cap)
     }
     if (cap == 0)
     {
-        IOTJS_VAR_STRUCT(string_t, s);
-        return s;
+        return strings_const_empty();
     }
     strings_reference_t *reference = (strings_reference_t *)malloc(sizeof(strings_reference_t) + cap);
     if (!reference)
@@ -48,7 +63,7 @@ string_t strings_from_c_str(const char *s)
     string_t str = strings_make_cap(cap, cap);
     if (IOTJS_REFERENCE_VALID(str) && cap)
     {
-        memcpy(IOTJS_REFERENCE_POINTER(str), s, cap);
+        memcpy(IOTJS_REFERENCE_PTR(str), s, cap);
     }
     return str;
 }
@@ -57,14 +72,14 @@ string_t strings_from_str(const char *s, size_t n)
     string_t str = strings_make_cap(n, n);
     if (IOTJS_REFERENCE_VALID(str) && n)
     {
-        memcpy(IOTJS_REFERENCE_POINTER(str), s, n);
+        memcpy(IOTJS_REFERENCE_PTR(str), s, n);
     }
     return str;
 }
 
 string_t strings_increment(const string_t *s)
 {
-    if (!s || !s->reference)
+    if (IOTJS_REFERENCE_PTR_INVALID(s))
     {
         IOTJS_VAR_STRUCT(string_t, result);
         return result;
@@ -74,7 +89,7 @@ string_t strings_increment(const string_t *s)
 }
 BOOL strings_decrement(string_t *s)
 {
-    if (!s || !s->reference)
+    if (IOTJS_REFERENCE_PTR_INVALID(s))
     {
         return FALSE;
     }
@@ -84,8 +99,11 @@ BOOL strings_decrement(string_t *s)
     case 0:
         break;
     case 1:
-        s->reference->count = 0;
-        free(s->reference);
+        if (s->reference->cap)
+        {
+            s->reference->count = 0;
+            free(s->reference);
+        }
         deleted = TRUE;
         break;
     default:
@@ -97,7 +115,7 @@ BOOL strings_decrement(string_t *s)
 }
 string_t strings_slice(string_t *s, size_t start, BOOL delete_s)
 {
-    if (!s || !s->reference)
+    if (IOTJS_REFERENCE_PTR_INVALID(s))
     {
         IOTJS_VAR_STRUCT(string_t, s0);
         return s0;
@@ -107,7 +125,7 @@ string_t strings_slice(string_t *s, size_t start, BOOL delete_s)
 }
 string_t strings_slice_end(string_t *s, size_t start, size_t end, BOOL delete_s)
 {
-    if (!s || !s->reference)
+    if (IOTJS_REFERENCE_PTR_INVALID(s))
     {
         IOTJS_VAR_STRUCT(string_t, s0);
         return s0;
@@ -140,9 +158,36 @@ string_t strings_slice_end(string_t *s, size_t start, size_t end, BOOL delete_s)
     }
     return result;
 }
+size_t strings_copy_str(const string_t *dst, const char *src, size_t n)
+{
+    if (IOTJS_REFERENCE_PTR_INVALID(dst) || !src || n == 0)
+    {
+        return 0;
+    }
+    n = dst->len < n ? dst->len : n;
+    if (n > 0)
+    {
+        memmove(dst->reference->ptr + dst->offset, src, n);
+    }
+    return n;
+}
+size_t strings_copy_c_str(const string_t *dst, const char *src)
+{
+    if (IOTJS_REFERENCE_PTR_INVALID(dst) || !src)
+    {
+        return 0;
+    }
+    size_t n = strlen(src);
+    n = dst->len < n ? dst->len : n;
+    if (n > 0)
+    {
+        memmove(dst->reference->ptr + dst->offset, src, n);
+    }
+    return n;
+}
 size_t strings_copy(const string_t *dst, const string_t *src)
 {
-    if (!dst || !src || !dst->reference || !src->reference)
+    if (IOTJS_REFERENCE_PTR_INVALID(dst) || IOTJS_REFERENCE_PTR_INVALID(src))
     {
         return 0;
     }
@@ -158,7 +203,7 @@ string_t strings_append_str(string_t *s, const char *o, size_t n, BOOL delete_s)
     string_t result;
     if (n == 0)
     {
-        if (s && s->reference)
+        if (IOTJS_REFERENCE_PTR_VALID(s))
         {
             result = strings_increment(s);
             if (delete_s)
@@ -235,11 +280,11 @@ string_t strings_append_c_str(string_t *s, const char *o, BOOL delete_s)
 
 string_t strings_append(string_t *s, string_t *o, BOOL delete_s, BOOL delete_o)
 {
-    if (!o || !o->reference)
+    if (IOTJS_REFERENCE_PTR_INVALID(o))
     {
         return strings_append_str(s, NULL, 0, delete_s);
     }
-    string_t result = strings_append_str(s, o->reference->ptr + o->offset, o->len, delete_s);
+    string_t result = strings_append_str(s, IOTJS_REFERENCE_PTR_PTR(o), o->len, delete_s);
     if (delete_o)
     {
         strings_decrement(o);
