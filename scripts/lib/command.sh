@@ -2,7 +2,7 @@
 if [[ -v command_version ]] && [[ $command_version =~ ^[0-9]$ ]] && ((command_version>=1));then
     return
 fi
-command_version=1
+command_version=2
 
 if [[ ! -v __command_id ]];then
     __command_name=''
@@ -16,7 +16,18 @@ if [[ ! -v __command_id ]];then
     __command_id=0
 
 fi
-
+__command_panic(){
+    local i=0
+    echo "Panic: $result_errno"
+    while true; do
+        if ! read line sub file < <(caller $i);then
+            break
+        fi
+        i=$((i+1))
+        echo "  - $file $sub:$line"
+    done
+    exit 1
+}
 __command_join(){
     result=''
     local s
@@ -302,7 +313,7 @@ __command_flags_parse_value(){
     fi
 }
 
-# (...): errno
+# (...): panic
 # define a flag for current command
 # -v, --var string(^[a-zA-Z_][a-zA-Z0-9_]*$)  Varname of this flag 
 # -l, --long string   Long name of this flag
@@ -318,7 +329,7 @@ __command_flags_parse_value(){
 command_flags(){
     if [[ "$__command_name" == '' ]];then
         result_errno="please call command_begin to begin a new command"
-        return 1
+        __command_panic
     fi
 
     local var
@@ -373,18 +384,18 @@ command_flags(){
             shift $shift_n
         else
             result_errno="[command_flags] unknow flags: $1"
-            return 1
+            __command_panic
         fi
         n=${#@}
     done
     if [[ "$var" == '' ]];then
         if [[ "$long" != help ]];then
             result_errno='--var flag must be specified with =~ ^[a-zA-Z_][a-zA-Z0-9_]*$'
-            return 1
+            __command_panic
         fi
     elif [[ ! "$var" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]];then
         result_errno='--var must matched with =~ ^[a-zA-Z_][a-zA-Z0-9_]*$'
-        return 1
+        __command_panic
     fi
     if [[ "$long" == '' ]];then
         long=$var
@@ -392,7 +403,7 @@ command_flags(){
     if [[ "$short" != '' ]];then
       if [[ "$short" != ? ]];then
             result_errno='short flag must be a char'
-            return 1
+            __command_panic
         fi
     fi
 
@@ -405,44 +416,44 @@ command_flags(){
         int|ints)
             if [[ "$max" != '' ]] && [[ ! "$max" =~ ^-?[0-9]+$ ]];then
                 result_errno="--max must specify a valid int value"
-                return 1
+                __command_panic
             fi
             if [[ "$min" != '' ]] && [[ ! "$min" =~ ^-?[0-9]+$ ]];then
                 result_errno="--min must specify a valid int value"
-                return 1
+                __command_panic
             fi
             for s_val in "${value[@]}";do
                 if [[ ! "$s_val" =~ ^-?[0-9]+$ ]];then
                     result_errno="--value must specify a valid int value"
-                    return 1
+                    __command_panic
                 fi
             done
             for s_val in "${default[@]}";do
                 if [[ ! "$s_val" =~ ^-?[0-9]+$ ]];then
                     result_errno="--default must specify a valid int value"
-                    return 1
+                    __command_panic
                 fi
             done
         ;;
         uint|uints)
             if [[ "$max" != '' ]] && [[ ! "$max" =~ ^[0-9]+$ ]];then
                 result_errno="--max must specify a valid uint value"
-                return 1
+                __command_panic
             fi
             if [[ "$min" != '' ]] && [[ ! "$min" =~ ^[0-9]+$ ]];then
                 result_errno="--min must specify a valid uint value"
-                return 1
+                __command_panic
             fi
             for s_val in "${value[@]}";do
                 if [[ ! "$s_val" =~ ^[0-9]+$ ]];then
                     result_errno="--value must specify a valid uint value"
-                    return 1
+                    __command_panic
                 fi
             done
             for s_val in "${default[@]}";do
                 if [[ ! "$s_val" =~ ^[0-9]+$ ]];then
                     result_errno="--default must specify a valid uint value"
-                    return 1
+                    __command_panic
                 fi
             done
         ;;
@@ -450,13 +461,13 @@ command_flags(){
             for s_val in "${value[@]}";do
                 if [[ "$s_val" != true ]] && [[ "$s_val" != false ]];then
                     result_errno="--value must specify a valid bool value"
-                    return 1
+                    __command_panic
                 fi
             done
             for s_val in "${default[@]}";do
                 if [[ "$s_val" != true ]] && [[ "$s_val" != false ]];then
                     result_errno="--default must specify a valid bool value"
-                    return 1
+                    __command_panic
                 fi
             done
         ;;
@@ -471,7 +482,7 @@ command_flags(){
         ;;
         *)
             result_errno="[command_flags] unknow type: $type"
-            return 1
+            __command_panic
         ;;
     esac
     n=${#default[@]}
@@ -548,15 +559,14 @@ command_flags(){
             __command_flags+=("$flag")
             __command_flag=$((__command_flag+1))
         else
-            return $?
+            __command_panic
         fi
     else
-        local errno=$?
         result_errno="eval has error: $s"
-        return $errno
+        __command_panic
     fi
 }
-# (...) (id: number, errno)
+# (...) (id: number, panic)
 # begin a new command
 # -n, --name string   Name of command
 # -l, --long string   Long describe of command
@@ -565,7 +575,7 @@ command_flags(){
 command_begin(){
     if [[ $__command_name != '' ]];then
         result_errno="there is an uncommitted command: $__command_name"
-        return 1
+        __command_panic
     fi
     local name
     local long
@@ -591,14 +601,14 @@ command_begin(){
             shift $shift_n        
         else
             result_errno="[command_begin] unknow flags: $1"
-            return 1
+            __command_panic
         fi
         n=${#@}
     done
 
     if [[ "$name" == '' ]];then
         result_errno="command name invalid: $name"
-        return 1
+        __command_panic
     fi
 
     __command_name=$name
@@ -916,7 +926,7 @@ ${prefix}_execute(){
         if __command_parse_var "$flag";then
             s="$s           $s0
            if [[ \$_errno != 0 ]];then
-                return \$_errno
+                __command_panic
            elif ((_shift>=0));then
                 $s1
                 continue
@@ -932,7 +942,7 @@ ${prefix}_execute(){
            else
                result_errno=\"unknown flag: \$_name \$_input\"
            fi
-           return 1
+           __command_panic
 "
     s="$s        else
             _args+=(\"\$1\")
@@ -945,7 +955,6 @@ ${prefix}_execute(){
     # callbackup
     if [[ \"\$${prefix}_func\" != '' ]];then
         \"\$${prefix}_func\" \"\${_args[@]}\"
-        return \$?
     fi
 }"
     # echo "$s"
@@ -997,14 +1006,13 @@ __sort_values(){
         done
     done
 }
-# () (errno)
+# (): panic
 # generate command code and load it with eval
 command_commit(){
     if [[ "$__command_name" == '' ]];then
         result_errno="please call command_begin to begin a new command"
-        return 1
+        __command_panic
     fi
-    local errno=0
     local n=${#__command_flags[@]}
     if (($n>1));then
         local values=("${__command_flags[@]}")
@@ -1020,9 +1028,8 @@ __sort_values"
          if eval "$s";then
             __command_flags=("${values[@]}")
          else
-            errno=$?
             result_errno="eval sort_flags has error: $s"
-            return $errno
+            __command_panic
          fi
     fi
     n=${#__command_children[@]}
@@ -1040,9 +1047,8 @@ __sort_values"
          if eval "$s";then
             __command_children=("${values[@]}")
          else
-            errno=$?
             result_errno="eval sort_children has error: $s"
-            return $errno
+            __command_panic
          fi
     fi
     if command_string ;then
@@ -1052,35 +1058,33 @@ __sort_values"
             __command_flag=0
             __command_id=$((__command_id+1))
         else
-            errno=$?
             result_errno="eval string has error: $result"
+            __command_panic
         fi
     else
-        errno=$?
+        __command_panic
     fi
-    return $errno
 }
-# (id: number, ...args: []string): errno
+# (id: number, ...args: []string): panic
 command_execute(){
     result_errno=''
     local id="$1"
     shift
     if [[ ! "$id" =~ ^[0-9]+$ ]];then
         result_errno="command id invalid: $id"
-        return 1
+        __command_panic
     fi
 
     local s="if [[ \"\$__command_${id}_name\" == '' ]];then
     result_errno=\"command id invalid: $id\"
-    return 1
+    __command_panic
 fi
 local __command_parent=''
 __command_${id}_execute \"\$@\"
 "
     eval "$s"
-    return $?
 }
-# (...children_id: []string): errno
+# (...children_id: []string): panic
 command_children(){
     result_errno=''
 
@@ -1098,13 +1102,13 @@ command_children(){
     for s in "$@";do
         if [[ ! "$s" =~ ^[0-9]+$ ]];then
             result_errno="command id[$i] invalid: $id"
-            return 1
+            __command_panic
         fi
         j=0
         for sj in "$@";do
             if [[ $i != $j ]] && [[ "$s" == "$sj" ]];then
                 result_errno="children id[$i,$j] repeat: $s"
-                return 1
+                __command_panic
             fi
             j=$((j+1))
         done
@@ -1116,13 +1120,13 @@ command_children(){
         for s in "${names[@]}";do
             if [[ "$s" == '' ]];then
                 result_errno="children name[$i] invalid: $s"
-                return 1
+                __command_panic
             fi
             j=0
             for sj in "${names[@]}";do
                 if [[ $i != $j ]] && [[ "$s" == "$sj" ]];then
                     result_errno="children name[$i,$j] repeat: $s"
-                    return 1
+                    __command_panic
                 fi
                 j=$((j+1))
             done

@@ -95,7 +95,7 @@ BOOL strings_decrement(string_t *s)
     memset(s, 0, sizeof(string_t));
     return deleted;
 }
-string_t strings_slice(const string_t *s, size_t start)
+string_t strings_slice(const string_t *s, size_t start, BOOL delete_s)
 {
     if (!s || !s->reference)
     {
@@ -103,9 +103,9 @@ string_t strings_slice(const string_t *s, size_t start)
         return s0;
     }
     size_t end = s->len;
-    return strings_slice2(s, start, end);
+    return strings_slice_end(s, start, end, delete_s);
 }
-string_t strings_slice2(const string_t *s, size_t start, size_t end)
+string_t strings_slice_end(const string_t *s, size_t start, size_t end, BOOL delete_s)
 {
     if (!s || !s->reference)
     {
@@ -116,21 +116,29 @@ string_t strings_slice2(const string_t *s, size_t start, size_t end)
     {
         end = start;
     }
+    string_t result;
     size_t len = end - start;
     start += s->offset;
     if (start >= s->reference->cap)
     {
-        IOTJS_VAR_STRUCT(string_t, s0);
-        return s0;
+        memset(&result, 0, sizeof(string_t));
+        if (delete_s)
+        {
+            strings_decrement(s);
+        }
+        return result;
     }
     size_t max = s->reference->cap - start;
-    string_t s0 = {
-        .offset = start,
-        .len = len > max ? max : len,
-        .reference = s->reference,
-    };
+    result.offset = start;
+    result.len = len > max ? max : len;
+    result.reference = s->reference;
+
     s->reference->count++;
-    return s0;
+    if (delete_s)
+    {
+        strings_decrement(s);
+    }
+    return result;
 }
 size_t strings_copy(const string_t *dst, const string_t *src)
 {

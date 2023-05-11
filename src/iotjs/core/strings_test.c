@@ -64,10 +64,10 @@ int test_slice(assert_test_t *test)
     const char *c_str = "kate is so cute";
     size_t len = strlen(c_str);
     string_t s = strings_from_str(c_str, len);
-    string_t s0 = strings_slice(&s, 5);
+    string_t s0 = strings_slice(&s, 5, FALSE);
     ASSERT_EQUAL_STR(test, IOTJS_REFERENCE_POINTER(s), c_str, len);
     ASSERT_EQUAL_STR(test, IOTJS_REFERENCE_POINTER(s0), c_str + 5, len - 5);
-    string_t s1 = strings_slice2(&s0, 3, 3 + 2);
+    string_t s1 = strings_slice_end(&s0, 3, 3 + 2, FALSE);
     ASSERT_EQUAL_STR(test, IOTJS_REFERENCE_POINTER(s), c_str, len);
     ASSERT_EQUAL_STR(test, IOTJS_REFERENCE_POINTER(s0), c_str + 5, len - 5);
     ASSERT_EQUAL_STR(test, IOTJS_REFERENCE_POINTER(s1), "so", 2);
@@ -75,7 +75,7 @@ int test_slice(assert_test_t *test)
     [0] = 'S';
     IOTJS_REFERENCE_POINTER(s1)
     [1] = 'O';
-    string_t s2 = strings_slice2(&s1, 0, 6);
+    string_t s2 = strings_slice_end(&s1, 0, 6, FALSE);
 
     const char *c_str1 = "kate is SO cute";
     ASSERT_EQUAL_STR(test, IOTJS_REFERENCE_POINTER(s), c_str1, len);

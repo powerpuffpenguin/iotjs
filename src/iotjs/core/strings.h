@@ -41,10 +41,12 @@ BOOL strings_decrement(string_t *s);
 
 // 取一個字符串的切片s[start:]
 // 如果 s/start 無效，返回一個無效的字符串
-string_t strings_slice(const string_t *s, size_t start);
+// 如果 delete_s 爲 true，自動爲 s 調用 strings_decrement
+string_t strings_slice(const string_t *s, size_t start, BOOL delete_s);
 // 取一個字符串的切片s[start:end>=start?end:start]
 // 如果 s/start/end 無效，返回一個無效的字符串
-string_t strings_slice2(const string_t *s, size_t start, size_t end);
+// 如果 delete_s 爲 true，自動爲 s 調用 strings_decrement
+string_t strings_slice_end(const string_t *s, size_t start, size_t end, BOOL delete_s);
 // 複製字符串並返回實際複製的數據長度
 size_t strings_copy(const string_t *dst, const string_t *src);
 
