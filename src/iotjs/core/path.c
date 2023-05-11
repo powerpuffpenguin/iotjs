@@ -1,5 +1,6 @@
 #include <iotjs/core/path.h>
 #include <string.h>
+#include <stdio.h>
 typedef struct
 {
     string_t *s;
@@ -166,11 +167,11 @@ string_t path_clean(string_t *path, BOOL delete_path)
             if ((rooted && out.w != 1) || (!rooted && out.w != 0))
             {
                 _PATH_LAZYBUF_APPEND('/')
-                // copy element
-                for (; r < n && p[r] != '/'; r++)
-                {
-                    _PATH_LAZYBUF_APPEND(p[r])
-                }
+            }
+            // copy element
+            for (; r < n && p[r] != '/'; r++)
+            {
+                _PATH_LAZYBUF_APPEND(p[r])
             }
         }
     }
@@ -185,12 +186,12 @@ string_t path_clean(string_t *path, BOOL delete_path)
     {
         if (out.buf.reference)
         {
-            s = strings_slice_end(path, 0, out.w, FALSE);
+            s = out.buf;
+            s.len = out.w;
         }
         else
         {
-            s = out.buf;
-            s.len = out.w;
+            s = strings_slice_end(path, 0, out.w, FALSE);
         }
     }
     if (delete_path)

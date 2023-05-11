@@ -195,7 +195,7 @@ int assert_equal(assert_test_t *test,
         }
         break;
     case ASSERT_TYPE_STR:
-        if (!memcmp((void *)expected, (void *)actual, n))
+        if (!n || !memcmp((void *)expected, (void *)actual, n))
         {
             return 0;
         }

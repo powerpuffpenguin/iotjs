@@ -139,12 +139,11 @@ string_t strings_slice_end(string_t *s, size_t start, size_t end, BOOL delete_s)
     start += s->offset;
     if (start >= s->reference->cap)
     {
-        memset(&result, 0, sizeof(string_t));
         if (delete_s)
         {
             strings_decrement(s);
         }
-        return result;
+        return strings_const_empty();
     }
     size_t max = s->reference->cap - start;
     result.offset = start;
