@@ -1,8 +1,9 @@
-#include <sys/epoll.h>
+#include <event2/event.h>
 
 int main(int argc, char *argv[])
 {
-    epoll_create1(0);
+    struct event_base *base = event_base_new();
+    event_base_free(base);
     return 0;
 }
 

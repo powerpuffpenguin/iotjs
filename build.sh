@@ -70,6 +70,7 @@ on_main(){
     local target="${os}_$arch"
     local cmake_args=(
         -DCMAKE_SYSTEM_NAME=Linux
+        "-DOUTPUT_ROOT_DIR=dst/$target"
     )
     case "$target" in
         linux_csky)
