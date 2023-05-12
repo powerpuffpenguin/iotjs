@@ -9,19 +9,71 @@ source scripts/lib/log.sh
 source scripts/lib/time.sh
 source scripts/lib/command.sh
 
+build_libevent(){
+    if [[ $cmake == true ]] || [[ $make == true ]];then
+        cd "$rootDir/$dir"
+        if [[ ! -d libevent ]];then
+            mkdir libevent
+        fi
+        cd libevent
+        
+        if [[ $cmake == true ]];then
+            log_info "cmake libevent for $target"
+            local args=(cmake ../../../third_party/libevent-2.1.12-stable
+                -DCMAKE_BUILD_TYPE=Release
+                -DEVENT__DISABLE_TESTS=ON
+                -DEVENT__DISABLE_OPENSSL=ON
+                -DEVENT__LIBRARY_TYPE=STATIC                
+            )
+            args+=("${cmake_args[@]}")
+            log_info "${args[@]}"
+            "${args[@]}"
+        fi
+        if [[ $make == true ]];then
+            log_info "make libevent for $target"
+            make
+        fi
+    fi
+}
+build_iotjs(){
+    if [[ $cmake == true ]] || [[ $make == true ]];then
+        cd "$rootDir/$dir"
+        if [[ ! -d iotjs ]];then
+            mkdir iotjs
+        fi
+        cd iotjs
+        
+        if [[ $cmake == true ]];then
+            log_info "cmake iotjs for $target"
+            local args=(cmake ../../../
+                -DCMAKE_BUILD_TYPE=$build_type
+            )
+            args+=("${cmake_args[@]}")
+            log_info "${args[@]}"
+            "${args[@]}"
+        fi
+        if [[ $make == true ]];then
+            log_info "make iotjs for $target"
+            make
+        fi
+    fi
+    if [[ $test == true ]];then
+        log_info "test for $target"
+        cd "$rootDir"
+        "$dir/bin/iotjs_test"
+    fi
+}
 on_main(){
     core_call_assert time_unix
     local start=$result
 
     local target="${os}_$arch"
-    local exec_cmake=(cmake 
-        '../../'
+    local cmake_args=(
         -DCMAKE_SYSTEM_NAME=Linux
-        -DCMAKE_BUILD_TYPE=$build_type
     )
     case "$target" in
         linux_csky)
-            exec_cmake+=(
+            cmake_args+=(
                 "-DCMAKE_C_COMPILER=$toolchain/bin/csky-linux-gcc"
                 "-DCMAKE_CXX_COMPILER=$toolchain/bin/csky-linux-g++"                
             )
@@ -39,28 +91,13 @@ on_main(){
             rm "$dir" -rf
         fi
     fi
-
     if [[ $cmake == true ]] || [[ $make == true ]];then
         if [[ ! -d "$dir" ]];then
             mkdir "$dir" -p
         fi
-        cd "$dir"
-        
-        if [[ $cmake == true ]];then
-            log_info "cmake for $target"
-            log_info "${exec_cmake[@]}"
-            "${exec_cmake[@]}"
-        fi
-        if [[ $make == true ]];then
-            log_info "make for $target"
-            make
-        fi
     fi
-    if [[ $test == true ]];then
-        log_info "test for $target"
-        cd "$rootDir"
-        "$dir/bin/iotjs_test"
-    fi
+    build_libevent
+    build_iotjs
 
     core_call_assert time_since "$start"
     local used=$result

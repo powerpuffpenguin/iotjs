@@ -4,5 +4,5 @@ set(target_sources "${CMAKE_SOURCE_DIR}/test/main.c") # *.c
 set(target_libs) # library
 
 set(build_test TRUE)
-set(EXECUTABLE_OUTPUT_PATH "../bin")
+set(EXECUTABLE_OUTPUT_PATH "../../bin")
 include(${CMAKE_SOURCE_DIR}/cmake/main.cmake)

@@ -1,6 +1,14 @@
-#include <iotjs/core/vm.h>
+#include <sys/epoll.h>
 
 int main(int argc, char *argv[])
+{
+    epoll_create1(0);
+    return 0;
+}
+
+#include <iotjs/core/vm.h>
+
+int main1(int argc, char *argv[])
 {
     char *filename;
     if (argc >= 2)
