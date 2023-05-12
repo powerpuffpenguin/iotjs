@@ -5,119 +5,146 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/stat.h>
 
 #include "duk_module_node.h"
 #include "duk_console.h"
 
 duk_ret_t cb_resolve_module(duk_context *ctx);
 duk_ret_t cb_load_module(duk_context *ctx);
-
-const char *vm_error(int err)
+typedef struct
 {
-    switch (err)
+    size_t len;
+    size_t cap;
+    vm_native_module_t *modules;
+} vm_native_modules_t;
+vm_native_modules_t _vm_default_modules = {
+    .len = 0,
+    .cap = 0,
+    .modules = NULL,
+};
+void vm_register(const char *name, duk_c_function init)
+{
+    vm_native_modules_t *modules = &_vm_default_modules;
+    for (size_t i = 0; i < modules->len; i++)
     {
-    case VM_ERROR_NEW_CONTEXT:
-        return "duk_create_heap error";
+        if (!strcmp(name, modules->modules[i].name))
+        {
+            modules->modules[i].init = init;
+            return;
+        }
     }
-    return "Unknow Error";
+
+    if (modules->len + 1 > modules->cap)
+    {
+        size_t cap = modules->cap;
+        if (cap == 0)
+        {
+            cap = 16;
+        }
+        else if (cap < 128)
+        {
+            cap *= 2;
+        }
+        else
+        {
+            cap += 16;
+        }
+        vm_native_module_t *p = (vm_native_module_t *)malloc(sizeof(vm_native_module_t) * cap);
+        if (modules->len)
+        {
+            memcpy(p, modules->modules, sizeof(vm_native_module_t) * modules->len);
+            free(modules->modules);
+        }
+        modules->modules = p;
+        modules->cap = cap;
+    }
+    int i = modules->len;
+    modules->modules[i].name = name;
+    modules->modules[i].init = init;
+    modules->len++;
 }
-vm_t *vm_new(int *err)
+void vm_dump_context_stdout(duk_context *ctx)
 {
-    duk_context *ctx = duk_create_heap_default();
-    if (!ctx)
+    duk_push_context_dump(ctx);
+    fprintf(stdout, "%s\n", duk_safe_to_string(ctx, -1));
+    duk_pop(ctx);
+}
+void vm_read_js(duk_context *ctx, const char *path)
+{
+    struct stat fsstat;
+    if (stat(path, &fsstat))
     {
-        VM_ERR(VM_ERROR_NEW_CONTEXT);
-        return NULL;
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "stat error(%d) %s: %s", errno, strerror(errno), path);
+        duk_throw(ctx);
     }
-    duk_console_init(ctx, 0);
+    else if (!S_ISREG(fsstat.st_mode))
+    {
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "not a  regular file: %s", path);
+        duk_throw(ctx);
+    }
 
+    FILE *f;
+    f = fopen(path, "r");
+    if (!f)
+    {
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "fopen(%d) %s: %s", errno, strerror(errno), path);
+        duk_throw(ctx);
+    }
+
+    void *buffer = duk_push_buffer(ctx, fsstat.st_size, 0);
+    size_t readed = fread(buffer, 1, fsstat.st_size, f);
+    if (readed != fsstat.st_size)
+    {
+        int err = errno;
+        fclose(f);
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "fread(%d) %s: %s", err, strerror(err), path);
+        duk_throw(ctx);
+    }
+    fclose(f);
+    duk_buffer_to_string(ctx, -1);
+}
+duk_ret_t _vm_iotjs_main(duk_context *ctx)
+{
+    // 創建 stash.native 存儲 c 模塊
+    duk_push_heap_stash(ctx);
+    duk_push_object(ctx);
+    vm_native_modules_t *modules = &_vm_default_modules;
+    for (size_t i = 0; i < modules->len; i++)
+    {
+        if (modules->modules[i].init && modules->modules[i].name)
+        {
+            duk_push_c_function(ctx, modules->modules[i].init, 3);
+            duk_put_prop_string(ctx, -2, modules->modules[i].name);
+        }
+    }
+    duk_put_prop_string(ctx, -2, "native");
+    duk_pop(ctx);
+    // 初始化 commonjs 模塊引擎
     duk_push_object(ctx);
     duk_push_c_function(ctx, cb_resolve_module, DUK_VARARGS);
     duk_put_prop_string(ctx, -2, "resolve");
     duk_push_c_function(ctx, cb_load_module, DUK_VARARGS);
     duk_put_prop_string(ctx, -2, "load");
     duk_module_node_init(ctx);
+    // 初始化 console
+    duk_console_init(ctx, 0);
 
-    vm_t *vm = (vm_t *)malloc(sizeof(vm_t));
-    vm->ctx = ctx;
-    return vm;
+    const char *path = duk_get_string(ctx, 0);
+    vm_read_js(ctx, path);
+    duk_swap_top(ctx, 0);
+    // vm_dump_context_stdout(ctx);
+    if (duk_module_node_peval_main(ctx, path))
+    {
+        duk_throw(ctx);
+    }
+    return 1;
 }
-char *readFile(const char *filename, size_t *len, duk_ret_t *err)
+duk_ret_t vm_main(duk_context *ctx, const char *path)
 {
-    FILE *f;
-    f = fopen(filename, "r");
-    if (!f)
-    {
-        *err = DUK_EXEC_ERROR;
-        return NULL;
-    }
-    fseek(f, 0, SEEK_END);
-    *len = ftell(f);
-    char *buffer = (char *)malloc(*len);
-    fseek(f, 0, SEEK_SET);
-    fread(buffer, 1, *len, f);
-    fclose(f);
-    return buffer;
-}
-void dump_context_stdout(duk_context *ctx)
-{
-    duk_push_context_dump(ctx);
-    fprintf(stdout, "%s\n", duk_safe_to_string(ctx, -1));
-    duk_pop(ctx);
-}
-duk_ret_t vm_read_file(duk_context *ctx, const char *path)
-{
-    FILE *f;
-    f = fopen(path, "r");
-    if (!f)
-    {
-        duk_push_error_object(ctx, DUK_ERR_ERROR, "fopen(%d) %s: %s", errno, strerror(errno), path);
-        return DUK_EXEC_ERROR;
-    }
-    if (!fseek(f, 0, SEEK_END))
-    {
-        int err = errno;
-        fclose(f);
-        duk_push_error_object(ctx, DUK_ERR_ERROR, "fseek(%d) %s: %s", err, strerror(err), path);
-        return DUK_EXEC_ERROR;
-    }
-    long n = ftell(f);
-    if (n < 0)
-    {
-        int err = errno;
-        fclose(f);
-        duk_push_error_object(ctx, DUK_ERR_ERROR, "ftell(%d) %s: %s", err, strerror(err), path);
-        return DUK_EXEC_ERROR;
-    }
-    if (!fseek(f, 0, SEEK_SET))
-    {
-        int err = errno;
-        fclose(f);
-        duk_push_error_object(ctx, DUK_ERR_ERROR, "fseek(%d) %s: %s", err, strerror(err), path);
-        return DUK_EXEC_ERROR;
-    }
-    
-    dump_context_stdout(ctx);
-    fclose(f);
-    return DUK_EXEC_SUCCESS;
-}
-duk_ret_t vm_main(vm_t *vm, const char *path)
-{
-    // duk_ret_t err = DUK_EXEC_SUCCESS;
-    // size_t len;
-    // char *s = readFile(path, &len, &err);
-    // duk_push_lstring(vm->ctx, s, len);
-    duk_ret_t err = vm_read_file(vm->ctx, path);
-    if (err)
-    {
-        return err;
-    }
-    return duk_module_node_peval_main(vm->ctx, path);
-}
-void vm_delete(vm_t *vm)
-{
-    duk_destroy_heap(vm->ctx);
-    free(vm);
+    duk_push_c_function(ctx, _vm_iotjs_main, 1);
+    duk_push_string(ctx, path);
+    return duk_pcall(ctx, 1);
 }
 
 duk_ret_t cb_resolve_module(duk_context *ctx)
@@ -126,6 +153,10 @@ duk_ret_t cb_resolve_module(duk_context *ctx)
      *  Entry stack: [ requested_id parent_id ]
      */
 
+#ifdef VM_DEBUG_MODULE_LOAD
+    puts("*** cb_resolve_module");
+    vm_dump_context_stdout(ctx);
+#endif
     size_t requested_len;
     const char *requested_id = duk_get_lstring(ctx, 0, &requested_len);
     if (!requested_len)
@@ -133,35 +164,70 @@ duk_ret_t cb_resolve_module(duk_context *ctx)
         duk_push_error_object(ctx, DUK_ERR_ERROR, "require expects a valid module id");
         duk_throw(ctx);
     }
-    size_t parent_len;
-    const char *parent_id = duk_get_lstring(ctx, 1, &parent_len); /* calling module */
 
-    printf("pid=%s id=%s \n", parent_id, requested_id);
-
-    /* Arrive at the canonical module ID somehow. */
     string_t resolved_id;
-    if (parent_len)
+    const char *type;           // 模塊類型
+    if (requested_id[0] == '.') // 加載相對位置的模塊
     {
-        size_t n = parent_len + 1 + requested_len;
-        resolved_id = strings_make(n);
-        if (IOTJS_REFERENCE_INVALID(resolved_id))
-        {
-            duk_push_error_object(ctx, DUK_ERR_ERROR, "require strings_make() error");
-            duk_throw(ctx);
-        }
-        char *p = IOTJS_REFERENCE_PTR(resolved_id);
-        memcpy(p, parent_id, parent_len);
-        p[parent_len] = '/';
-        memcpy(p + parent_len + 1, requested_id, requested_len);
+        type = "0";
+        size_t parent_len;
+        const char *parent_id = duk_get_lstring(ctx, 1, &parent_len); /* calling module */
 
-        resolved_id = path_clean(&resolved_id, TRUE);
-        if (IOTJS_REFERENCE_INVALID(resolved_id))
+        if (parent_len)
         {
-            duk_push_error_object(ctx, DUK_ERR_ERROR, "require path_clean(resolved_id) error");
-            duk_throw(ctx);
+            int i = parent_len - 1;
+            while (i >= 0 && parent_id[i] != '/')
+            {
+                i--;
+            }
+            if (i > -1)
+            {
+                parent_len = i + 1;
+            }
+            else
+            {
+                parent_len = 0;
+            }
+        }
+
+        /* Arrive at the canonical module ID somehow. */
+        if (parent_len)
+        {
+            size_t n = parent_len + requested_len;
+            resolved_id = strings_make(n);
+            if (IOTJS_REFERENCE_INVALID(resolved_id))
+            {
+                duk_push_error_object(ctx, DUK_ERR_ERROR, "require strings_make() error");
+                duk_throw(ctx);
+            }
+            char *p = IOTJS_REFERENCE_PTR(resolved_id);
+            memcpy(p, parent_id, parent_len);
+            memcpy(p + parent_len, requested_id, requested_len);
+
+            resolved_id = path_clean(&resolved_id, TRUE);
+            if (IOTJS_REFERENCE_INVALID(resolved_id))
+            {
+                duk_push_error_object(ctx, DUK_ERR_ERROR, "require path_clean(resolved_id) error");
+                duk_throw(ctx);
+            }
+        }
+        else
+        {
+            resolved_id = strings_from_str(requested_id, requested_len);
+            if (IOTJS_REFERENCE_INVALID(resolved_id))
+            {
+                duk_push_error_object(ctx, DUK_ERR_ERROR, "require strings_from_str(requested_id) error");
+                duk_throw(ctx);
+            }
+            resolved_id = path_clean(&resolved_id, TRUE);
+            if (IOTJS_REFERENCE_INVALID(resolved_id))
+            {
+                duk_push_error_object(ctx, DUK_ERR_ERROR, "require path_clean(resolved_id) error");
+                duk_throw(ctx);
+            }
         }
     }
-    else
+    else // 加載系統模塊
     {
         resolved_id = strings_from_str(requested_id, requested_len);
         if (IOTJS_REFERENCE_INVALID(resolved_id))
@@ -175,21 +241,150 @@ duk_ret_t cb_resolve_module(duk_context *ctx)
             duk_push_error_object(ctx, DUK_ERR_ERROR, "require path_clean(resolved_id) error");
             duk_throw(ctx);
         }
+
+        duk_push_heap_stash(ctx);
+        duk_get_prop_string(ctx, -1, "native");
+        duk_get_prop_lstring(ctx, -1, IOTJS_REFERENCE_PTR(resolved_id), resolved_id.len);
+        if (duk_is_c_function(ctx, -1))
+        {
+            type = "2";
+        }
+        else
+        {
+            type = "1";
+            string_t s = strings_make_cap(0, resolved_id.len + 13);
+            if (IOTJS_REFERENCE_INVALID(s))
+            {
+                duk_push_error_object(ctx, DUK_ERR_ERROR, "require strings_make_cap() error");
+                duk_throw(ctx);
+            }
+            s = strings_append_str(&s, "node_modules/", 13, TRUE);
+            resolved_id = strings_append(&s, &resolved_id, TRUE, TRUE);
+            if (IOTJS_REFERENCE_INVALID(resolved_id))
+            {
+                duk_push_error_object(ctx, DUK_ERR_ERROR, "require strings_append() error");
+                duk_throw(ctx);
+            }
+            resolved_id = path_clean(&resolved_id, TRUE);
+            if (IOTJS_REFERENCE_INVALID(resolved_id))
+            {
+                duk_push_error_object(ctx, DUK_ERR_ERROR, "require path_clean(resolved_id) error");
+                duk_throw(ctx);
+            }
+        }
+        duk_pop_3(ctx);
     }
+    duk_push_lstring(ctx, type, 1);
     duk_push_lstring(ctx, IOTJS_REFERENCE_PTR(resolved_id), resolved_id.len);
     strings_decrement(&resolved_id);
+    duk_concat(ctx, 2);
     return 1; /*nrets*/
 }
 duk_ret_t cb_load_module(duk_context *ctx)
 {
-    puts("cb_load_module");
+
     /*
      *  Entry stack: [ resolved_id exports module ]
      */
-
+#ifdef VM_DEBUG_MODULE_LOAD
+    puts("--- cb_load_module");
+    vm_dump_context_stdout(ctx);
+#endif
     /* Arrive at the JS source code for the module somehow. */
 
-    // duk_push_string(ctx, module_source);
-    // return 1; /*nrets*/
-    return 0;
+    size_t len;
+    const char *id = duk_get_lstring(ctx, 0, &len);
+    if (len == 0)
+    {
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "resolved_id invalid");
+        duk_throw(ctx);
+    }
+
+    switch (id[0])
+    {
+    case '0': // load js
+    {
+        duk_push_lstring(ctx, id + 1, len - 1);
+        duk_push_lstring(ctx, ".js", 3);
+        duk_concat(ctx, 2);
+        duk_dup_top(ctx);
+        duk_dup_top(ctx);
+        duk_put_prop_string(ctx, 2, "filename");
+        duk_put_prop_string(ctx, 2, "id");
+        id = duk_get_string(ctx, -1);
+        vm_read_js(ctx, id);
+    }
+    break;
+    case '1': // load node_modules js
+    {
+        const char *filepath = duk_get_string(ctx, 0);
+        struct stat fsstat;
+        int err = 0;
+        if (stat(filepath + 1, &fsstat))
+        {
+            err = errno;
+            if (err != ENOENT)
+            {
+                duk_push_error_object(ctx, DUK_ERR_ERROR, "stat error(%d): %s", err, strerror(err));
+                duk_throw(ctx);
+            }
+        }
+        if (err) // file
+        {
+            duk_push_lstring(ctx, id + 1, len - 1);
+            duk_push_lstring(ctx, ".js", 3);
+            duk_concat(ctx, 2);
+            duk_dup_top(ctx);
+            duk_dup_top(ctx);
+            duk_put_prop_string(ctx, 2, "filename");
+            duk_put_prop_string(ctx, 2, "id");
+            id = duk_get_string(ctx, -1);
+        }
+        else if (S_ISDIR(fsstat.st_mode))
+        {
+            duk_push_lstring(ctx, id + 1, len - 1);
+            duk_push_string(ctx, "/index.js");
+            duk_concat(ctx, 2);
+            duk_dup_top(ctx);
+            duk_dup_top(ctx);
+            duk_put_prop_string(ctx, 2, "filename");
+            duk_put_prop_string(ctx, 2, "id");
+            id = duk_get_string(ctx, -1);
+        }
+        else
+        {
+            duk_push_error_object(ctx, DUK_ERR_ERROR, "module not exists: %s", filepath + 1);
+            duk_throw(ctx);
+        }
+        id = duk_get_string(ctx, -1);
+        vm_read_js(ctx, id);
+        duk_buffer_to_string(ctx, -1);
+    }
+    break;
+    case '2': // load c modules
+        duk_push_lstring(ctx, id + 1, len - 1);
+        duk_dup_top(ctx);
+        duk_dup_top(ctx);
+        duk_put_prop_string(ctx, 2, "filename");
+        duk_put_prop_string(ctx, 2, "id");
+        duk_swap_top(ctx, 0);
+        duk_pop(ctx);
+        id = duk_get_lstring(ctx, 0, &len);
+        duk_push_heap_stash(ctx);
+        duk_get_prop_string(ctx, -1, "native");
+        duk_dup(ctx, 0);
+        duk_get_prop(ctx, -2);
+        if (duk_is_c_function(ctx, -1))
+        {
+            duk_c_function f = duk_get_c_function(ctx, -1);
+            duk_pop_3(ctx);
+            return f(ctx);
+        }
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "native module not exists");
+        duk_throw(ctx);
+    default:
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "cb_load_module unknow module type");
+        duk_throw(ctx);
+    }
+    return 1; /*nrets*/
 }

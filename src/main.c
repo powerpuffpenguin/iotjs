@@ -11,23 +11,22 @@ int main(int argc, char *argv[])
     {
         filename = "main.js";
     }
-    int errno = 0;
-    vm_t *vm = vm_new(&errno);
-    if (errno)
-    {
-        puts(vm_error(errno));
-        return errno;
-    }
 
-    printf("load main: %s\n", filename);
-    duk_context *ctx = vm->ctx;
-    errno = vm_main(vm, filename);
-    if (errno)
+    duk_context *ctx = duk_create_heap_default();
+    if (!ctx)
     {
-        printf("eval failed: %s\n", duk_safe_to_string(ctx, -1));
-        duk_pop(ctx);
-        return errno;
+        puts("duk_create_heap_default error");
+        return -1;
     }
-    duk_pop(ctx);
-    return 0;
+    duk_ret_t err = vm_main(ctx, filename);
+    if (err)
+    {
+        printf("iotjs_main: %s\n", duk_safe_to_string(ctx, -1));
+    }
+    else
+    {
+        duk_pop(ctx);
+    }
+    duk_destroy_heap(ctx);
+    return err;
 }

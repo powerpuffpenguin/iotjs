@@ -2,6 +2,7 @@ include_directories(src/core)
 set(dirs
     src/iotjs/core
     src/iotjs/assert
+    src/iotjs/modules
 )
 include_directories("${CMAKE_SOURCE_DIR}/src")
 foreach(dir ${dirs})

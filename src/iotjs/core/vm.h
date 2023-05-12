@@ -2,27 +2,18 @@
 #define IOTJS_CORE_VM_H
 
 #include "duktape.h"
+#define VM_VERSION "v0.0.1"
 
-#define VM_ERROR_NEW_CONTEXT 1
-#define VM_ERRNO_VAR(var, code) \
-    if (var)                    \
-    {                           \
-        *var = code;            \
-    }
+duk_ret_t vm_main(duk_context *vm, const char *path);
+void vm_dump_context_stdout(duk_context *ctx);
+
 typedef struct
 {
-    duk_context *ctx;
-} vm_t;
-#define VM_ERR(code) VM_ERRNO_VAR(err, code)
+    const char *name;
+    duk_c_function init;
+} vm_native_module_t;
+void vm_register(const char *name, duk_c_function init);
 
-const char *vm_error(int err);
-vm_t *vm_new(int *err);
-
-// ... -> ... result (if success, return value == 0)
-// ... -> ... err (if failure, return value != 0)
-duk_ret_t vm_main(vm_t *vm, const char *path);
-void vm_delete(vm_t *vm);
-void dump_context_stdout(duk_context *ctx);
-duk_ret_t vm_read_file(duk_context *ctx, const char *path);
+// #define VM_DEBUG_MODULE_LOAD 1
 
 #endif

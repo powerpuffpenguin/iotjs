@@ -1,3 +1,4 @@
+message("Begin cmake ${target_name}")
 project(${target_name})
 
 list(APPEND target_libs
