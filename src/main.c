@@ -1,15 +1,6 @@
-#include <event2/event.h>
-
-int main(int argc, char *argv[])
-{
-    struct event_base *base = event_base_new();
-    event_base_free(base);
-    return 0;
-}
-
 #include <iotjs/core/vm.h>
 
-int main1(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
     char *filename;
     if (argc >= 2)
@@ -27,15 +18,29 @@ int main1(int argc, char *argv[])
         puts("duk_create_heap_default error");
         return -1;
     }
-    duk_ret_t err = vm_main(ctx, filename);
-    if (err)
+    if (vm_main(ctx, filename))
     {
         printf("iotjs_main: %s\n", duk_safe_to_string(ctx, -1));
-    }
-    else
-    {
         duk_pop(ctx);
+        goto EXIT_ERROR;
     }
+    duk_pop(ctx);
+    event_base_t *eb = vm_event_base(ctx);
+    if (!eb)
+    {
+        printf("iotjs_loop: %s\n", duk_safe_to_string(ctx, -1));
+        duk_pop(ctx);
+        goto EXIT_ERROR;
+    }
+    int err = event_base_dispatch(eb);
+    if (err < 0)
+    {
+        goto EXIT_ERROR;
+    }
+
     duk_destroy_heap(ctx);
-    return err;
+    return 0;
+EXIT_ERROR:
+    duk_destroy_heap(ctx);
+    return -1;
 }

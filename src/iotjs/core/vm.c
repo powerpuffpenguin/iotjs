@@ -104,21 +104,47 @@ void vm_read_js(duk_context *ctx, const char *path)
     fclose(f);
     duk_buffer_to_string(ctx, -1);
 }
+duk_ret_t _vm_iotjs_events_finalizer(duk_context *ctx)
+{
+    duk_get_prop_string(ctx, -1, "eb");
+    event_base_t *eb = (event_base_t *)duk_get_pointer(ctx, -1);
+    event_base_free(eb);
+    return 0;
+}
 duk_ret_t _vm_iotjs_main(duk_context *ctx)
 {
-    // 創建 stash.native 存儲 c 模塊
+
     duk_push_heap_stash(ctx);
-    duk_push_object(ctx);
-    vm_native_modules_t *modules = &_vm_default_modules;
-    for (size_t i = 0; i < modules->len; i++)
+    // 創建 stash.events 存儲 事件驅動
     {
-        if (modules->modules[i].init && modules->modules[i].name)
+        event_base_t *eb = event_base_new();
+        if (!eb)
         {
-            duk_push_c_function(ctx, modules->modules[i].init, 3);
-            duk_put_prop_string(ctx, -2, modules->modules[i].name);
+            duk_push_error_object(ctx, DUK_ERR_ERROR, "event_base_new error");
+            duk_throw(ctx);
         }
+        duk_push_object(ctx);
+        duk_push_pointer(ctx, eb);
+        duk_put_prop_string(ctx, -2, "eb");
+        duk_push_c_function(ctx, _vm_iotjs_events_finalizer, 1);
+        duk_set_finalizer(ctx, -2);
+        duk_put_prop_string(ctx, -2, "events");
     }
-    duk_put_prop_string(ctx, -2, "native");
+    // 創建 stash.native 存儲 c 模塊
+    {
+        duk_push_object(ctx);
+        vm_native_modules_t *modules = &_vm_default_modules;
+        for (size_t i = 0; i < modules->len; i++)
+        {
+            if (modules->modules[i].init && modules->modules[i].name)
+            {
+                duk_push_c_function(ctx, modules->modules[i].init, 3);
+                duk_put_prop_string(ctx, -2, modules->modules[i].name);
+            }
+        }
+        duk_put_prop_string(ctx, -2, "native");
+    }
+    // vm_dump_context_stdout(ctx);
     duk_pop(ctx);
     // 初始化 commonjs 模塊引擎
     duk_push_object(ctx);
@@ -146,7 +172,27 @@ duk_ret_t vm_main(duk_context *ctx, const char *path)
     duk_push_string(ctx, path);
     return duk_pcall(ctx, 1);
 }
-
+event_base_t *vm_event_base(duk_context *ctx)
+{
+    duk_push_heap_stash(ctx);
+    duk_get_prop_string(ctx, -1, "events");
+    if (!duk_is_object(ctx, -1))
+    {
+        duk_pop_2(ctx);
+        duk_push_error_object(ctx, DUK_ERR_EVAL_ERROR, "please call the vm_main function to initialize");
+        return NULL;
+    }
+    duk_get_prop_string(ctx, -1, "eb");
+    if (!duk_is_pointer(ctx, -1))
+    {
+        duk_pop_3(ctx);
+        duk_push_error_object(ctx, DUK_ERR_EVAL_ERROR, "please call the vm_main function to initialize");
+        return NULL;
+    }
+    event_base_t *eb = (event_base_t *)duk_get_pointer(ctx, -1);
+    duk_pop_3(ctx);
+    return eb;
+}
 duk_ret_t cb_resolve_module(duk_context *ctx)
 {
     /*

@@ -18,20 +18,24 @@ build_libevent(){
         cd libevent
         
         if [[ $cmake == true ]];then
-            log_info "cmake libevent for $target"
-            local args=(cmake ../../../third_party/libevent-2.1.12-stable
-                -DCMAKE_BUILD_TYPE=Release
-                -DEVENT__DISABLE_TESTS=ON
-                -DEVENT__DISABLE_OPENSSL=ON
-                -DEVENT__LIBRARY_TYPE=STATIC                
-            )
-            args+=("${cmake_args[@]}")
-            log_info "${args[@]}"
-            "${args[@]}"
+            if [[ $third_party == true ]] || [[ ! -f Makefile ]];then
+                log_info "cmake libevent for $target"
+                local args=(cmake ../../../third_party/libevent-2.1.12-stable
+                    -DCMAKE_BUILD_TYPE=Release
+                    -DEVENT__DISABLE_TESTS=ON
+                    -DEVENT__DISABLE_OPENSSL=ON
+                    -DEVENT__LIBRARY_TYPE=STATIC
+                )
+                args+=("${cmake_args[@]}")
+                log_info "${args[@]}"
+                "${args[@]}"
+            fi
         fi
         if [[ $make == true ]];then
-            log_info "make libevent for $target"
-            make
+            if [[ $third_party == true ]] || [[ ! -f lib/libevent_core.a ]];then
+                log_info "make libevent for $target"
+                make
+            fi
         fi
     fi
 }
@@ -76,7 +80,7 @@ on_main(){
         linux_csky)
             cmake_args+=(
                 "-DCMAKE_C_COMPILER=$toolchain/bin/csky-linux-gcc"
-                "-DCMAKE_CXX_COMPILER=$toolchain/bin/csky-linux-g++"                
+                "-DCMAKE_CXX_COMPILER=$toolchain/bin/csky-linux-g++"
             )
         ;;
         linux_default)
@@ -87,9 +91,13 @@ on_main(){
     esac
     local dir="dst/$target"
     if [[ $delete == true ]];then
-        log_info "delete cache '$dir'"
-        if [[ -d "$dir" ]];then
-            rm "$dir" -rf
+        if [[ -d "$dir/iotjs" ]];then
+            log_info "delete cache '$dir/iotjs'"
+            rm "$dir/iotjs" -rf
+        fi
+        if [[ -d "$dir/libevent" ]] && [[ $third_party == true ]];then
+            log_info "delete cache '$dir/libevent'"
+            rm "$dir/libevent" -rf
         fi
     fi
     if [[ $cmake == true ]] || [[ $make == true ]];then
@@ -129,6 +137,8 @@ command_flags -t bool -d 'Execute make' \
     -v make -s m
 command_flags -t bool -d 'Run test' \
     -v test -s t
+command_flags -t bool -d 'Build third party' \
+    -v third_party -l third-party
 
 command_flags -t string -d 'set CMAKE_BUILD_TYPE' \
     -v build_type -l build-type \

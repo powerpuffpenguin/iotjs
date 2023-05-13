@@ -5,7 +5,7 @@ list(APPEND target_libs
     -lm
 )
 
-set(CMAKE_EXE_LINKER_FLAGS "-static")
+# set(CMAKE_EXE_LINKER_FLAGS "-static")
 set(CMAKE_C_FLAGS "-std=c99")
 
 include(${CMAKE_SOURCE_DIR}/cmake/third_party.cmake)
