@@ -6,19 +6,24 @@
 // x = require("iotjs")
 // console.log(JSON.stringify(x))
 // console.log(Promise)
+
 console.log(1)
 var timer = setTimeout(function () {
     console.log("test clearTimeout")
 }, 100);
+console.log('timer', timer)
 setTimeout(function () {
     console.log(3)
-    // clearTimeout(timer)
+    clearTimeout(timer)
     setTimeout(function () {
         console.log("timer end")
         var i = 0
-        setInterval(function () {
+        var interval = setInterval(function () {
             i++
             console.log("interval", i)
+        }, 100);
+        setTimeout(function () {
+            clearInterval(interval)
         }, 1000);
     }, 1000);
 }, 0);

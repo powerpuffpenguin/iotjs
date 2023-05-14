@@ -562,6 +562,10 @@ _vm_timer_t *_vm_new_timer(duk_context *ctx, duk_int_t ms, BOOL interval)
         .tv_sec = ms / 1000,
         .tv_usec = (ms % 1000) * 1000,
     };
+    if (interval && ms == 0)
+    {
+        tv.tv_usec = 1;
+    }
     if (event_add(timer->ev, &tv))
     {
         duk_push_error_object(ctx, DUK_ERR_ERROR, "event_add timer error");
@@ -586,6 +590,10 @@ void _vm_set_timer(duk_context *ctx, _vm_timer_t *timer)
     duk_safe_to_string(ctx, -1);
     duk_dup(ctx, 0);
     duk_put_prop(ctx, -3);
+    duk_pop(ctx);
+
+    duk_get_prop_string(ctx, -1, "timer");
+    duk_swap_top(ctx, -2);
     duk_pop(ctx);
 }
 void _vm_iotjs_nativa_set_timer(duk_context *ctx, BOOL interval)
@@ -623,10 +631,22 @@ duk_ret_t _vm_iotjs_nativa_setInterval(duk_context *ctx)
     _vm_iotjs_nativa_set_timer(ctx, TRUE);
     return 1;
 }
+duk_ret_t _vm_iotjs_nativa_clearTimeout(duk_context *ctx)
+{
+    return 0;
+}
+duk_ret_t _vm_iotjs_nativa_clearInterval(duk_context *ctx)
+{
+    return 0;
+}
 void _vm_iotjs_init_compatible(duk_context *ctx)
 {
     duk_push_c_function(ctx, _vm_iotjs_nativa_setTimeout, 2);
     duk_put_prop_string(ctx, -2, "setTimeout");
+    duk_push_c_function(ctx, _vm_iotjs_nativa_clearTimeout, 1);
+    duk_put_prop_string(ctx, -2, "clearTimeout");
     duk_push_c_function(ctx, _vm_iotjs_nativa_setInterval, 2);
     duk_put_prop_string(ctx, -2, "setInterval");
+    duk_push_c_function(ctx, _vm_iotjs_nativa_clearInterval, 1);
+    duk_put_prop_string(ctx, -2, "clearInterval");
 }
