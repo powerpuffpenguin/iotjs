@@ -12,6 +12,9 @@
 
 duk_ret_t cb_resolve_module(duk_context *ctx);
 duk_ret_t cb_load_module(duk_context *ctx);
+duk_ret_t _vm_iotjs_main(duk_context *ctx);
+void _vm_iotjs_init_compatible(duk_context *ctx);
+
 typedef struct
 {
     size_t len;
@@ -155,6 +158,9 @@ duk_ret_t _vm_iotjs_main(duk_context *ctx)
     duk_module_node_init(ctx);
     // 初始化 console
     duk_console_init(ctx, 0);
+    duk_push_global_object(ctx);
+    _vm_iotjs_init_compatible(ctx);
+    duk_pop(ctx);
 
     const char *path = duk_get_string(ctx, 0);
     vm_read_js(ctx, path);
@@ -168,9 +174,28 @@ duk_ret_t _vm_iotjs_main(duk_context *ctx)
 }
 duk_ret_t vm_main(duk_context *ctx, const char *path)
 {
+    duk_push_heap_stash(ctx);
+    duk_push_pointer(ctx, ctx);
+    duk_put_prop_string(ctx, -2, "ctx");
+    duk_pop(ctx);
+
     duk_push_c_function(ctx, _vm_iotjs_main, 1);
     duk_push_string(ctx, path);
     return duk_pcall(ctx, 1);
+}
+duk_context *vm_context(duk_context *ctx)
+{
+    duk_push_heap_stash(ctx);
+    duk_get_prop_string(ctx, -1, "ctx");
+    if (!duk_is_pointer(ctx, -1))
+    {
+        duk_pop_2(ctx);
+        duk_push_error_object(ctx, DUK_ERR_EVAL_ERROR, "stash.ctx invalid");
+        duk_throw(ctx);
+    }
+    duk_context *c = duk_get_pointer(ctx, -1);
+    duk_pop_2(ctx);
+    return c;
 }
 event_base_t *vm_event_base(duk_context *ctx)
 {
@@ -179,15 +204,20 @@ event_base_t *vm_event_base(duk_context *ctx)
     if (!duk_is_object(ctx, -1))
     {
         duk_pop_2(ctx);
-        duk_push_error_object(ctx, DUK_ERR_EVAL_ERROR, "please call the vm_main function to initialize");
-        return NULL;
+        duk_push_error_object(ctx, DUK_ERR_EVAL_ERROR, "stash.events invalid");
+        duk_throw(ctx);
     }
-    duk_get_prop_string(ctx, -1, "eb");
+    if (!duk_get_prop_string(ctx, -1, "eb"))
+    {
+        duk_pop_3(ctx);
+        duk_push_error_object(ctx, DUK_ERR_EVAL_ERROR, "stash.events.eb not exists");
+        duk_throw(ctx);
+    }
     if (!duk_is_pointer(ctx, -1))
     {
         duk_pop_3(ctx);
-        duk_push_error_object(ctx, DUK_ERR_EVAL_ERROR, "please call the vm_main function to initialize");
-        return NULL;
+        duk_push_error_object(ctx, DUK_ERR_EVAL_ERROR, "stash.events.eb invalid");
+        duk_throw(ctx);
     }
     event_base_t *eb = (event_base_t *)duk_get_pointer(ctx, -1);
     duk_pop_3(ctx);
@@ -433,4 +463,156 @@ duk_ret_t cb_load_module(duk_context *ctx)
         duk_throw(ctx);
     }
     return 1; /*nrets*/
+}
+typedef struct
+{
+    struct event *ev;
+    duk_context *ctx;
+    uint8_t interval;
+} _vm_timer_t;
+void _vm_timer_handler(evutil_socket_t fs, short events, void *arg)
+{
+    _vm_timer_t *timer = (_vm_timer_t *)arg;
+    duk_context *ctx = timer->ctx;
+    // timer
+    duk_push_heap_stash(ctx);
+    duk_get_prop_string(ctx, -1, "timer");
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
+    duk_push_pointer(ctx, timer);
+    duk_safe_to_string(ctx, -1);
+    duk_get_prop(ctx, -2);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
+    if (!duk_is_object(ctx, -1))
+    {
+        duk_pop(ctx);
+        return;
+    }
+    // cb
+    duk_get_prop_string(ctx, -1, "cb");
+    if (!duk_is_function(ctx, -1))
+    {
+        duk_pop_2(ctx);
+        return;
+    }
+    if (duk_pcall(ctx, 0))
+    {
+        puts(duk_safe_to_string(ctx, -1));
+        abort();
+    }
+    duk_pop_2(ctx);
+    if (timer->interval)
+    {
+        return;
+    }
+    // remove
+    duk_push_heap_stash(ctx);
+    duk_get_prop_string(ctx, -1, "timer");
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
+    duk_push_pointer(ctx, timer);
+    duk_safe_to_string(ctx, -1);
+    duk_del_prop(ctx, -2);
+}
+duk_ret_t _vm_timer_finalizer(duk_context *ctx)
+{
+    duk_get_prop_string(ctx, 0, "timer");
+    _vm_timer_t *timer = (_vm_timer_t *)duk_get_pointer(ctx, -1);
+    if (timer->ev)
+    {
+        event_del(timer->ev);
+    }
+    free(timer);
+    return 0;
+}
+_vm_timer_t *_vm_new_timer(duk_context *ctx, duk_int_t ms)
+{
+    // timer
+    struct event_base *eb = vm_event_base(ctx);
+    duk_context *cm = vm_context(ctx);
+    _vm_timer_t *timer = (_vm_timer_t *)malloc(sizeof(_vm_timer_t));
+    if (!timer)
+    {
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "malloc timer error");
+        duk_throw(ctx);
+    }
+    memset(timer, 0, sizeof(_vm_timer_t));
+    timer->ctx = cm;
+    duk_push_object(ctx);
+    duk_push_pointer(ctx, timer);
+    duk_put_prop_string(ctx, -2, "timer");
+    duk_push_c_function(ctx, _vm_timer_finalizer, 1);
+    duk_set_finalizer(ctx, -2);
+    duk_dup(ctx, 0);
+    duk_put_prop_string(ctx, -2, "cb");
+
+    // event
+    timer->ev = event_new(eb, -1, EV_TIMEOUT, _vm_timer_handler, timer);
+    if (!timer->ev)
+    {
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "event_new timer error");
+        duk_throw(ctx);
+    }
+    struct timeval tv = {
+        .tv_sec = ms / 1000,
+        .tv_usec = (ms % 1000) * 1000,
+    };
+    if (event_add(timer->ev, &tv))
+    {
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "event_add timer error");
+        duk_throw(ctx);
+    }
+    return timer;
+}
+void _vm_set_timer(duk_context *ctx, _vm_timer_t *timer)
+{
+    duk_push_heap_stash(ctx);
+    duk_get_prop_string(ctx, -1, "timer");
+    if (!duk_is_object(ctx, -1))
+    {
+        duk_pop(ctx);
+        duk_push_object(ctx);
+        duk_dup_top(ctx);
+        duk_put_prop_string(ctx, -3, "timer");
+    }
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
+    duk_push_pointer(ctx, timer);
+    duk_safe_to_string(ctx, -1);
+    duk_dup(ctx, 0);
+    duk_put_prop(ctx, -3);
+    duk_pop(ctx);
+}
+duk_ret_t _vm_iotjs_nativa_setTimeout(duk_context *ctx)
+{
+    duk_idx_t nargs = duk_get_top(ctx);
+    if (nargs < 1 || !duk_is_function(ctx, 0))
+    {
+        return 0;
+    }
+    duk_int_t ms = 0;
+    if (duk_is_number(ctx, 1))
+    {
+        ms = duk_get_int(ctx, -1);
+        if (ms < 0)
+        {
+            ms = 0;
+        }
+    }
+    if (nargs > 1)
+    {
+        duk_pop_n(ctx, nargs - 1);
+    }
+    _vm_timer_t *timer = _vm_new_timer(ctx, ms);
+    duk_swap_top(ctx, 0);
+    duk_pop(ctx);
+    _vm_set_timer(ctx, timer);
+
+    return 1;
+}
+void _vm_iotjs_init_compatible(duk_context *ctx)
+{
+    duk_push_c_function(ctx, _vm_iotjs_nativa_setTimeout, 2);
+    duk_put_prop_string(ctx, -2, "setTimeout");
 }
