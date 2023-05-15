@@ -11,7 +11,7 @@ console.log(1)
 var timer = setTimeout(function () {
     console.log("test clearTimeout")
 }, 100);
-console.log('timer', timer)
+console.log('timer', timer, typeof timer)
 setTimeout(function () {
     console.log(3)
     clearTimeout(timer)
