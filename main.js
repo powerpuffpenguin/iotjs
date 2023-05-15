@@ -18,6 +18,19 @@ x.forEach(function (v) {
 var m = new Map()
 m.set(1, 2)
 console.log(m.get(1))
+new Promise(function (resolve, reject) {
+    setTimeout(function () {
+        resolve(Date.now())
+    }, 1000);
+}).then(function (v) {
+    console.log(v)
+    return v + 1
+}).then(function (v) {
+    var s = "ok"
+    s = Array.from(s)
+    console.log(s)
+})
+// console.log('strings'.padStart(20, "-"))
 // // require("./a")
 // console.log("ok")
 // x = require("iotjs")

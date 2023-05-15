@@ -1,8 +1,6 @@
 #include <iotjs/core/vm.h>
 #include <iotjs/core/js_timer.h>
 #include <iotjs/core/js_process.h>
-#include <iotjs/core/strings.h>
-#include <iotjs/core/path.h>
 #include <iotjs/core/xxd.h>
 
 #include <stdlib.h>
