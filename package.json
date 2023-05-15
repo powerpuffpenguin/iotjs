@@ -1,0 +1,27 @@
+{
+  "name": "iotjs",
+  "version": "1.0.0",
+  "description": "Use js to develop the Internet of Things",
+  "main": "main.js",
+  "directories": {
+    "example": "example",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/powerpuffpenguin/iotjs.git"
+  },
+  "author": "zuiwuchang",
+  "license": "MIT",
+  "types": "./main.d.ts",
+  "bugs": {
+    "url": "https://github.com/powerpuffpenguin/iotjs/issues"
+  },
+  "homepage": "https://github.com/powerpuffpenguin/iotjs#readme",
+  "dependencies": {
+
+  }
+}

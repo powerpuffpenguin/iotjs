@@ -8,7 +8,31 @@ source scripts/lib/core.sh
 source scripts/lib/log.sh
 source scripts/lib/time.sh
 source scripts/lib/command.sh
-
+build_xxd(){
+    cd "$rootDir/src/iotjs"
+    local dirs=("core")
+    local dir
+    local file
+    local output
+    local once
+    for dir in "${dirs[@]}";do
+        output="$dir/xxd.h"
+        once=${dir//\//_}
+        echo "#ifndef IOTJS_${once}_XXD_H" > "$output"
+        echo "#define IOTJS_${once}_XXD_H" >> "$output"
+        local ifs=$IFS
+        IFS=$'\n'
+        files=(`find "$dir/" -iname *.js`)
+        IFS=$ifs
+        # local min
+        for file in "${files[@]}";do
+            # min="${file%js}min.js"
+            # webpack "./$file" -o "./$min"
+            xxd -i "$file" >> "$output"
+        done
+        echo "#endif // IOTJS_${once}_XXD_H" >> "$output"
+    done
+}
 build_libevent(){
     if [[ $cmake == true ]] || [[ $make == true ]];then
         cd "$rootDir/$dir"
@@ -41,6 +65,11 @@ build_libevent(){
 }
 build_iotjs(){
     if [[ $cmake == true ]] || [[ $make == true ]];then
+        if [[ $cmake == true ]];then
+            build_xxd
+        fi
+
+
         cd "$rootDir/$dir"
         if [[ ! -d iotjs ]];then
             mkdir iotjs

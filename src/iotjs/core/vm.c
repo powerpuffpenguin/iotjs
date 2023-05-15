@@ -1,7 +1,9 @@
 #include <iotjs/core/vm.h>
 #include <iotjs/core/js_timer.h>
+#include <iotjs/core/js_process.h>
 #include <iotjs/core/strings.h>
 #include <iotjs/core/path.h>
+#include <iotjs/core/xxd.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -147,9 +149,9 @@ duk_ret_t _vm_iotjs_main(duk_context *ctx)
     duk_pop(ctx);
     // 初始化 commonjs 模塊引擎
     duk_push_object(ctx);
-    duk_push_c_function(ctx, cb_resolve_module, DUK_VARARGS);
+    duk_push_c_function(ctx, cb_resolve_module, 2);
     duk_put_prop_string(ctx, -2, "resolve");
-    duk_push_c_function(ctx, cb_load_module, DUK_VARARGS);
+    duk_push_c_function(ctx, cb_load_module, 3);
     duk_put_prop_string(ctx, -2, "load");
     duk_module_node_init(ctx);
     // 初始化 console
@@ -169,11 +171,86 @@ duk_ret_t _vm_iotjs_main(duk_context *ctx)
     }
     return 1;
 }
-duk_ret_t vm_main(duk_context *ctx, const char *path)
+duk_ret_t _iotjs_fs_stat(duk_context *ctx)
 {
+    const char *path = duk_get_string(ctx, 0);
+    struct stat fsstat;
+    if (stat(path, &fsstat))
+    {
+        if (errno != ENOENT)
+        {
+            duk_push_error_object(ctx, DUK_ERR_ERROR, "stat error(%d): %s", errno, strerror(errno));
+            duk_throw(ctx);
+        }
+        return 0;
+    }
+    duk_pop(ctx);
+    duk_push_object(ctx);
+
+    duk_uint_t mode = 0;
+    if (S_ISDIR(fsstat.st_mode))
+    {
+        mode |= 0x1;
+    }
+    else if (S_ISREG(fsstat.st_mode))
+    {
+        mode |= 0x2;
+    }
+    duk_push_uint(ctx, mode);
+    duk_put_prop_string(ctx, -2, "mode");
+    return 1;
+}
+duk_ret_t vm_main(duk_context *ctx, const char *path, int argc, char *argv[])
+{
+    // js
+    duk_push_lstring(ctx, (const char *)core_js_js, core_js_js_len);
+    if (duk_peval(ctx))
+    {
+        return DUK_EXEC_ERROR;
+    }
+    duk_pop(ctx);
+
+    // stash
     duk_push_heap_stash(ctx);
-    duk_push_pointer(ctx, ctx);
-    duk_put_prop_string(ctx, -2, "ctx");
+    {
+        // ctx
+        duk_push_pointer(ctx, ctx);
+        duk_put_prop_string(ctx, -2, "ctx");
+
+        // argv
+        duk_push_array(ctx);
+        for (int i = 0; i < argc; i++)
+        {
+            duk_push_string(ctx, argv[i]);
+            duk_put_prop_index(ctx, -2, i);
+        }
+        duk_put_prop_string(ctx, -2, "argv");
+
+        // path
+        duk_push_string(ctx, "(function(){var exports={};");
+        duk_push_lstring(ctx, (char *)core_path_js, core_path_js_len);
+        duk_push_string(ctx, "return exports;})()");
+        duk_concat(ctx, 3);
+        if (duk_peval(ctx))
+        {
+            return DUK_EXEC_ERROR;
+        }
+        duk_put_prop_string(ctx, -2, "path");
+
+        // module
+        duk_push_lstring(ctx, (char *)core_js_module_js, core_js_module_js_len);
+        if (duk_peval(ctx))
+        {
+            return DUK_EXEC_ERROR;
+        }
+        duk_put_prop_string(ctx, -2, "module");
+
+        // c func
+        duk_push_object(ctx);
+        duk_push_c_function(ctx, _iotjs_fs_stat, 1);
+        duk_put_prop_string(ctx, -2, "stat");
+        duk_put_prop_string(ctx, -2, "c_func");
+    }
     duk_pop(ctx);
 
     duk_push_c_function(ctx, _vm_iotjs_main, 1);
@@ -183,140 +260,37 @@ duk_ret_t vm_main(duk_context *ctx, const char *path)
 
 duk_ret_t cb_resolve_module(duk_context *ctx)
 {
+    duk_require_stack_top(ctx, 9);
     /*
      *  Entry stack: [ requested_id parent_id ]
      */
-
 #ifdef VM_DEBUG_MODULE_LOAD
-    puts("*** cb_resolve_module");
+    puts("--- cb_resolve_module");
     vm_dump_context_stdout(ctx);
 #endif
-    size_t requested_len;
-    const char *requested_id = duk_get_lstring(ctx, 0, &requested_len);
-    if (!requested_len)
-    {
-        duk_push_error_object(ctx, DUK_ERR_ERROR, "require expects a valid module id");
-        duk_throw(ctx);
-    }
+    duk_push_heap_stash(ctx);
+    duk_get_prop_string(ctx, -1, "module");
+    duk_get_prop_string(ctx, -1, "resolve_module");
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
+    duk_swap(ctx, 1, 2);
+    duk_swap(ctx, 0, 1);
+    duk_swap_top(ctx, 0);
 
-    string_t resolved_id;
-    const char *type;           // 模塊類型
-    if (requested_id[0] == '.') // 加載相對位置的模塊
-    {
-        type = "0";
-        size_t parent_len;
-        const char *parent_id = duk_get_lstring(ctx, 1, &parent_len); /* calling module */
+    // [resolve_module, requested_id, parent_id, stash]
+    // vm_dump_context_stdout(ctx);
+    duk_get_prop_string(ctx, -1, "native");
+    duk_get_prop_string(ctx, -2, "c_func");
+    duk_get_prop_string(ctx, -3, "path");
+    duk_swap_top(ctx, -4);
+    duk_pop(ctx);
+    duk_call(ctx, 5);
 
-        if (parent_len)
-        {
-            int i = parent_len - 1;
-            while (i >= 0 && parent_id[i] != '/')
-            {
-                i--;
-            }
-            if (i > -1)
-            {
-                parent_len = i + 1;
-            }
-            else
-            {
-                parent_len = 0;
-            }
-        }
-
-        /* Arrive at the canonical module ID somehow. */
-        if (parent_len)
-        {
-            size_t n = parent_len + requested_len;
-            resolved_id = strings_make(n);
-            if (IOTJS_REFERENCE_INVALID(resolved_id))
-            {
-                duk_push_error_object(ctx, DUK_ERR_ERROR, "require strings_make() error");
-                duk_throw(ctx);
-            }
-            char *p = IOTJS_REFERENCE_PTR(resolved_id);
-            memcpy(p, parent_id, parent_len);
-            memcpy(p + parent_len, requested_id, requested_len);
-
-            resolved_id = path_clean(&resolved_id, TRUE);
-            if (IOTJS_REFERENCE_INVALID(resolved_id))
-            {
-                duk_push_error_object(ctx, DUK_ERR_ERROR, "require path_clean(resolved_id) error");
-                duk_throw(ctx);
-            }
-        }
-        else
-        {
-            resolved_id = strings_from_str(requested_id, requested_len);
-            if (IOTJS_REFERENCE_INVALID(resolved_id))
-            {
-                duk_push_error_object(ctx, DUK_ERR_ERROR, "require strings_from_str(requested_id) error");
-                duk_throw(ctx);
-            }
-            resolved_id = path_clean(&resolved_id, TRUE);
-            if (IOTJS_REFERENCE_INVALID(resolved_id))
-            {
-                duk_push_error_object(ctx, DUK_ERR_ERROR, "require path_clean(resolved_id) error");
-                duk_throw(ctx);
-            }
-        }
-    }
-    else // 加載系統模塊
-    {
-        resolved_id = strings_from_str(requested_id, requested_len);
-        if (IOTJS_REFERENCE_INVALID(resolved_id))
-        {
-            duk_push_error_object(ctx, DUK_ERR_ERROR, "require strings_from_str(requested_id) error");
-            duk_throw(ctx);
-        }
-        resolved_id = path_clean(&resolved_id, TRUE);
-        if (IOTJS_REFERENCE_INVALID(resolved_id))
-        {
-            duk_push_error_object(ctx, DUK_ERR_ERROR, "require path_clean(resolved_id) error");
-            duk_throw(ctx);
-        }
-
-        duk_push_heap_stash(ctx);
-        duk_get_prop_string(ctx, -1, "native");
-        duk_get_prop_lstring(ctx, -1, IOTJS_REFERENCE_PTR(resolved_id), resolved_id.len);
-        if (duk_is_c_function(ctx, -1))
-        {
-            type = "2";
-        }
-        else
-        {
-            type = "1";
-            string_t s = strings_make_cap(0, resolved_id.len + 13);
-            if (IOTJS_REFERENCE_INVALID(s))
-            {
-                duk_push_error_object(ctx, DUK_ERR_ERROR, "require strings_make_cap() error");
-                duk_throw(ctx);
-            }
-            s = strings_append_str(&s, "node_modules/", 13, TRUE);
-            resolved_id = strings_append(&s, &resolved_id, TRUE, TRUE);
-            if (IOTJS_REFERENCE_INVALID(resolved_id))
-            {
-                duk_push_error_object(ctx, DUK_ERR_ERROR, "require strings_append() error");
-                duk_throw(ctx);
-            }
-            resolved_id = path_clean(&resolved_id, TRUE);
-            if (IOTJS_REFERENCE_INVALID(resolved_id))
-            {
-                duk_push_error_object(ctx, DUK_ERR_ERROR, "require path_clean(resolved_id) error");
-                duk_throw(ctx);
-            }
-        }
-        duk_pop_3(ctx);
-    }
-    duk_push_lstring(ctx, type, 1);
-    duk_push_lstring(ctx, IOTJS_REFERENCE_PTR(resolved_id), resolved_id.len);
-    strings_decrement(&resolved_id);
-    duk_concat(ctx, 2);
     return 1; /*nrets*/
 }
 duk_ret_t cb_load_module(duk_context *ctx)
 {
-
+    duk_require_stack_top(ctx, 6);
     /*
      *  Entry stack: [ resolved_id exports module ]
      */
@@ -324,8 +298,8 @@ duk_ret_t cb_load_module(duk_context *ctx)
     puts("--- cb_load_module");
     vm_dump_context_stdout(ctx);
 #endif
-    /* Arrive at the JS source code for the module somehow. */
 
+    /* Arrive at the JS source code for the module somehow. */
     size_t len;
     const char *id = duk_get_lstring(ctx, 0, &len);
     if (len == 0)
@@ -333,97 +307,42 @@ duk_ret_t cb_load_module(duk_context *ctx)
         duk_push_error_object(ctx, DUK_ERR_ERROR, "resolved_id invalid");
         duk_throw(ctx);
     }
-
-    switch (id[0])
+    if (len >= 3 && !(memcmp(id + len - 3, ".js", 3)))
     {
-    case '0': // load js
-    {
-        duk_push_lstring(ctx, id + 1, len - 1);
-        duk_push_lstring(ctx, ".js", 3);
-        duk_concat(ctx, 2);
-        duk_dup_top(ctx);
-        duk_dup_top(ctx);
-        duk_put_prop_string(ctx, 2, "filename");
-        duk_put_prop_string(ctx, 2, "id");
-        id = duk_get_string(ctx, -1);
+        id = duk_get_string(ctx, 0);
         vm_read_js(ctx, id);
+        return 1;
     }
-    break;
-    case '1': // load node_modules js
+    duk_push_heap_stash(ctx);
+    duk_get_prop_string(ctx, -1, "native");
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
+    duk_dup(ctx, 0);
+    duk_get_prop(ctx, -2);
+    if (duk_is_c_function(ctx, -1))
     {
-        const char *filepath = duk_get_string(ctx, 0);
-        struct stat fsstat;
-        int err = 0;
-        if (stat(filepath + 1, &fsstat))
-        {
-            err = errno;
-            if (err != ENOENT)
-            {
-                duk_push_error_object(ctx, DUK_ERR_ERROR, "stat error(%d): %s", err, strerror(err));
-                duk_throw(ctx);
-            }
-        }
-        if (err) // file
-        {
-            duk_push_lstring(ctx, id + 1, len - 1);
-            duk_push_lstring(ctx, ".js", 3);
-            duk_concat(ctx, 2);
-            duk_dup_top(ctx);
-            duk_dup_top(ctx);
-            duk_put_prop_string(ctx, 2, "filename");
-            duk_put_prop_string(ctx, 2, "id");
-            id = duk_get_string(ctx, -1);
-        }
-        else if (S_ISDIR(fsstat.st_mode))
-        {
-            duk_push_lstring(ctx, id + 1, len - 1);
-            duk_push_string(ctx, "/index.js");
-            duk_concat(ctx, 2);
-            duk_dup_top(ctx);
-            duk_dup_top(ctx);
-            duk_put_prop_string(ctx, 2, "filename");
-            duk_put_prop_string(ctx, 2, "id");
-            id = duk_get_string(ctx, -1);
-        }
-        else
-        {
-            duk_push_error_object(ctx, DUK_ERR_ERROR, "module not exists: %s", filepath + 1);
-            duk_throw(ctx);
-        }
-        id = duk_get_string(ctx, -1);
-        vm_read_js(ctx, id);
-        duk_buffer_to_string(ctx, -1);
+        duk_c_function f = duk_get_c_function(ctx, -1);
+        duk_pop_2(ctx);
+        return f(ctx);
     }
-    break;
-    case '2': // load c modules
-        duk_push_lstring(ctx, id + 1, len - 1);
-        duk_dup_top(ctx);
-        duk_dup_top(ctx);
-        duk_put_prop_string(ctx, 2, "filename");
-        duk_put_prop_string(ctx, 2, "id");
-        duk_swap_top(ctx, 0);
-        duk_pop(ctx);
-        id = duk_get_lstring(ctx, 0, &len);
-        duk_push_heap_stash(ctx);
-        duk_get_prop_string(ctx, -1, "native");
-        duk_dup(ctx, 0);
-        duk_get_prop(ctx, -2);
-        if (duk_is_c_function(ctx, -1))
-        {
-            duk_c_function f = duk_get_c_function(ctx, -1);
-            duk_pop_3(ctx);
-            return f(ctx);
-        }
-        duk_push_error_object(ctx, DUK_ERR_ERROR, "native module not exists");
-        duk_throw(ctx);
-    default:
-        duk_push_error_object(ctx, DUK_ERR_ERROR, "cb_load_module unknow module type");
-        duk_throw(ctx);
-    }
-    return 1; /*nrets*/
+    duk_pop_2(ctx);
+    duk_push_error_object(ctx, DUK_ERR_ERROR, "native module not exists");
+    duk_throw(ctx);
+    return 0;
 }
 
 void _vm_iotjs_init_compatible(duk_context *ctx)
 {
+    _vm_init_process(ctx);
     _vm_init_timer(ctx);
+
+    // js
+    duk_push_string(ctx, "(function(self){var exports=self;var module={exports:self};");
+    duk_push_lstring(ctx, (const char *)core_es6_shim_js, core_es6_shim_js_len);
+    duk_push_string(ctx, ";return module;})");
+    duk_concat(ctx, 3);
+    duk_eval(ctx);
+    duk_push_global_object(ctx);
+    duk_call(ctx, 1);
+    duk_pop(ctx);
 }

@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
         puts("duk_create_heap_default error");
         return -1;
     }
-    if (vm_main(ctx, filename))
+    if (vm_main(ctx, filename, argc, argv))
     {
         printf("iotjs_main: %s\n", duk_safe_to_string(ctx, -1));
         duk_pop(ctx);

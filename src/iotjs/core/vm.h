@@ -3,7 +3,7 @@
 #include <iotjs/core/js.h>
 
 // 加載 最初的 main 腳本
-duk_ret_t vm_main(duk_context *ctx, const char *path);
+duk_ret_t vm_main(duk_context *ctx, const char *path, int argc, char *argv[]);
 
 // #define VM_DEBUG_MODULE_LOAD 1
 
