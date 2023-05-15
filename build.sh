@@ -79,6 +79,7 @@ on_main(){
     case "$target" in
         linux_csky)
             cmake_args+=(
+                "-DLINK_STATIC_GLIC=ON"
                 "-DCMAKE_C_COMPILER=$toolchain/bin/csky-linux-gcc"
                 "-DCMAKE_CXX_COMPILER=$toolchain/bin/csky-linux-g++"
             )
