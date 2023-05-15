@@ -104,6 +104,7 @@ on_main(){
     local cmake_args=(
         -DCMAKE_SYSTEM_NAME=Linux
         "-DOUTPUT_ROOT_DIR=dst/$target"
+        -DEVENT__HAVE_PTHREADS=1
     )
     case "$target" in
         linux_csky)
