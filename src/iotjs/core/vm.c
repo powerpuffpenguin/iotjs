@@ -349,5 +349,42 @@ void _vm_iotjs_init_compatible(duk_context *ctx)
 }
 void _vm_iotjs_init_stash(duk_context *ctx)
 {
+    vm_init_context(ctx);
+
+    // js
+    duk_eval_lstring(ctx, (const char *)core_completer_js, core_completer_js_len);
+    duk_put_prop_string(ctx, -2, "completer");
     _vm_init_threads(ctx);
+}
+void _vm_async_callbackup(evutil_socket_t fd, short events, void *arg)
+{
+    vm_async_t *p = (vm_async_t *)arg;
+    p->complete(p);
+}
+vm_async_t *vm_new_async(duk_context *ctx, size_t in, size_t out)
+{
+    size_t sz_event = event_get_struct_event_size();
+    size_t sz = sizeof(vm_async_t) + sz_event + in + out;
+    vm_async_t *p = (vm_async_t *)malloc(sz);
+    if (!p)
+    {
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "vm_new_async malloc error");
+        duk_throw(ctx);
+    }
+    char *ptr = ((char *)p) + sizeof(vm_async_t);
+    p->ev = (event_t *)ptr;
+    ptr += sz_event;
+    if (in)
+    {
+        p->in = ptr;
+        ptr += in;
+    }
+    else
+    {
+        p->in = NULL;
+    }
+    p->out = out ? ptr : NULL;
+
+    event_assign(p->ev, p->eb, -1, 0, _vm_async_callbackup, p);
+    return p;
 }

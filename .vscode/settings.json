@@ -58,6 +58,8 @@
     "map": "c",
     "*.txt": "c",
     "stat.h": "c",
-    "__tree": "cpp"
+    "__tree": "cpp",
+    "modules.h": "c",
+    "thpool.h": "c"
   }
 }

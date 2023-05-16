@@ -35,4 +35,7 @@
     type var;                       \
     memset(&var, 0, sizeof(type))
 
+// 2**53-1
+#define IOTJS_MAX_SAFE_INTEGER 9007199254740991
+
 #endif
