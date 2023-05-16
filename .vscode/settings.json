@@ -57,6 +57,7 @@
     "__threading_support": "c",
     "map": "c",
     "*.txt": "c",
-    "stat.h": "c"
+    "stat.h": "c",
+    "__tree": "cpp"
   }
 }
