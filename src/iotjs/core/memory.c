@@ -3,6 +3,7 @@
 #include <iotjs/core/memory.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <pthread.h>
 typedef struct vm_libevent_element
 {
     size_t sz;
@@ -14,12 +15,13 @@ vm_libevent_element_t _vm_libevent_root = {.sz = 0};
 #define IOTJS__LIST_LEN() (_vm_libevent_root.sz)
 #define IOTJS__LIST_NEXT(e) (e->sz && e->next != &_vm_libevent_root ? e->next : NULL)
 #define IOTJS__LIST_PREV(e) (e->sz && e->prev != &_vm_libevent_root ? e->prev : NULL)
-#define IOTJS__LIST_PUSH_BACK(e) vm_libevent_insert(e, _vm_libevent_root.prev)
+#define IOTJS__LIST_PUSH_BACK(e) vm_libevent_list_insert(e, _vm_libevent_root.prev)
 #define IOTJS__LIST_BACK() (_vm_libevent_root.sz ? _vm_libevent_root.prev : 0)
 
 #define IOTJS__LIST_OUTPTR(ptr) (void *)(((char *)ptr) + sizeof(vm_libevent_element_t))
 #define IOTJS__LIST_INPTR(ptr) (vm_libevent_element_t *)(((char *)ptr) - sizeof(vm_libevent_element_t))
-void vm_libevent_insert(vm_libevent_element_t *e, vm_libevent_element_t *at)
+pthread_mutex_t vm_libevent_list_mutex;
+void vm_libevent_list_insert(vm_libevent_element_t *e, vm_libevent_element_t *at)
 {
     e->prev = at;
     e->next = at->next;
@@ -27,7 +29,7 @@ void vm_libevent_insert(vm_libevent_element_t *e, vm_libevent_element_t *at)
     e->next->prev = e;
     _vm_libevent_root.sz++;
 }
-void vm_libevent_remove(vm_libevent_element_t *e)
+void vm_libevent_list_remove(vm_libevent_element_t *e)
 {
     e->prev->next = e->next;
     e->next->prev = e->prev;
@@ -45,6 +47,7 @@ void vm_memory_init(int events)
 
     _vm_libevent_root.next = &_vm_libevent_root;
     _vm_libevent_root.prev = &_vm_libevent_root;
+    pthread_mutex_init(&vm_libevent_list_mutex, NULL);
 }
 void *vm_libevent_malloc(size_t sz)
 {
@@ -60,13 +63,17 @@ void *vm_libevent_malloc(size_t sz)
     vm_libevent_element_t *e;
     if (sz == _m_event_size)
     {
+
+        pthread_mutex_lock(&vm_libevent_list_mutex);
         // 從 緩存返回 event
         e = IOTJS__LIST_BACK();
         if (e)
         {
-            vm_libevent_remove(e);
+            vm_libevent_list_remove(e);
+            pthread_mutex_unlock(&vm_libevent_list_mutex);
             return IOTJS__LIST_OUTPTR(e);
         }
+        pthread_mutex_unlock(&vm_libevent_list_mutex);
         // 沒有緩存
     }
 
@@ -114,11 +121,17 @@ void vm_libevent_free(void *ptr)
         return;
     }
     vm_libevent_element_t *e = IOTJS__LIST_INPTR(ptr);
-    if (e->sz == _m_event_size && _vm_libevent_root.sz < _m_event_count)
+    if (e->sz == _m_event_size)
     {
-        // 加入緩存
-        IOTJS__LIST_PUSH_BACK(e);
-        return;
+        pthread_mutex_lock(&vm_libevent_list_mutex);
+        if (_vm_libevent_root.sz < _m_event_count)
+        {
+            // 加入緩存
+            IOTJS__LIST_PUSH_BACK(e);
+            pthread_mutex_unlock(&vm_libevent_list_mutex);
+            return;
+        }
+        pthread_mutex_unlock(&vm_libevent_list_mutex);
     }
     free(e);
 }
