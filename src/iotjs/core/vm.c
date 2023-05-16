@@ -117,21 +117,6 @@ duk_ret_t _vm_iotjs_main(duk_context *ctx)
 
     duk_push_heap_stash(ctx);
     _vm_iotjs_init_stash(ctx);
-    // 創建 stash.events 存儲 事件驅動
-    {
-        event_base_t *eb = event_base_new();
-        if (!eb)
-        {
-            duk_push_error_object(ctx, DUK_ERR_ERROR, "event_base_new error");
-            duk_throw(ctx);
-        }
-        duk_push_object(ctx);
-        duk_push_pointer(ctx, eb);
-        duk_put_prop_string(ctx, -2, "eb");
-        duk_push_c_function(ctx, _vm_iotjs_events_finalizer, 1);
-        duk_set_finalizer(ctx, -2);
-        duk_put_prop_string(ctx, -2, "events");
-    }
     // 創建 stash.native 存儲 c 模塊
     {
         duk_push_object(ctx);
@@ -349,7 +334,7 @@ void _vm_iotjs_init_compatible(duk_context *ctx)
 }
 void _vm_iotjs_init_stash(duk_context *ctx)
 {
-    vm_init_context(ctx);
+    _vm_init_context(ctx);
 
     // js
     duk_eval_lstring(ctx, (const char *)core_completer_js, core_completer_js_len);

@@ -13,6 +13,14 @@
 #define FALSE 0
 #endif
 
+#ifndef IOTJS_MALLOC
+#define IOTJS_MALLOC(size) malloc(size)
+#endif
+
+#ifndef IOTJS_FREE
+#define IOTJS_FREE(p) free(p)
+#endif
+
 // 檢測引用類型 有效
 #define IOTJS_REFERENCE_VALID(var) (var.reference)
 // 檢測引用類型指針 有效

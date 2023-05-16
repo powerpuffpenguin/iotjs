@@ -35,14 +35,8 @@ int main(int argc, char *argv[])
         goto EXIT_ERROR;
     }
     duk_pop(ctx);
-    event_base_t *eb = vm_event_base(ctx);
-    if (!eb)
-    {
-        printf("iotjs_loop: %s\n", duk_safe_to_string(ctx, -1));
-        duk_pop(ctx);
-        goto EXIT_ERROR;
-    }
-    int err = event_base_dispatch(eb);
+    vm_context_t *vm = vm_get_context(ctx);
+    int err = event_base_dispatch(vm->eb);
     if (err < 0)
     {
         goto EXIT_ERROR;
