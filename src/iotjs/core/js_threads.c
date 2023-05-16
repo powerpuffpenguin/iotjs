@@ -11,7 +11,7 @@ duk_ret_t _vm_threads_finalizer(duk_context *ctx)
 void _vm_init_threads(duk_context *ctx)
 {
     duk_require_stack_top(ctx, duk_get_top(ctx) + 3);
-    threads_t *threads = thpool_init(4);
+    threads_t *threads = thpool_init(10);
     if (!threads)
     {
         duk_push_error_object(ctx, DUK_ERR_ERROR, "thpool_init error");
