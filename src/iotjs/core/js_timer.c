@@ -50,7 +50,8 @@ duk_ret_t _vm_iotjs_timer_finalizer(duk_context *ctx)
     _vm_timer_t *timer = (_vm_timer_t *)duk_require_pointer(ctx, -1);
     if (timer->ev)
     {
-        event_free(timer->ev);
+        event_del(timer->ev);
+        // event_free(timer->ev);
     }
     IOTJS_FREE(timer);
 }
@@ -84,7 +85,7 @@ int _vm_iotjs_nativa_set_timer(duk_context *ctx, BOOL interval)
     duk_push_object(ctx);
     duk_swap_top(ctx, -2);
     duk_put_prop_string(ctx, -2, "cb"); // [timer]
-    _vm_timer_t *timer = (_vm_timer_t *)IOTJS_MALLOC(sizeof(_vm_timer_t));
+    _vm_timer_t *timer = (_vm_timer_t *)IOTJS_MALLOC(sizeof(_vm_timer_t) + event_get_struct_event_size());
     if (!timer)
     {
         if (interval)
@@ -98,25 +99,27 @@ int _vm_iotjs_nativa_set_timer(duk_context *ctx, BOOL interval)
         duk_throw(ctx);
     }
     timer->vm = vm;
+    timer->ev = NULL;
     duk_push_pointer(ctx, timer);
     duk_put_prop_string(ctx, -2, "ptr");
     duk_push_c_function(ctx, _vm_iotjs_timer_finalizer, 1);
     duk_set_finalizer(ctx, -2);
-
-    timer->ev = event_new(vm->eb, -1, interval ? EV_PERSIST : 0, interval ? _vm_interval_handler : _vm_timeout_handler, timer);
-    if (!timer->ev)
+    // timer->ev = event_new(vm->eb, -1, interval ? EV_PERSIST : 0, interval ? _vm_interval_handler : _vm_timeout_handler, timer);
+    event_t *ev = (event_t *)((char *)timer + sizeof(_vm_timer_t));
+    if (event_assign(ev, vm->eb, -1, interval ? EV_PERSIST : 0, interval ? _vm_interval_handler : _vm_timeout_handler, timer))
     {
         duk_pop(ctx);
         if (interval)
         {
-            duk_push_error_object(ctx, DUK_ERR_ERROR, "[setInterval] event_new error");
+            duk_push_error_object(ctx, DUK_ERR_ERROR, "[setInterval] event_assign error");
         }
         else
         {
-            duk_push_error_object(ctx, DUK_ERR_ERROR, "[setTimeout] event_new error");
+            duk_push_error_object(ctx, DUK_ERR_ERROR, "[setTimeout] event_assign error");
         }
         duk_throw(ctx);
     }
+    timer->ev = ev;
     time_value_t tv = {
         .tv_sec = ms / 1000,
         .tv_usec = (ms % 1000) * 1000,
