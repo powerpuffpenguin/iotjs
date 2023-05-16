@@ -1,3 +1,4 @@
+include("${CMAKE_CURRENT_LIST_DIR}/third_party/threads.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/third_party/duktape.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/third_party/libevent.cmake")
 find_package(Threads REQUIRED)

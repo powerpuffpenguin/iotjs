@@ -2,6 +2,7 @@
 #include <iotjs/core/js_timer.h>
 #include <iotjs/core/js_process.h>
 #include <iotjs/core/xxd.h>
+#include <iotjs/core/js_threads.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,7 @@ duk_ret_t cb_resolve_module(duk_context *ctx);
 duk_ret_t cb_load_module(duk_context *ctx);
 duk_ret_t _vm_iotjs_main(duk_context *ctx);
 void _vm_iotjs_init_compatible(duk_context *ctx);
+void _vm_iotjs_init_stash(duk_context *ctx);
 
 typedef struct
 {
@@ -114,6 +116,7 @@ duk_ret_t _vm_iotjs_main(duk_context *ctx)
 {
 
     duk_push_heap_stash(ctx);
+    _vm_iotjs_init_stash(ctx);
     // 創建 stash.events 存儲 事件驅動
     {
         event_base_t *eb = event_base_new();
@@ -343,4 +346,8 @@ void _vm_iotjs_init_compatible(duk_context *ctx)
     duk_push_global_object(ctx);
     duk_call(ctx, 1);
     duk_pop(ctx);
+}
+void _vm_iotjs_init_stash(duk_context *ctx)
+{
+    _vm_init_threads(ctx);
 }
