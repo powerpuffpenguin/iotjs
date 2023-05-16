@@ -194,7 +194,7 @@ void _vm_iotjs_nativa_clear_timer(duk_context *ctx, BOOL interval)
     event_free(timer->ev);
     timer->ev = NULL;
 
-    duk_swap_top(ctx, -1);
+    duk_swap_top(ctx, -2);
     duk_pop(ctx);
     duk_safe_to_string(ctx, -1);
     duk_del_prop(ctx, -2);

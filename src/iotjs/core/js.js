@@ -1,11 +1,13 @@
 String.prototype.padEnd = function (m, f) {
-    if (f === null || f === undefined) {
-        return this
+    if (f === null || f === undefined || f === '') {
+        f = " "
+    } else {
+        f = f.toString()
+        if (f == "") {
+            f = " "
+        }
     }
-    f = f.toString()
-    if (f == "") {
-        return this
-    } else if (typeof m === "string") {
+    if (typeof m === "string") {
         m = parseInt(m)
     } else if (typeof m !== "number") {
         return this
@@ -24,13 +26,15 @@ String.prototype.padEnd = function (m, f) {
     return s
 }
 String.prototype.padStart = function (m, f) {
-    if (f === null || f === undefined) {
-        return this
+    if (f === null || f === undefined || f === '') {
+        f = " "
+    } else {
+        f = f.toString()
+        if (f == "") {
+            f = " "
+        }
     }
-    f = f.toString()
-    if (f == "") {
-        return this
-    } else if (typeof m === "string") {
+    if (typeof m === "string") {
         m = parseInt(m)
     } else if (typeof m !== "number") {
         return this

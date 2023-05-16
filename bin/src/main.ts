@@ -10,4 +10,4 @@ const root = new Command({
 root.add(
     timer,
 )
-new Parser(root).parse(process.argv.slice(1))
+new Parser(root).parse(process.argv.slice(2))
