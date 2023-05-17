@@ -43,11 +43,12 @@ void _vm_timeout_handler(evutil_socket_t fs, short events, void *arg)
 
 duk_ret_t _vm_iotjs_timer_finalizer(duk_context *ctx)
 {
-    duk_get_prop_string(ctx, 0, "ptr");
-    duk_swap_top(ctx, -2);
-    duk_pop(ctx);
+    _vm_timer_t *timer = (_vm_timer_t *)vm_get_finalizer_ptr(ctx);
+    if (!timer)
+    {
+        return 0;
+    }
 
-    _vm_timer_t *timer = (_vm_timer_t *)duk_require_pointer(ctx, -1);
     if (timer->ev)
     {
         event_del(timer->ev);
@@ -83,28 +84,12 @@ int _vm_iotjs_nativa_set_timer(duk_context *ctx, BOOL interval)
 
     // [func]
     vm_context_t *vm = vm_get_context(ctx);
-    duk_push_object(ctx);
+    _vm_timer_t *timer = vm_malloc_with_finalizer(ctx, sizeof(_vm_timer_t) + event_get_struct_event_size(), _vm_iotjs_timer_finalizer);
     duk_swap_top(ctx, -2);
     duk_put_prop_string(ctx, -2, "cb"); // [timer]
-    _vm_timer_t *timer = (_vm_timer_t *)IOTJS_MALLOC(sizeof(_vm_timer_t) + event_get_struct_event_size());
-    if (!timer)
-    {
-        if (interval)
-        {
-            duk_push_error_object(ctx, DUK_ERR_ERROR, "[setInterval] malloc _vm_timer_t error");
-        }
-        else
-        {
-            duk_push_error_object(ctx, DUK_ERR_ERROR, "[setTimeout] malloc _vm_timer_t error");
-        }
-        duk_throw(ctx);
-    }
+
     timer->vm = vm;
     timer->ev = NULL;
-    duk_push_pointer(ctx, timer);
-    duk_put_prop_string(ctx, -2, "ptr");
-    duk_push_c_function(ctx, _vm_iotjs_timer_finalizer, 1);
-    duk_set_finalizer(ctx, -2);
     // timer->ev = event_new(vm->eb, -1, interval ? EV_PERSIST : 0, interval ? _vm_interval_handler : _vm_timeout_handler, timer);
     event_t *ev = (event_t *)((char *)timer + sizeof(_vm_timer_t));
     if (event_assign(ev, vm->eb, -1, interval ? EV_PERSIST : 0, interval ? _vm_interval_handler : _vm_timeout_handler, timer))
@@ -189,7 +174,7 @@ duk_ret_t _vm_iotjs_nativa_clearInterval(duk_context *ctx)
 }
 void _vm_init_timer(duk_context *ctx)
 {
-    duk_require_stack_top(ctx, duk_get_top(ctx) + 3);
+    duk_require_stack(ctx, 3);
     duk_push_heap_stash(ctx);
     duk_push_object(ctx);
     duk_put_prop_string(ctx, -2, "timeout");

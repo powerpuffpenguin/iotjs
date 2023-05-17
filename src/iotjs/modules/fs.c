@@ -13,6 +13,8 @@ void _async_fs_stat(void *arg)
 }
 duk_ret_t _native_iotjs_fs_stat(duk_context *ctx)
 {
+    vm_new_async_job(ctx, NULL, 0);
+    vm_dump_context_stdout(ctx);
     // const char *path = duk_require_string(ctx, 0);
     // size_t sz_in = sizeof(char *);
     // vm_async_t *p = (vm_async_t *)vm_new_async(ctx,

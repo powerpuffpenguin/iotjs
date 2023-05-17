@@ -1,5 +1,9 @@
 #include <iotjs/core/module.h>
-
+typedef struct
+{
+    const char *name;
+    duk_c_function init;
+} vm_native_module_t;
 typedef struct
 {
     size_t len;
@@ -11,7 +15,7 @@ vm_native_modules_t _vm_default_modules = {
     .cap = 0,
     .modules = NULL,
 };
-void vm_register(const char *name, duk_c_function init)
+void vm_register_native(const char *name, duk_c_function init)
 {
     vm_native_modules_t *modules = &_vm_default_modules;
     for (size_t i = 0; i < modules->len; i++)
@@ -54,7 +58,7 @@ void vm_register(const char *name, duk_c_function init)
 }
 void _vm_init_native(duk_context *ctx)
 {
-    duk_require_stack_top(ctx, duk_get_top(ctx) + 2);
+    duk_require_stack(ctx,  2);
     duk_push_object(ctx);
     vm_native_modules_t *modules = &_vm_default_modules;
     for (size_t i = 0; i < modules->len; i++)

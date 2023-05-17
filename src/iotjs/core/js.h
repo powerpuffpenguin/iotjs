@@ -30,8 +30,36 @@ void _vm_init_context(duk_context *ctx);
 // 打印js棧到 stdout 以供調試
 void vm_dump_context_stdout(duk_context *ctx);
 
-// duk_throw
-// ... => ...
+// 返回運行環境
+// duk_throw ... => ...
 vm_context_t *vm_get_context(duk_context *ctx);
+
+// 動態申請一塊內存，將它和 finalizer 函數關聯，以便 js 可以自動關聯它
+// duk_throw ... => ... obj{ptr}
+void *vm_malloc_with_finalizer(duk_context *ctx, size_t sz, duk_c_function func);
+
+// 返回 finalizer 關聯的 c 指針
+// duk_throw ... obj{ptr} => ...
+void *vm_get_finalizer_ptr(duk_context *ctx);
+
+// 存儲一個異步工作
+typedef struct vm_async_job
+{
+    // 系統環境
+    vm_context_t *vm;
+    // 通知異步完成的事件
+    event_t *ev;
+    // 傳遞給工作線程的可選參數
+    void *arg;
+    // 在工作線程執行的異步代碼
+    void (*work)(struct vm_async_job *job, void *arg);
+} vm_async_job_t;
+typedef void (*vm_async_job_function)(vm_async_job_t *job, void *arg);
+// 創建一個異步工作
+// duk_throw ... => ... Promise, job:{ptr,completer}
+vm_async_job_t *vm_new_async_job(duk_context *ctx, vm_async_job_function work, size_t sz_arg);
+// 執行異步工作
+// duk_throw ... job => ...
+void vm_execute_async_job(duk_context *ctx);
 
 #endif
