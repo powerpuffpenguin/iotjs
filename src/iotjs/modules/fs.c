@@ -1,4 +1,5 @@
 #include <iotjs/core/js.h>
+#include <iotjs/core/module.h>
 #include <iotjs/core/number.h>
 #include <sys/stat.h>
 #include <errno.h>
@@ -22,6 +23,12 @@ duk_ret_t _async_fs_stat_complete(duk_context *ctx)
         duk_push_object(ctx);
         {
             duk_get_prop_lstring(ctx, -2, "args", 4);
+            vm_path(ctx);
+            duk_swap_top(ctx, -2);
+            duk_get_prop_lstring(ctx, -2, "base", 4);
+            duk_swap_top(ctx, -3);
+            duk_pop(ctx);
+            duk_call(ctx, 1);
             duk_put_prop_lstring(ctx, -2, "name", 4);
 
             struct stat *info = (struct stat *)job->out;
