@@ -64,6 +64,7 @@
     "js.h": "c",
     "module.h": "c",
     "duk_console.h": "c",
-    "xxd.h": "c"
+    "xxd.h": "c",
+    "defines.h": "c"
   }
 }

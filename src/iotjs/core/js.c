@@ -297,3 +297,11 @@ void vm_resolve_async_job(duk_context *ctx, duk_idx_t i)
     duk_swap_top(ctx, -2);
     duk_call_prop(ctx, -3, 1);
 }
+void vm_require_date(duk_context *ctx)
+{
+    duk_require_stack(ctx, 3);
+    duk_push_global_object(ctx);
+    duk_get_prop_lstring(ctx, -1, "Date", 4);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
+}

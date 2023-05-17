@@ -1,5 +1,5 @@
-#include <iotjs/core/vm.h>
 #include <iotjs/core/js.h>
+#include <iotjs/core/number.h>
 #include <sys/stat.h>
 #include <errno.h>
 void _async_fs_stat_work(vm_async_job_t *job, void *in)
@@ -20,7 +20,23 @@ duk_ret_t _async_fs_stat_complete(duk_context *ctx)
     {
     case 0:
         duk_push_object(ctx);
+        {
+            duk_get_prop_lstring(ctx, -2, "args", 4);
+            duk_put_prop_lstring(ctx, -2, "name", 4);
 
+            struct stat *info = (struct stat *)job->out;
+            vm_push_size(ctx, info->st_size);
+            duk_put_prop_lstring(ctx, -2, "size", 4);
+
+            vm_require_date(ctx);
+            uint64_t mtime = info->st_mtime;
+            vm_push_uint64(ctx, mtime * 1000);
+            duk_new(ctx, 1);
+            duk_put_prop_lstring(ctx, -2, "modTime", 7);
+
+            duk_push_boolean(ctx, S_ISDIR(info->st_mode));
+            duk_put_prop_lstring(ctx, -2, "isDir", 5);
+        }
         vm_resolve_async_job(ctx, -2);
         break;
     case ENOENT:

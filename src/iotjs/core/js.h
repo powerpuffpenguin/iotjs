@@ -80,4 +80,7 @@ void vm_reject_async_job(duk_context *ctx, duk_idx_t i);
 // 通知 js 異步成功
 // duk_throw ... job ... err => ... job ...
 void vm_resolve_async_job(duk_context *ctx, duk_idx_t i);
+
+// duk_throw ... => ... Date
+void vm_require_date(duk_context *ctx);
 #endif
