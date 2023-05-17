@@ -54,6 +54,7 @@ duk_ret_t _vm_iotjs_timer_finalizer(duk_context *ctx)
         // event_free(timer->ev);
     }
     IOTJS_FREE(timer);
+    return 0;
 }
 int _vm_iotjs_nativa_set_timer(duk_context *ctx, BOOL interval)
 {

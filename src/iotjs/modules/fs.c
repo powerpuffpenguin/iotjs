@@ -1,6 +1,5 @@
 #include <iotjs/core/vm.h>
 #include <iotjs/core/js.h>
-#include <iotjs/core/js_threads.h>
 
 typedef struct
 {

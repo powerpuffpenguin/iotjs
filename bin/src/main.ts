@@ -13,9 +13,3 @@ root.add(
     fibonacci,
 )
 new Parser(root).parse(process.argv.slice(2))
-
-enum X {
-    ID = "KO",
-    KO = 3
-}
-console.log(X.ID)

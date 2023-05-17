@@ -2,7 +2,7 @@
 #include <iotjs/core/js_timer.h>
 #include <iotjs/core/js_process.h>
 #include <iotjs/core/xxd.h>
-#include <iotjs/core/js_threads.h>
+#include <iotjs/core/module.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -17,59 +17,6 @@ duk_ret_t cb_load_module(duk_context *ctx);
 duk_ret_t _vm_iotjs_main(duk_context *ctx);
 void _vm_iotjs_init_compatible(duk_context *ctx);
 void _vm_iotjs_init_stash(duk_context *ctx);
-
-typedef struct
-{
-    size_t len;
-    size_t cap;
-    vm_native_module_t *modules;
-} vm_native_modules_t;
-vm_native_modules_t _vm_default_modules = {
-    .len = 0,
-    .cap = 0,
-    .modules = NULL,
-};
-void vm_register(const char *name, duk_c_function init)
-{
-    vm_native_modules_t *modules = &_vm_default_modules;
-    for (size_t i = 0; i < modules->len; i++)
-    {
-        if (!strcmp(name, modules->modules[i].name))
-        {
-            modules->modules[i].init = init;
-            return;
-        }
-    }
-
-    if (modules->len + 1 > modules->cap)
-    {
-        size_t cap = modules->cap;
-        if (cap == 0)
-        {
-            cap = 16;
-        }
-        else if (cap < 128)
-        {
-            cap *= 2;
-        }
-        else
-        {
-            cap += 16;
-        }
-        vm_native_module_t *p = (vm_native_module_t *)malloc(sizeof(vm_native_module_t) * cap);
-        if (modules->len)
-        {
-            memcpy(p, modules->modules, sizeof(vm_native_module_t) * modules->len);
-            free(modules->modules);
-        }
-        modules->modules = p;
-        modules->cap = cap;
-    }
-    int i = modules->len;
-    modules->modules[i].name = name;
-    modules->modules[i].init = init;
-    modules->len++;
-}
 
 void vm_read_js(duk_context *ctx, const char *path)
 {
@@ -105,32 +52,13 @@ void vm_read_js(duk_context *ctx, const char *path)
     fclose(f);
     duk_buffer_to_string(ctx, -1);
 }
-duk_ret_t _vm_iotjs_events_finalizer(duk_context *ctx)
-{
-    duk_get_prop_string(ctx, -1, "eb");
-    event_base_t *eb = (event_base_t *)duk_get_pointer(ctx, -1);
-    event_base_free(eb);
-    return 0;
-}
+
 duk_ret_t _vm_iotjs_main(duk_context *ctx)
 {
 
     duk_push_heap_stash(ctx);
     _vm_iotjs_init_stash(ctx);
-    // 創建 stash.native 存儲 c 模塊
-    {
-        duk_push_object(ctx);
-        vm_native_modules_t *modules = &_vm_default_modules;
-        for (size_t i = 0; i < modules->len; i++)
-        {
-            if (modules->modules[i].init && modules->modules[i].name)
-            {
-                duk_push_c_function(ctx, modules->modules[i].init, 3);
-                duk_put_prop_string(ctx, -2, modules->modules[i].name);
-            }
-        }
-        duk_put_prop_string(ctx, -2, "native");
-    }
+
     // vm_dump_context_stdout(ctx);
     duk_pop(ctx);
     // 初始化 commonjs 模塊引擎
@@ -189,8 +117,7 @@ duk_ret_t _iotjs_fs_stat(duk_context *ctx)
 duk_ret_t vm_main(duk_context *ctx, const char *path, int argc, char *argv[])
 {
     // js
-    duk_push_lstring(ctx, (const char *)core_js_js, core_js_js_len);
-    if (duk_peval(ctx))
+    if (duk_peval_lstring(ctx, (const char *)core_js_js, core_js_js_len))
     {
         return DUK_EXEC_ERROR;
     }
@@ -335,41 +262,9 @@ void _vm_iotjs_init_compatible(duk_context *ctx)
 void _vm_iotjs_init_stash(duk_context *ctx)
 {
     _vm_init_context(ctx);
-
+    _vm_init_native(ctx);
     // js
     duk_eval_lstring(ctx, (const char *)core_completer_js, core_completer_js_len);
     duk_put_prop_string(ctx, -2, "completer");
-    _vm_init_threads(ctx);
-}
-void _vm_async_callbackup(evutil_socket_t fd, short events, void *arg)
-{
-    vm_async_t *p = (vm_async_t *)arg;
-    p->complete(p);
-}
-vm_async_t *vm_new_async(duk_context *ctx, size_t in, size_t out)
-{
-    size_t sz_event = event_get_struct_event_size();
-    size_t sz = sizeof(vm_async_t) + sz_event + in + out;
-    vm_async_t *p = (vm_async_t *)malloc(sz);
-    if (!p)
-    {
-        duk_push_error_object(ctx, DUK_ERR_ERROR, "vm_new_async malloc error");
-        duk_throw(ctx);
-    }
-    char *ptr = ((char *)p) + sizeof(vm_async_t);
-    p->ev = (event_t *)ptr;
-    ptr += sz_event;
-    if (in)
-    {
-        p->in = ptr;
-        ptr += in;
-    }
-    else
-    {
-        p->in = NULL;
-    }
-    p->out = out ? ptr : NULL;
-
-    event_assign(p->ev, p->eb, -1, 0, _vm_async_callbackup, p);
-    return p;
+    // vm_dump_context_stdout(ctx);
 }

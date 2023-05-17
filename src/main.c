@@ -1,5 +1,4 @@
 #include <iotjs/core/vm.h>
-#include <iotjs/core/memory.h>
 #include <event2/thread.h>
 #include <event2/event.h>
 int main(int argc, char *argv[])
@@ -9,9 +8,6 @@ int main(int argc, char *argv[])
         puts("evthread_use_pthreads error");
         return -1;
     }
-
-    vm_memory_init(200);
-    event_set_mem_functions(vm_libevent_malloc, vm_libevent_realloc, vm_libevent_free);
 
     char *filename;
     if (argc >= 2)

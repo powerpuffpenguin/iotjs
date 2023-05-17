@@ -31,17 +31,7 @@ void _vm_init_context(duk_context *ctx);
 void vm_dump_context_stdout(duk_context *ctx);
 
 // duk_throw
-// 成功返回 事件循環 ... => ...
-event_base_t *vm_event_base(duk_context *ctx);
-// duk_throw
 // ... => ...
 vm_context_t *vm_get_context(duk_context *ctx);
-
-typedef struct
-{
-    const char *name;
-    duk_c_function init;
-} vm_native_module_t;
-void vm_register(const char *name, duk_c_function init);
 
 #endif

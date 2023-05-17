@@ -60,6 +60,8 @@
     "stat.h": "c",
     "__tree": "cpp",
     "modules.h": "c",
-    "thpool.h": "c"
+    "thpool.h": "c",
+    "js.h": "c",
+    "module.h": "c"
   }
 }
