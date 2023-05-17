@@ -1,4 +1,4 @@
-#include <iotjs/core/js_timer.h>
+#include <iotjs/core/timer.h>
 typedef struct
 {
     vm_context_t *vm;
@@ -9,7 +9,14 @@ void _vm_timer_handler(_vm_timer_t *timer, BOOL interval)
 {
     duk_context *ctx = timer->vm->ctx;
     duk_push_heap_stash(ctx);
-    duk_get_prop_string(ctx, -1, interval ? "interval" : "timeout");
+    if (interval)
+    {
+        duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_INTERVAL);
+    }
+    else
+    {
+        duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_TIMEOUT);
+    }
     duk_swap_top(ctx, -2);
     duk_pop(ctx); // [..., timeout]
 
@@ -28,7 +35,7 @@ void _vm_timer_handler(_vm_timer_t *timer, BOOL interval)
     }
     duk_pop(ctx); // [..., timer]
 
-    duk_get_prop_string(ctx, -1, "cb");
+    duk_get_prop_lstring(ctx, -1, "cb", 2);
     duk_call(ctx, 0);
     duk_pop_2(ctx);
 }
@@ -86,7 +93,7 @@ int _vm_iotjs_nativa_set_timer(duk_context *ctx, BOOL interval)
     vm_context_t *vm = vm_get_context(ctx);
     _vm_timer_t *timer = vm_malloc_with_finalizer(ctx, sizeof(_vm_timer_t) + event_get_struct_event_size(), _vm_iotjs_timer_finalizer);
     duk_swap_top(ctx, -2);
-    duk_put_prop_string(ctx, -2, "cb"); // [timer]
+    duk_put_prop_lstring(ctx, -2, "cb", 2); // [timer]
 
     timer->vm = vm;
     timer->ev = NULL;
@@ -125,7 +132,14 @@ int _vm_iotjs_nativa_set_timer(duk_context *ctx, BOOL interval)
     }
 
     duk_push_heap_stash(ctx);
-    duk_get_prop_string(ctx, -1, interval ? "interval" : "timeout");
+    if (interval)
+    {
+        duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_INTERVAL);
+    }
+    else
+    {
+        duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_TIMEOUT);
+    }
     duk_swap_top(ctx, -2);
     duk_pop(ctx);
     duk_swap_top(ctx, -2); // [obj, timer]
@@ -149,7 +163,14 @@ duk_ret_t _vm_iotjs_nativa_setInterval(duk_context *ctx)
 void _vm_iotjs_nativa_clear_timer(duk_context *ctx, BOOL interval)
 {
     duk_push_heap_stash(ctx);
-    duk_get_prop_string(ctx, -1, interval ? "interval" : "timeout");
+    if (interval)
+    {
+        duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_INTERVAL);
+    }
+    else
+    {
+        duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_TIMEOUT);
+    }
     duk_swap_top(ctx, -2);
     duk_pop(ctx); // [ptr, timeout]
 
@@ -174,20 +195,14 @@ duk_ret_t _vm_iotjs_nativa_clearInterval(duk_context *ctx)
 }
 void _vm_init_timer(duk_context *ctx)
 {
-    duk_require_stack(ctx, 3);
-    duk_push_heap_stash(ctx);
-    duk_push_object(ctx);
-    duk_put_prop_string(ctx, -2, "timeout");
-    duk_push_object(ctx);
-    duk_put_prop_string(ctx, -2, "interval");
-    duk_pop(ctx);
+    duk_require_stack(ctx, 2);
 
     duk_push_c_function(ctx, _vm_iotjs_nativa_setTimeout, 2);
-    duk_put_prop_string(ctx, -2, "setTimeout");
+    duk_put_prop_lstring(ctx, -2, "setTimeout", 10);
     duk_push_c_function(ctx, _vm_iotjs_nativa_clearTimeout, 1);
-    duk_put_prop_string(ctx, -2, "clearTimeout");
+    duk_put_prop_lstring(ctx, -2, "clearTimeout", 12);
     duk_push_c_function(ctx, _vm_iotjs_nativa_setInterval, 2);
-    duk_put_prop_string(ctx, -2, "setInterval");
+    duk_put_prop_lstring(ctx, -2, "setInterval", 11);
     duk_push_c_function(ctx, _vm_iotjs_nativa_clearInterval, 1);
-    duk_put_prop_string(ctx, -2, "clearInterval");
+    duk_put_prop_lstring(ctx, -2, "clearInterval", 13);
 }

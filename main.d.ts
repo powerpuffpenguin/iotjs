@@ -1,7 +1,15 @@
+
+
 declare module "iotjs" {
-    export const version: string
-
-
+    export class Completer<T> {
+        readonly isCompleted: boolean
+        readonly promise: Promise<T>
+        resolve(v: T): void
+        reject(reason?: any): void
+    }
+    export class IotError extends Error {
+        code: number
+    }
 }
 declare module "iotjs/fs" {
     export enum FileMode {
@@ -33,6 +41,10 @@ declare module "iotjs/fs" {
     }
     export function stat(): Promise<Fileinfo>
 }
-declare var process: {
+import { Completer, IotError } from "iotjs";
+declare const iotjs: {
+    readonly version: string
     argv: Array<string>
+    Completer: Completer,
+    IotError: IotError,
 };

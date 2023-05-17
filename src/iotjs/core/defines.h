@@ -21,6 +21,17 @@
 #define IOTJS_FREE(p) free(p)
 #endif
 
+#define VM_STASH_KEY_IOTJS "iotjs", 5
+#define VM_STASH_KEY_C "c", 1
+#define VM_STASH_KEY_NATIVE "native", 6
+#define VM_STASH_KEY_TIMEOUT "timeout", 7
+#define VM_STASH_KEY_INTERVAL "interval", 8
+#define VM_STASH_KEY_JOBS "jobs", 4
+
+#define VM_IOTJS_KEY_COMPLETER "Completer", 9
+#define VM_IOTJS_KEY_ERROR "IotError", 8
+#define VM_STASH_KEY_COMPLETER "Completer", 9
+
 // 檢測引用類型 有效
 #define IOTJS_REFERENCE_VALID(var) (var.reference)
 // 檢測引用類型指針 有效

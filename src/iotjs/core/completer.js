@@ -1,2 +1,0 @@
-(function(){function b(){var a=this;this.c_=!1;this.promise_=new Promise(function(c,d){a.resolve_=c;a.reject_=d})}Object.defineProperty(b.prototype,"isCompleted",{get:function(){return this.c_},enumerable:!1,configurable:!0});Object.defineProperty(b.prototype,"promise",{get:function(){return this.promise_},enumerable:!1,configurable:!0});b.prototype.resolve=function(a){this.c_||(this.c_=!0,this.resolve_&&this.resolve_(a))};b.prototype.reject=function(a){this.c_||(this.c_=!0,this.reject_&&this.reject_(a))};
-return b})();

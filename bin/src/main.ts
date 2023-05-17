@@ -12,4 +12,4 @@ root.add(
     timer,
     fibonacci,
 )
-new Parser(root).parse(process.argv.slice(2))
+new Parser(root).parse(iotjs.argv.slice(2))

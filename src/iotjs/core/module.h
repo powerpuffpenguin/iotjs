@@ -6,4 +6,5 @@
 void vm_register_native(const char *name, duk_c_function init);
 
 void _vm_init_native(duk_context *ctx);
+
 #endif

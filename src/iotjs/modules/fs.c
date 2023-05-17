@@ -1,49 +1,41 @@
 #include <iotjs/core/vm.h>
 #include <iotjs/core/js.h>
-
-typedef struct
+#include <sys/stat.h>
+#include <errno.h>
+void _async_fs_stat_work(vm_async_job_t *job, void *in)
 {
+    const char *path = in;
+    struct stat *out = job->out;
+    if (stat(path, out))
+    {
+        job->err = errno;
+    }
 
-} fs_stat_t;
-void _async_fs_stat(void *arg)
+    vm_complete_async_job(job);
+}
+duk_ret_t _async_fs_stat_complete(duk_context *ctx)
 {
-    // vm_async_t *p = (vm_async_t *)arg;
-    // event_t *ev = IOTJS_ASYNC_EVENT(p);
-    // event_active(ev, 0, 0);
+    vm_async_job_t *job = (vm_async_job_t *)vm_get_async_job(ctx);
+    if (job->err)
+    {
+        duk_push_error_object(ctx, DUK_ERR_ERROR, strerror(job->err));
+        vm_reject_async_job(ctx, -2);
+        return 0;
+    }
+    vm_dump_context_stdout(ctx);
+    return 0;
 }
 duk_ret_t _native_iotjs_fs_stat(duk_context *ctx)
 {
-    vm_new_async_job(ctx, NULL, 0);
-    vm_dump_context_stdout(ctx);
-    // const char *path = duk_require_string(ctx, 0);
-    // size_t sz_in = sizeof(char *);
-    // vm_async_t *p = (vm_async_t *)vm_new_async(ctx,
-    //                                            sz_in,
-    //                                            sizeof(fs_stat_t));
-    // duk_dup(ctx, 0);
-    // duk_put_prop_string(ctx, -2, "path");
-
-    // const char **in = (const char **)IOTJS_ASYNC_IN(p);
-    // *in = path;
-
-    // event_t *ev = IOTJS_ASYNC_EVENT(p);
-    // struct timeval tv = {
-    //     .tv_sec = 0,
-    //     .tv_usec = 0,
-    // };
-    // if (event_add(ev, &tv))
-    // {
-    //     duk_pop_3(ctx);
-    //     duk_push_error_object(ctx, DUK_ERR_ERROR, "event_add error");
-    //     duk_throw(ctx);
-    // }
-    // if (thpool_add_work(p->threads, _async_fs_stat, p))
-    // {
-    //     duk_pop_3(ctx);
-    //     duk_push_error_object(ctx, DUK_ERR_ERROR, "event_add error");
-    //     duk_throw(ctx);
-    // }
-    // duk_put_prop(ctx, -3);
+    const char *path = duk_require_string(ctx, 0);
+    vm_async_job_t *job = vm_new_async_job(ctx,
+                                           _async_fs_stat_work,
+                                           0, sizeof(struct stat));
+    job->in = (void *)path;
+    job->complete = _async_fs_stat_complete;
+    duk_swap_top(ctx, -2);
+    duk_put_prop_lstring(ctx, -2, "args", 4);
+    vm_execute_async_job(ctx, job);
     return 1;
 }
 duk_ret_t native_iotjs_fs_init(duk_context *ctx)

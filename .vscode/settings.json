@@ -62,6 +62,8 @@
     "modules.h": "c",
     "thpool.h": "c",
     "js.h": "c",
-    "module.h": "c"
+    "module.h": "c",
+    "duk_console.h": "c",
+    "xxd.h": "c"
   }
 }

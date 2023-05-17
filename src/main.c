@@ -24,17 +24,23 @@ int main(int argc, char *argv[])
         puts("duk_create_heap_default error");
         return -1;
     }
-    if (vm_main(ctx, filename, argc, argv))
+    if (vm_init(ctx, argc, argv))
+    {
+        printf("iotjs_init: %s\n", duk_safe_to_string(ctx, -1));
+        duk_pop(ctx);
+        goto EXIT_ERROR;
+    }
+    if (vm_main(ctx, filename))
     {
         printf("iotjs_main: %s\n", duk_safe_to_string(ctx, -1));
         duk_pop(ctx);
         goto EXIT_ERROR;
     }
     duk_pop(ctx);
-    vm_context_t *vm = vm_get_context(ctx);
-    int err = event_base_dispatch(vm->eb);
-    if (err < 0)
+    if (vm_loop(ctx))
     {
+        printf("iotjs_loop: %s\n", duk_safe_to_string(ctx, -1));
+        duk_pop(ctx);
         goto EXIT_ERROR;
     }
 
