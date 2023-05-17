@@ -97,12 +97,15 @@ void _vm_init_context(duk_context *ctx, duk_context *main)
 }
 vm_context_t *_vm_get_context(duk_context *ctx, BOOL completer)
 {
-    duk_require_stack(ctx, completer ? 4 : 3);
+    duk_require_stack(ctx, completer ? 5 : 3);
     duk_push_heap_stash(ctx);
 
     if (completer)
     {
-        duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_COMPLETER);
+        duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_IOTJS);
+        duk_get_prop_lstring(ctx, -1, VM_IOTJS_KEY_COMPLETER);
+        duk_swap_top(ctx, -2);
+        duk_pop(ctx);
         duk_swap_top(ctx, -2);
     }
 
@@ -168,10 +171,17 @@ void _vm_async_job_handler(evutil_socket_t fd, short events, void *arg)
     duk_pop(ctx);
 
     // [..., job]
+    duk_dup_top(ctx);
     duk_push_c_function(ctx, job->complete, 1);
     duk_swap_top(ctx, -2);
-    duk_call(ctx, 1);
-    duk_pop(ctx);
+    if (!duk_pcall(ctx, 1))
+    {
+        duk_pop(ctx);
+        return;
+    }
+
+    // 回調出現錯誤，嘗試通知錯誤
+    vm_reject_async_job(ctx, -2);
 }
 void vm_complete_async_job(vm_async_job_t *job)
 {
@@ -217,7 +227,7 @@ vm_async_job_t *vm_new_async_job(duk_context *ctx, vm_async_job_function work, s
 
     duk_swap_top(ctx, -2);
     duk_new(ctx, 0);
-    duk_put_prop_lstring(ctx, -2, VM_STASH_KEY_COMPLETER);
+    duk_put_prop_lstring(ctx, -2, VM_IOTJS_KEY_COMPLETER);
 
     if (sz_in)
     {
@@ -241,7 +251,7 @@ void vm_execute_async_job(duk_context *ctx, vm_async_job_t *job)
         duk_throw(ctx);
     }
 
-    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_COMPLETER);
+    duk_get_prop_lstring(ctx, -1, VM_IOTJS_KEY_COMPLETER);
     duk_get_prop_lstring(ctx, -1, "promise", 7);
     duk_swap_top(ctx, -2);
     duk_pop(ctx);
@@ -272,10 +282,18 @@ vm_async_job_t *vm_get_async_job(duk_context *ctx)
 void vm_reject_async_job(duk_context *ctx, duk_idx_t i)
 {
     duk_require_stack(ctx, 3);
-    duk_get_prop_lstring(ctx, i, VM_STASH_KEY_COMPLETER);
+    duk_get_prop_lstring(ctx, i, VM_IOTJS_KEY_COMPLETER);
     duk_swap_top(ctx, -2);
     duk_push_lstring(ctx, "reject", 6);
     duk_swap_top(ctx, -2);
-    vm_dump_context_stdout(ctx);
+    duk_call_prop(ctx, -3, 1);
+}
+void vm_resolve_async_job(duk_context *ctx, duk_idx_t i)
+{
+    duk_require_stack(ctx, 3);
+    duk_get_prop_lstring(ctx, i, VM_IOTJS_KEY_COMPLETER);
+    duk_swap_top(ctx, -2);
+    duk_push_lstring(ctx, "resolve", 7);
+    duk_swap_top(ctx, -2);
     duk_call_prop(ctx, -3, 1);
 }

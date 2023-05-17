@@ -16,13 +16,22 @@ void _async_fs_stat_work(vm_async_job_t *job, void *in)
 duk_ret_t _async_fs_stat_complete(duk_context *ctx)
 {
     vm_async_job_t *job = (vm_async_job_t *)vm_get_async_job(ctx);
-    if (job->err)
+    switch (job->err)
     {
+    case 0:
+        duk_push_object(ctx);
+
+        vm_resolve_async_job(ctx, -2);
+        break;
+    case ENOENT:
+        duk_push_undefined(ctx);
+        vm_resolve_async_job(ctx, -2);
+        break;
+    default:
         duk_push_error_object(ctx, DUK_ERR_ERROR, strerror(job->err));
         vm_reject_async_job(ctx, -2);
-        return 0;
+        break;
     }
-    vm_dump_context_stdout(ctx);
     return 0;
 }
 duk_ret_t _native_iotjs_fs_stat(duk_context *ctx)

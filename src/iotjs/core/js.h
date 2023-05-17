@@ -77,4 +77,7 @@ vm_async_job_t *vm_get_async_job(duk_context *ctx);
 // 通知 js 異步錯誤
 // duk_throw ... job ... err => ... job ...
 void vm_reject_async_job(duk_context *ctx, duk_idx_t i);
+// 通知 js 異步成功
+// duk_throw ... job ... err => ... job ...
+void vm_resolve_async_job(duk_context *ctx, duk_idx_t i);
 #endif

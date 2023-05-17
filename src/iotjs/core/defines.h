@@ -30,7 +30,6 @@
 
 #define VM_IOTJS_KEY_COMPLETER "Completer", 9
 #define VM_IOTJS_KEY_ERROR "IotError", 8
-#define VM_STASH_KEY_COMPLETER "Completer", 9
 
 // 檢測引用類型 有效
 #define IOTJS_REFERENCE_VALID(var) (var.reference)
