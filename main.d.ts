@@ -1,6 +1,10 @@
-
+namespace iotjs {
+    export * from "iotjs"
+}
 
 declare module "iotjs" {
+    export const version: string
+    export const argv: Array<string>
     export class Completer<T> {
         readonly isCompleted: boolean
         readonly promise: Promise<T>
@@ -14,18 +18,27 @@ declare module "iotjs" {
 declare module "iotjs/fs" {
     export enum FileMode {
         dir = 0x80000000,// d: 是一個目錄
-        // ModeAppend                                     // a: append-only
-        // ModeExclusive                                  // l: exclusive use
-        // ModeTemporary                                  // T: temporary file; Plan 9 only
-        // ModeSymlink                                    // L: symbolic link
-        // ModeDevice                                     // D: device file
-        // ModeNamedPipe                                  // p: named pipe (FIFO)
-        // ModeSocket                                     // S: Unix domain socket
-        // ModeSetuid                                     // u: setuid
-        // ModeSetgid                                     // g: setgid
-        // ModeCharDevice                                 // c: Unix character device, when ModeDevice is set
-        // ModeSticky                                     // t: sticky
-        // ModeIrregular                                  // ?: non-regular file; nothing else is known about this file
+        append = 0x40000000,                               // a: append-only
+        exclusive = 0x20000000,                               // l: exclusive use
+        temporary = 0x10000000,                                 // T: temporary file; Plan 9 only
+        link = 0x8000000,                                  // L: symbolic link
+        device = 0x4000000,                         // D: device file
+        pipe = 0x2000000,                                  // p: named pipe (FIFO)
+        socket = 0x1000000,                                  // S: Unix domain socket
+        setuid = 0x800000,                                    // u: setuid
+        setgid = 0x400000,                                     // g: setgid
+        charDevice = 0x200000,                                 // c: Unix character device, when ModeDevice is set
+        sticky = 0x100000,                                    // t: sticky
+        irregular = 0x80000,                                  // ?: non-regular file; nothing else is known about this file
+
+        /**
+         * Mask for the type bits. For regular files, none will be set.
+         * 
+         *  (dir | link | pipe | socket | device | charDevice | irregular)
+         */
+        type = 0x8f280000,
+
+        perm = 0o777, // Unix permission bits
     }
     export interface Fileinfo {
         // 檔案名稱
@@ -35,16 +48,10 @@ declare module "iotjs/fs" {
         // 返回 bits
         readonly mode: FileMode
         // 檔案修改時間
-        readonly modTime: Date
+        readonly mtime: Date
         // 如果是目錄 返回 true 否則返回 false
         readonly isDir: boolean
     }
-    export function stat(): Promise<Fileinfo>
+    export function stat(path: string): Promise<Fileinfo>
+    export function statSync(path: string): Fileinfo
 }
-import { Completer, IotError } from "iotjs";
-declare const iotjs: {
-    readonly version: string
-    argv: Array<string>
-    Completer: Completer,
-    IotError: IotError,
-};

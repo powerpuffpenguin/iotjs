@@ -1,4 +1,5 @@
 import { Command } from "../flags";
+import { Used } from "./helper";
 function fibonacci(n: number): number {
     if (n < 2) {
         return n
@@ -12,6 +13,7 @@ async function async_fibonacci(n: number): Promise<number> {
     }
     return await async_fibonacci(n - 1) + await async_fibonacci(n - 2)
 }
+
 export const command = new Command({
     use: 'fibonacci',
     short: 'test fibonacci',
@@ -28,16 +30,16 @@ export const command = new Command({
             default: 31,
         })
         return () => {
-            const at = Date.now()
+            const used = new Used()
             if (fasync.value) {
                 async_fibonacci(n.value).then((exec) => {
-                    const diff = Date.now() - at
-                    console.log(`exec ${exec},used ${diff / 1000}s`)
+                    used.commit()
+                    console.log(`exec ${exec},used ${used}`)
                 })
             } else {
                 const exec = fibonacci(n.value)
-                const diff = Date.now() - at
-                console.log(`exec ${exec},used ${diff / 1000}s`)
+                used.commit()
+                console.log(`exec ${exec},used ${used}`)
             }
         }
     },
