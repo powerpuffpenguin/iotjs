@@ -65,6 +65,8 @@
     "module.h": "c",
     "duk_console.h": "c",
     "xxd.h": "c",
-    "defines.h": "c"
+    "defines.h": "c",
+    "event.h": "c",
+    "dns.h": "c"
   }
 }

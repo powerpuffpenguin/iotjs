@@ -55,3 +55,30 @@ declare module "iotjs/fs" {
     export function stat(path: string): Promise<Fileinfo>
     export function statSync(path: string): Fileinfo
 }
+declare module "iotjs/net" {
+    /**
+     * 表示一個網路端點的地址
+     */
+    export interface Addr {
+        /**
+         * 使用的網路名稱，例如 "tcp" "udp"
+         */
+        network: string
+        // 網路地址，例如 "192.0.2.1:25", "[2001:db8::1]:80"
+        address: string
+    }
+
+    /**
+     * 抽象的網路流連接，可以在其上進行雙向的數據量傳輸
+     */
+    export interface Conn {
+        read(buffer: Uint8Array): Promise<number>
+        write(buffer: Uint8Array): Promise<number>
+        close(): Promise<void>
+        localAddr(): Addr
+        remoteAddr(): Addr
+        setDeadline(t: Date): void
+        setReadDeadline(t: Date): void
+        setWriteDeadline(t: Date): void
+    }
+}

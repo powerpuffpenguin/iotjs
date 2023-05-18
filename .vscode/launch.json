@@ -8,7 +8,7 @@
             "name": "(gdb) Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "/home/king/project/cc/iotjs/dst/linux_default/bin/iotjs_test",
+            "program": "/home/king/project/cc/iotjs/dst/linux_default/bin/iotjs",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
