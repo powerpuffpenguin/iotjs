@@ -107,7 +107,7 @@ duk_ret_t _native_vm_load_module(duk_context *ctx)
         duk_push_error_object(ctx, DUK_ERR_ERROR, "resolved_id invalid");
         duk_throw(ctx);
     }
-    if (len >= 3 && !(memcmp(id + len - 3, ".js", 3)))
+    if (len > 1 && id[0] == '/')
     {
         id = duk_get_string(ctx, 0);
         _native_vm_read_text(ctx, id);
@@ -183,6 +183,11 @@ duk_int_t vm_init(duk_context *ctx, int argc, char *argv[])
     {
         duk_push_string(ctx, argv[i]);
         duk_put_prop_index(ctx, -2, i);
+    }
+    if (argc < 2)
+    {
+        duk_push_string(ctx, "main.js");
+        duk_put_prop_index(ctx, -2, 1);
     }
     duk_push_pointer(ctx, ctx);
     duk_int_t err = duk_pcall(ctx, 2);
