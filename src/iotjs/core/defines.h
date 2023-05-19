@@ -21,6 +21,7 @@
 #define IOTJS_FREE(p) free(p)
 #endif
 
+#define VM_STASH_KEY_PRIVATE "_iotjs", 6
 #define VM_STASH_KEY_IOTJS "iotjs", 5
 #define VM_STASH_KEY_C "c", 1
 #define VM_STASH_KEY_NATIVE "native", 6

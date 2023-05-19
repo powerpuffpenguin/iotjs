@@ -9,10 +9,12 @@
 
 #include <errno.h>
 #include <sys/stat.h>
-
+#include <unistd.h>
+#include <limits.h>
+duk_ret_t _vm_native_getcwd(duk_context *ctx);
 void _native_vm_init_stash(duk_context *ctx, duk_context *main);
 void _native_vm_init_global(duk_context *ctx);
-void _native_vm_vm_read_js(duk_context *ctx, const char *path)
+void _native_vm_read_text(duk_context *ctx, const char *path)
 {
     struct stat fsstat;
     if (stat(path, &fsstat))
@@ -46,6 +48,11 @@ void _native_vm_vm_read_js(duk_context *ctx, const char *path)
     fclose(f);
     duk_buffer_to_string(ctx, -1);
 }
+duk_ret_t _native_vm_read_utf8(duk_context *ctx)
+{
+    _native_vm_read_text(ctx, duk_require_string(ctx, 0));
+    return 1;
+}
 duk_ret_t _native_vm_resolve_module(duk_context *ctx)
 {
     duk_require_stack_top(ctx, 9);
@@ -60,19 +67,25 @@ duk_ret_t _native_vm_resolve_module(duk_context *ctx)
     duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_NATIVE);
     duk_swap_top(ctx, -2);
 
-    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_C);
+    // [ requested_id, parent_id, native, stash]
+    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_PRIVATE);
     duk_swap_top(ctx, -2);
     duk_pop(ctx);
 
-    //  [ requested_id, parent_id, native, c]
-    duk_get_prop_lstring(ctx, -1, "module", 6);
-    duk_get_prop_lstring(ctx, -1, "resolve", 7);
+    // [ requested_id, parent_id, native, _iotjs]
+    duk_get_prop_lstring(ctx, -1, "resolve_module", 14);
     duk_swap_top(ctx, -2);
     duk_pop(ctx);
-    //  [ requested_id, parent_id, native, c, resolve]
     duk_swap_top(ctx, 0);
-    //  [ resolve, parent_id, native, c, requested_id]
+
+// [ resolve, parent_id, native, requested_id]
+// vm_dump_context_stdout(ctx);
+#ifdef VM_DEBUG_MODULE_LOAD
+    duk_push_boolean(ctx, 1);
     duk_call(ctx, 4);
+#else
+    duk_call(ctx, 3);
+#endif
     return 1; /*nrets*/
 }
 duk_ret_t _native_vm_load_module(duk_context *ctx)
@@ -97,7 +110,7 @@ duk_ret_t _native_vm_load_module(duk_context *ctx)
     if (len >= 3 && !(memcmp(id + len - 3, ".js", 3)))
     {
         id = duk_get_string(ctx, 0);
-        _native_vm_vm_read_js(ctx, id);
+        _native_vm_read_text(ctx, id);
         return 1;
     }
     duk_push_heap_stash(ctx);
@@ -182,7 +195,16 @@ duk_int_t vm_init(duk_context *ctx, int argc, char *argv[])
 duk_ret_t _native_vm_main(duk_context *ctx)
 {
     const char *path = duk_get_string(ctx, 0);
-    _native_vm_vm_read_js(ctx, path);
+    if (path[0] != '/')
+    {
+        _vm_native_getcwd(ctx);
+        duk_swap_top(ctx, -2);
+        duk_push_lstring(ctx, "/", 1);
+        duk_swap_top(ctx, -2);
+        duk_concat(ctx, 3);
+        path = duk_get_string(ctx, 0);
+    }
+    _native_vm_read_text(ctx, path);
     duk_swap_top(ctx, 0);
     if (duk_module_node_peval_main(ctx, path))
     {
@@ -251,34 +273,96 @@ duk_ret_t _native_vm_c_stat(duk_context *ctx)
     duk_put_prop_string(ctx, -2, "mode");
     return 1;
 }
-void _native_vm_init_c(duk_context *ctx)
+
+duk_ret_t _vm_native_getcwd(duk_context *ctx)
 {
-    duk_require_stack(ctx, 5);
-    // 檢測檔案或檔案夾是否存在，不存在返回 undefined
-    duk_push_c_function(ctx, _native_vm_c_stat, 1);
-    duk_put_prop_lstring(ctx, -2, "stat", 4);
-
-    // 導入 path 用於解析模塊
-    duk_push_global_object(ctx);
+    char path[MAXPATHLEN];
+    if (!getcwd(path, MAXPATHLEN))
+    {
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "getcwd error(%d): %s", errno, strerror(errno));
+        duk_throw(ctx);
+    }
+    duk_push_string(ctx, path);
+    return 1;
+}
+duk_ret_t _vm_native_exit(duk_context *ctx)
+{
+    if (duk_is_number(ctx, -1))
+    {
+        exit(duk_get_int(ctx, -1));
+    }
+    else
+    {
+        exit(-1);
+    }
+    return 0;
+}
+duk_ret_t _vm_native_stat_module(duk_context *ctx)
+{
+    const char *path = duk_get_string(ctx, 0);
+    struct stat fsstat;
+    if (stat(path, &fsstat))
+    {
+        if (errno != ENOENT)
+        {
+            duk_push_error_object(ctx, DUK_ERR_ERROR, "stat error(%d): %s", errno, strerror(errno));
+            duk_throw(ctx);
+        }
+        return 0;
+    }
+    duk_pop(ctx);
     duk_push_object(ctx);
-    duk_put_prop_lstring(ctx, -2, "exports", 7);
-    duk_eval_lstring(ctx, (const char *)core_path_js, core_path_js_len);
-    duk_pop(ctx);
-    duk_get_prop_lstring(ctx, -1, "exports", 7);
-    duk_swap_top(ctx, -2);
-    duk_del_prop_lstring(ctx, -1, "exports", 7);
-    duk_pop(ctx);
-    duk_put_prop_lstring(ctx, -2, "path", 4);
 
-    // 導入 模塊解析函數
-    duk_eval_lstring(ctx, (const char *)core_module_js, core_module_js_len);
-    duk_put_prop_lstring(ctx, -2, "module", 6);
+    duk_uint_t mode = 0;
+    if (S_ISDIR(fsstat.st_mode))
+    {
+        mode |= 0x1;
+    }
+    else if (S_ISREG(fsstat.st_mode))
+    {
+        mode |= 0x2;
+    }
+    duk_push_uint(ctx, mode);
+    duk_put_prop_string(ctx, -2, "mode");
+    return 1;
 }
 void _native_vm_init_stash(duk_context *ctx, duk_context *main)
 {
-    duk_require_stack(ctx, 3);
+    // [stash]
+    duk_require_stack(ctx, 10);
+    // private
+    {
+        duk_eval_lstring(ctx, (char *)iotjs_core_js_tsc_hook_min_js, iotjs_core_js_tsc_hook_min_js_len);
+        duk_dup_top(ctx);
+        duk_dup_top(ctx);
+        duk_put_prop_lstring(ctx, -4, VM_STASH_KEY_PRIVATE);
+
+        // 導入 path 用於解析路徑
+        duk_push_object(ctx);
+        duk_eval_lstring(ctx, (const char *)iotjs_core_js_tsc_path_min_js, iotjs_core_js_tsc_path_min_js_len);
+        duk_swap_top(ctx, -3);
+        duk_call(ctx, 2);
+        duk_put_prop_lstring(ctx, -2, "path", 4);
+
+        // [stash, _iotjs]
+        duk_push_c_function(ctx, _native_vm_read_utf8, 1);
+        duk_put_prop_lstring(ctx, -2, "read_text", 9);
+        duk_push_c_function(ctx, _vm_native_stat_module, 1);
+        duk_put_prop_lstring(ctx, -2, "stat_module", 11);
+        duk_push_c_function(ctx, _vm_native_getcwd, 0);
+        duk_put_prop_lstring(ctx, -2, "getcwd", 6);
+        duk_push_c_function(ctx, _vm_native_exit, 1);
+        duk_put_prop_lstring(ctx, -2, "exit", 4);
+
+        duk_eval_lstring(ctx, (const char *)iotjs_core_ts_tsc_module_min_js, iotjs_core_ts_tsc_module_min_js_len);
+        duk_dup(ctx, -2);
+        duk_dup_top(ctx);
+        duk_call(ctx, 2);
+
+        duk_pop_2(ctx);
+    }
+
     duk_push_object(ctx);
-    _native_vm_init_c(ctx);
     duk_put_prop_lstring(ctx, -2, VM_STASH_KEY_C);
     duk_push_object(ctx);
     duk_put_prop_lstring(ctx, -2, VM_STASH_KEY_TIMEOUT);
@@ -292,7 +376,7 @@ void _native_vm_init_stash(duk_context *ctx, duk_context *main)
 
     // iotjs
     duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_IOTJS);
-    duk_eval_lstring(ctx, (const char *)core_iotjs_js, core_iotjs_js_len);
+    duk_eval_lstring(ctx, (const char *)iotjs_core_iotjs_min_js, iotjs_core_iotjs_min_js_len);
     duk_get_prop_lstring(ctx, -1, VM_IOTJS_KEY_COMPLETER);
     duk_put_prop_lstring(ctx, -3, VM_IOTJS_KEY_COMPLETER);
     duk_get_prop_lstring(ctx, -1, VM_IOTJS_KEY_ERROR);
@@ -306,7 +390,7 @@ void _native_vm_init_global(duk_context *ctx)
 
     // js
     duk_push_string(ctx, "(function(self){var exports=self;var module={exports:self};");
-    duk_push_lstring(ctx, (const char *)core_es6_shim_js, core_es6_shim_js_len);
+    duk_push_lstring(ctx, (const char *)iotjs_core_es6_shim_min_js, iotjs_core_es6_shim_min_js_len);
     duk_push_string(ctx, ";return module;})");
     duk_concat(ctx, 3);
     duk_eval(ctx);

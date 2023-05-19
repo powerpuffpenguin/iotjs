@@ -33,6 +33,86 @@ build_xxd(){
         echo "#endif // IOTJS_${once}_XXD_H" >> "$output"
     done
 }
+build_min_xdd(){
+    cd "$rootDir/src"
+    local output="$1/xxd.h"
+    local once=${1//\//_}
+    echo "#ifndef IOTJS_${once}_XXD_H" > "$output"
+    echo "#define IOTJS_${once}_XXD_H" >> "$output"
+    local ifs=$IFS
+    IFS=$'\n'
+    files=(`find "$1/" -iname "*.min.js"`)
+    IFS=$ifs
+    local file
+    for file in "${files[@]}";do
+        log_info "xdd -i $file"
+        xxd -i "$file" >> "$output"
+    done
+    echo "#endif // IOTJS_${once}_XXD_H" >> "$output"
+}
+build_min_js(){
+    local ifs=$IFS
+    IFS=$'\n'
+    local files=(`find "$1/" -iname *.js`)
+    IFS=$ifs
+    local dst
+    local src
+    local cut
+    for src in "${files[@]}";do
+        if [[ $src == *.min.js ]] || [[ $src == *.cut.js ]];then
+            continue
+        fi
+        dst=${src%.js}.min.js
+        log_info "google-closure-compiler --js '$src' --js_output_file '$dst'"
+        local name=`basename $src`
+        if [[ $name == tsc.* ]] ;then
+            cut=${src%.js}.cut.js
+            touch "$cut"
+            local line
+            local ok=0
+            while read -r line || [[ -n $line ]]; do
+                if [[ "$ok" == 0 ]] && [[ "$line" == Object.defineProperty* ]];then
+                    ok=1
+                    echo "(function(){
+\"use strict\";
+return (function(exports,_iotjs){
+var __values=_iotjs.__values;
+var __extends=_iotjs.__extends;
+var __awaiter=_iotjs.__awaiter;
+var __generator=_iotjs.__generator;
+" > "$cut"
+                fi
+                echo "$line" >> "$cut"
+            done < "$src"
+            if [[ $ok == 1 ]];then
+                echo "return exports;});})();" >> "$cut"
+            fi
+            google-closure-compiler --language_in ECMASCRIPT5 --language_out ECMASCRIPT5 --js "$cut" --js_output_file "$dst"
+        else
+            google-closure-compiler --language_in ECMASCRIPT5 --language_out ECMASCRIPT5 --js "$src" --js_output_file "$dst"
+        fi
+    done
+}
+build_js(){
+    if [[ $js == false ]];then
+        return
+    fi
+    cd "$rootDir/src"
+    log_info "build js"
+    tsc
+
+    local nodes=(
+        'iotjs/core'
+        'iotjs/modules'
+    )
+    local node
+    for node in "${nodes[@]}";do
+        build_min_js "$node"
+    done
+    for node in "${nodes[@]}";do
+        build_min_xdd "$node"
+    done
+}
 build_libevent(){
     if [[ $cmake == true ]] || [[ $make == true ]];then
         cd "$rootDir/$dir"
@@ -65,9 +145,9 @@ build_libevent(){
 }
 build_iotjs(){
     if [[ $cmake == true ]] || [[ $make == true ]];then
-        if [[ $cmake == true ]];then
-            build_xxd
-        fi
+        # if [[ $cmake == true ]];then
+        #     build_xxd
+        # fi
 
 
         cd "$rootDir/$dir"
@@ -136,6 +216,7 @@ on_main(){
             mkdir "$dir" -p
         fi
     fi
+    build_js
     build_libevent
     build_iotjs
 
@@ -170,6 +251,8 @@ command_flags -t bool -d 'Run test' \
     -v test -s t
 command_flags -t bool -d 'Build third party' \
     -v third_party -l third-party
+command_flags -t bool -d 'Build js code' \
+    -v js -s j
 
 command_flags -t string -d 'set CMAKE_BUILD_TYPE' \
     -v build_type -l build-type \
