@@ -18,7 +18,7 @@ void vm_push_uint64(duk_context *ctx, uint64_t val)
     if (val > (uint64_t)(IOTJS_MAX_SAFE_INTEGER))
     {
         char s[21] = "";
-        snprintf(s, 21, "%lu", val);
+        snprintf(s, 21, "%" PRId64 "", val);
         duk_push_string(ctx, s);
     }
     else
@@ -31,7 +31,7 @@ void vm_push_int64(duk_context *ctx, int64_t val)
     if (val > IOTJS_MAX_SAFE_INTEGER || val < IOTJS_MIN_SAFE_INTEGER)
     {
         char s[21] = "";
-        snprintf(s, 21, "%ld", val);
+        snprintf(s, 21, "%" PRId64 "", val);
         duk_push_string(ctx, s);
     }
     else

@@ -241,8 +241,8 @@ int assert_equal(assert_test_t *test,
         printf("      %12s: %d\n", "actual", (int)actual);
         break;
     case ASSERT_TYPE_PTR:
-        printf("      %12s: %lu\n", "expected", expected);
-        printf("      %12s: %lu\n", "actual", actual);
+        printf("      %12s: %zu\n", "expected", expected);
+        printf("      %12s: %zu\n", "actual", actual);
         break;
     case ASSERT_TYPE_C_STR:
         printf("      %12s: %s\n", "expected", (char *)expected);

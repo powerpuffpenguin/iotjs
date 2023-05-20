@@ -199,6 +199,12 @@ on_main(){
                 "-DCMAKE_CXX_COMPILER=$toolchain/bin/csky-linux-g++"
             )
         ;;
+        linux_arm)
+            cmake_args+=(
+                "-DCMAKE_C_COMPILER=$toolchain/bin/arm-linux-gnueabihf-gcc"
+                "-DCMAKE_CXX_COMPILER=$toolchain/bin/arm-linux-gnueabihf-g++"
+            )
+        ;;
         linux_amd64)
             cmake_args+=(
                 "-DCMAKE_C_COMPILER=$toolchain/bin/gcc"
@@ -240,7 +246,7 @@ root=$result
 
 command_flags -t string -d 'Build arch' \
     -v arch \
-    -V amd64 -V csky \
+    -V amd64 -V arm -V csky \
     -D amd64
 command_flags -t string -d 'Build os' \
     -v os \
