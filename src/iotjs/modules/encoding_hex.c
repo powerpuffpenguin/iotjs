@@ -40,8 +40,8 @@ duk_ret_t native_iotjs_encoding_hex__encodeToString(duk_context *ctx)
 duk_ret_t native_iotjs_encoding_hex__encode(duk_context *ctx)
 {
     duk_size_t sz_dst, sz_src;
-    duk_uint8_t *dst = duk_require_buffer(ctx, 0, &sz_dst);
-    duk_uint8_t *src = duk_require_buffer(ctx, 1, &sz_src);
+    duk_uint8_t *dst = duk_require_buffer_data(ctx, 0, &sz_dst);
+    duk_uint8_t *src = duk_require_buffer_data(ctx, 1, &sz_src);
     if (!sz_src)
     {
         duk_push_uint(ctx, 0);
@@ -124,8 +124,8 @@ duk_ret_t native_iotjs_encoding_hex__decodeString(duk_context *ctx)
 duk_ret_t native_iotjs_encoding_hex__decode(duk_context *ctx)
 {
     duk_size_t sz_dst, sz_src;
-    duk_uint8_t *dst = duk_require_buffer(ctx, 0, &sz_dst);
-    duk_uint8_t *src = duk_require_buffer(ctx, 1, &sz_src);
+    duk_uint8_t *dst = duk_require_buffer_data(ctx, 0, &sz_dst);
+    duk_uint8_t *src = duk_require_buffer_data(ctx, 1, &sz_src);
     if (sz_src % 2)
     {
         duk_push_error_object(ctx, DUK_ERR_ERROR, "encoding/hex: invalid src.length");

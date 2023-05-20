@@ -19,6 +19,25 @@ class AssertQuit { }
 const assertQuit = new AssertQuit()
 export class Assert {
     constructor(public readonly module: string, public readonly name: string) { }
+    equal<T>(expect: T, actual: T, ...msg: Array<any>) {
+        const s_expect = JSON.stringify(expect)
+        const s_actual = JSON.stringify(actual)
+        if (s_expect == s_actual) {
+            return
+        }
+        console.log(`--- FAIL: ${this.name}`)
+        console.log(`  Error: not equal`)
+        console.log(`  Expect:`, s_expect)
+        console.log(`  Actual:`, s_actual)
+        if (msg.length != 0) {
+            console.log(`  Message:`, ...msg)
+        }
+        const stack = new Error().stack
+        if (typeof stack === "string") {
+            console.log(`  Stack:`, stack)
+        }
+        throw assertQuit
+    }
 }
 
 export class Module {
@@ -64,8 +83,7 @@ export class Module {
             } catch (e) {
                 const used = (Date.now() - at) / 1000
                 if (e !== assertQuit) {
-                    console.trace(e)
-                    console.log(` -`)
+                    console.trace(`${e}`)
                 }
                 console.log(` - ${key} failed, used ${used}s`)
                 failed++
