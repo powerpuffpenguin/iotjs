@@ -389,6 +389,29 @@ void _native_vm_init_global(duk_context *ctx)
     duk_call(ctx, 1);
     duk_pop(ctx);
 
+    // iotjs
+    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_IOTJS);
+    // [..., iotjs]
+    duk_push_string(ctx, VM_IOTJS_OS);
+    duk_put_prop_lstring(ctx, -2, "os", 2);
+    duk_push_string(ctx, VM_IOTJS_ARCH);
+    duk_put_prop_lstring(ctx, -2, "arch", 4);
+    duk_push_string(ctx, VM_IOTJS_VERSION);
+    duk_put_prop_lstring(ctx, -2, "version", 7);
+
+    duk_push_heap_stash(ctx);
+    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_PRIVATE);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
+    // [..., iotjs, _iotjs]
+    duk_get_prop_lstring(ctx, -1, "IotError", 8);
+    duk_put_prop_lstring(ctx, -3, "IotError", 8);
+    duk_get_prop_lstring(ctx, -1, "getcwd", 6);
+    duk_put_prop_lstring(ctx, -3, "getcwd", 6);
+    duk_get_prop_lstring(ctx, -1, "exit", 4);
+    duk_put_prop_lstring(ctx, -3, "exit", 4);
+
+    duk_pop_2(ctx);
     // vm_dump_context_stdout(ctx);
     // exit(1);
 }

@@ -3,12 +3,24 @@ namespace iotjs {
 }
 
 declare module "iotjs" {
+    // iotjs 系統版本號
     export const version: string
+    // 編譯目標 os
     export const os: string
+    // 編譯目標 arch
     export const arch: string
+    // 啓動進程的命令參數
     export const argv: Array<string>
+    // 大部分系統錯誤的基類
     export class IotError extends Error { }
-
+    /**
+     * 返回當前工作目錄
+     */
+    export function getcwd(): string
+    /**
+     * 調用 c 的 exit(code) 退出程式
+     */
+    export function exit(code: number): void
 }
 declare module "iotjs/encoding/hex" {
     export type Buffer = ArrayBuffer | DataView | Int8Array | Uint8Array | Uint8ClampedArray | Int16Array | Uint16Array | Int32Array | Uint32Array | Float32Array | Float64Array

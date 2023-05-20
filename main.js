@@ -18,3 +18,5 @@ console.log(hex.decodeString(s).byteLength)
 //     console.log("err:", e.toString(), e instanceof Error)
 // })
 
+console.log(iotjs)
+console.log(require("iotjs"))
