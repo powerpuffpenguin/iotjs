@@ -76,7 +76,7 @@ void vm_path(duk_context *ctx)
 {
     duk_require_stack(ctx, 4);
     duk_push_heap_stash(ctx);
-    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_C);
+    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_PRIVATE);
     duk_get_prop_lstring(ctx, -1, "path", 4);
     duk_swap_top(ctx, -3);
     duk_pop_2(ctx);

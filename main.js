@@ -9,4 +9,6 @@
 // })
 console.log("main.js")
 var m = require("iotjs")
-console.log(m.argv)
+console.log(iotjs)
+console.log(m)
+// console.log(m.argv)

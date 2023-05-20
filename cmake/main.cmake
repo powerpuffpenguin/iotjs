@@ -1,6 +1,9 @@
 message("Begin cmake ${target_name}")
 project(${target_name})
-
+list(APPEND target_definitions
+    "-DVM_IOTJS_OS=\"${VM_IOTJS_OS}\""
+    "-DVM_IOTJS_ARCH=\"${VM_IOTJS_ARCH}\""
+)
 list(APPEND target_libs
     -lm
 )

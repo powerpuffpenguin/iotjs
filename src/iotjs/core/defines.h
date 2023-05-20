@@ -21,9 +21,15 @@
 #define IOTJS_FREE(p) free(p)
 #endif
 
+#ifndef VM_IOTJS_OS
+#define VM_IOTJS_OS "linux"
+#endif
+#ifndef VM_IOTJS_ARCH
+#define VM_IOTJS_ARCH "amd64"
+#endif
+
 #define VM_STASH_KEY_PRIVATE "_iotjs", 6
 #define VM_STASH_KEY_IOTJS "iotjs", 5
-#define VM_STASH_KEY_C "c", 1
 #define VM_STASH_KEY_NATIVE "native", 6
 #define VM_STASH_KEY_TIMEOUT "timeout", 7
 #define VM_STASH_KEY_INTERVAL "interval", 8

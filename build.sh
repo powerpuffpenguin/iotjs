@@ -75,7 +75,7 @@ build_min_js(){
                     ok=1
                     echo "(function(){
 \"use strict\";
-return (function(exports,_iotjs){
+return (function(exports,_iotjs,deps){
 var __values=_iotjs.__values;
 var __extends=_iotjs.__extends;
 var __awaiter=_iotjs.__awaiter;
@@ -181,7 +181,13 @@ on_main(){
     local start=$result
 
     local target="${os}_$arch"
+    local iotjs_arch=$arch
+    if [[ $iotjs_arch == "default" ]];then
+        iotjs_arch=amd64
+    fi
     local cmake_args=(
+        -DVM_IOTJS_OS=$os
+        -DVM_IOTJS_ARCH=$iotjs_arch
         -DCMAKE_SYSTEM_NAME=Linux
         "-DOUTPUT_ROOT_DIR=dst/$target"
         -DEVENT__HAVE_PTHREADS=1

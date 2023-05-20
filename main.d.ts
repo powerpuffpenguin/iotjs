@@ -4,16 +4,10 @@ namespace iotjs {
 
 declare module "iotjs" {
     export const version: string
+    export const os: string
+    export const arch: string
     export const argv: Array<string>
-    export class Completer<T> {
-        readonly isCompleted: boolean
-        readonly promise: Promise<T>
-        resolve(v: T): void
-        reject(reason?: any): void
-    }
-    export class IotError extends Error {
-        code: number
-    }
+    export class IotError extends Error { }
 }
 declare module "iotjs/fs" {
     export enum FileMode {

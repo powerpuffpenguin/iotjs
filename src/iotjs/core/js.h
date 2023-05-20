@@ -7,7 +7,7 @@
 #include <thpool.h>
 #include <pthread.h>
 
-#define VM_VERSION "v0.0.1"
+#define VM_IOTJS_VERSION "v0.0.1"
 
 typedef struct event_base event_base_t;
 typedef struct event event_t;

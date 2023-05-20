@@ -142,20 +142,21 @@ duk_ret_t _native_vm_init(duk_context *ctx)
     duk_push_object(ctx);
     duk_swap_top(ctx, -2);
     duk_put_prop_lstring(ctx, -2, "argv", 4);
+    duk_dup_top(ctx);
+    duk_push_global_object(ctx);
+    duk_swap_top(ctx, -2);
+    duk_put_prop_lstring(ctx, -2, VM_STASH_KEY_IOTJS);
+    duk_pop(ctx);
 
     // [iotjs]
     duk_push_heap_stash(ctx);
     duk_swap_top(ctx, -2);
     duk_put_prop_lstring(ctx, -2, VM_STASH_KEY_IOTJS);
     _native_vm_init_stash(ctx, main);
-    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_IOTJS);
-    duk_swap_top(ctx, -2);
     duk_pop(ctx);
 
-    // [iotjs]
+    // []
     duk_push_global_object(ctx);
-    duk_swap_top(ctx, -2);
-    duk_put_prop_lstring(ctx, -2, VM_STASH_KEY_IOTJS);
     _native_vm_init_global(ctx);
     duk_pop(ctx);
 
@@ -368,8 +369,6 @@ void _native_vm_init_stash(duk_context *ctx, duk_context *main)
     }
 
     duk_push_object(ctx);
-    duk_put_prop_lstring(ctx, -2, VM_STASH_KEY_C);
-    duk_push_object(ctx);
     duk_put_prop_lstring(ctx, -2, VM_STASH_KEY_TIMEOUT);
     duk_push_object(ctx);
     duk_put_prop_lstring(ctx, -2, VM_STASH_KEY_INTERVAL);
@@ -378,30 +377,18 @@ void _native_vm_init_stash(duk_context *ctx, duk_context *main)
 
     _vm_init_context(ctx, main);
     _vm_init_native(ctx);
-
-    // iotjs
-    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_IOTJS);
-    duk_eval_lstring(ctx, (const char *)iotjs_core_iotjs_min_js, iotjs_core_iotjs_min_js_len);
-    duk_get_prop_lstring(ctx, -1, VM_IOTJS_KEY_COMPLETER);
-    duk_put_prop_lstring(ctx, -3, VM_IOTJS_KEY_COMPLETER);
-    duk_get_prop_lstring(ctx, -1, VM_IOTJS_KEY_ERROR);
-    duk_put_prop_lstring(ctx, -3, VM_IOTJS_KEY_ERROR);
-    duk_pop_2(ctx);
 }
 void _native_vm_init_global(duk_context *ctx)
 {
     duk_require_stack(ctx, 3);
     _vm_init_timer(ctx);
 
-    // js
-    duk_push_string(ctx, "(function(self){var exports=self;var module={exports:self};");
-    duk_push_lstring(ctx, (const char *)iotjs_core_es6_shim_min_js, iotjs_core_es6_shim_min_js_len);
-    duk_push_string(ctx, ";return module;})");
-    duk_concat(ctx, 3);
-    duk_eval(ctx);
+    // es6 shim
+    duk_eval_lstring(ctx, (const char *)iotjs_core_es6_shim_min_js, iotjs_core_es6_shim_min_js_len);
     duk_push_global_object(ctx);
     duk_call(ctx, 1);
     duk_pop(ctx);
 
     // vm_dump_context_stdout(ctx);
+    // exit(1);
 }

@@ -1,8 +1,4 @@
 declare namespace _iotjs {
-    declare namespace dns {
-        export function resolve_ip4(address: string): Promise<Uint8Array>;
-        export function resolve_ip6(address: string): Promise<Uint8Array>;
-    }
     declare namespace path {
         export function join(...elem: Array<string>): string
         export function clean(path: string): string
@@ -31,4 +27,14 @@ declare namespace _iotjs {
      * 調用 c 的 exit(code) 退出程式
      */
     export function exit(code: number): void
+    /**
+     * 錯誤基類
+     */
+    export class IotError extends Error {
+        constructor(message?: string | undefined, options?: ErrorOptions | undefined);
+    }
+    declare namespace dns {
+        export function resolve_ip4(address: string): Promise<Uint8Array>;
+        export function resolve_ip6(address: string): Promise<Uint8Array>;
+    }
 }
