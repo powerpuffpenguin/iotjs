@@ -2,6 +2,7 @@ import { Command, Parser } from "./flags";
 import { command as timer } from "./test/timer";
 import { command as fibonacci } from "./test/fibonacci";
 import { command as fs } from "./test/fs";
+import { command as unit } from "./unit/unit";
 const root = new Command({
     use: "main.js",
     short: "iotjs example and test",
@@ -10,6 +11,7 @@ const root = new Command({
     },
 });
 root.add(
+    unit,
     timer,
     fibonacci,
     fs,

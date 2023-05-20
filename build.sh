@@ -190,7 +190,6 @@ on_main(){
         -DVM_IOTJS_ARCH=$iotjs_arch
         -DCMAKE_SYSTEM_NAME=Linux
         "-DOUTPUT_ROOT_DIR=dst/$target"
-        -DEVENT__HAVE_PTHREADS=1
     )
     case "$target" in
         linux_csky)
@@ -200,7 +199,11 @@ on_main(){
                 "-DCMAKE_CXX_COMPILER=$toolchain/bin/csky-linux-g++"
             )
         ;;
-        linux_default)
+        linux_amd64)
+            cmake_args+=(
+                "-DCMAKE_C_COMPILER=$toolchain/bin/gcc"
+                "-DCMAKE_CXX_COMPILER=$toolchain/bin/g++"
+            )
         ;;
         *)
             log_fatal "unknow target: '$target'"
@@ -237,8 +240,8 @@ root=$result
 
 command_flags -t string -d 'Build arch' \
     -v arch \
-    -V csky -V default \
-    -D default
+    -V amd64 -V csky \
+    -D amd64
 command_flags -t string -d 'Build os' \
     -v os \
     -V linux \
