@@ -166,5 +166,6 @@ dkms.conf
 
 /dst/
 /bin/dst/
+/bin/bundle.js
 
 *.cut.js
