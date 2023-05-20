@@ -9,6 +9,7 @@ console.log(hex.encodeLen(u0.length))
 var s = hex.encodeToString(view)
 console.log(s)
 console.log(hex.encodeToString(new Float32Array([1, 2])))
+console.log(hex.decodeString(s).byteLength)
 // var stat = fs.stat("./main.js")
 // stat.then(function (info) {
 //     console.log("info:", info, new Date(), info.mode & fs.FileMode.regular ? true : false)
