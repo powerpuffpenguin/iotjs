@@ -28,11 +28,17 @@
 #define VM_IOTJS_ARCH "amd64"
 #endif
 
+// 存儲導出給 js 的核心 c 代碼，用於實現 js 核心庫使用
 #define VM_STASH_KEY_PRIVATE "_iotjs", 6
+// 全局變量存儲了一些 iotjs 的 runtime 信息
 #define VM_STASH_KEY_IOTJS "iotjs", 5
+// 保存 native 實現的 js 模塊初始化函數
 #define VM_STASH_KEY_NATIVE "native", 6
+// 存儲 setTimeout 定時器
 #define VM_STASH_KEY_TIMEOUT "timeout", 7
+// 存儲 setInterval 定時器
 #define VM_STASH_KEY_INTERVAL "interval", 8
+// 存儲工作線程中正在執行的異步工作
 #define VM_STASH_KEY_JOBS "jobs", 4
 
 #define VM_IOTJS_KEY_COMPLETER "Completer", 9
@@ -77,6 +83,8 @@
 #define IOTJS_MAX_INT8 127
 #define IOTJS_MIN_INT8 -128
 #define IOTJS_MAX_UINT8 255
+
+#define IOTJS_HEX_TABLE "0123456789abcdef"
 
 #define IOTJS_FILEMODE_DIR 0x80000000
 #define IOTJS_FILEMODE_APPEND 0x40000000

@@ -8,6 +8,16 @@ declare module "iotjs" {
     export const arch: string
     export const argv: Array<string>
     export class IotError extends Error { }
+
+}
+declare module "iotjs/encoding/hex" {
+    export type Buffer = ArrayBuffer | DataView | Int8Array | Uint8Array | Uint8ClampedArray | Int16Array | Uint16Array | Int32Array | Uint32Array | Float32Array | Float64Array
+    export function encodeLen(n: number): number
+    export function encodeToString(src: Buffer): string
+    export function encode(dst: Buffer, src: Buffer): number
+    export function decodedLen(x: number): number
+    export function decodeString(s: string): Uint8Array;
+    export function decode(dst: Buffer, src: Buffer): number
 }
 declare module "iotjs/fs" {
     export enum FileMode {
@@ -50,6 +60,16 @@ declare module "iotjs/fs" {
     export function statSync(path: string): Fileinfo
 }
 declare module "iotjs/net" {
+    export const IPv4len = 4
+    export const IPv6len = 16
+    /**
+     * 代表了一個 ip 地址
+     */
+    export class IP {
+        // bytes 長度必須爲 4 或 16
+        constructor(bytes: Uint8Array)
+    }
+    export function ipv4(a: number, b: number, c: number, d: number): IP
     /**
      * 表示一個網路端點的地址
      */
