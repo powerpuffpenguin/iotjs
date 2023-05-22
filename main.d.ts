@@ -163,9 +163,40 @@ declare module "iotjs/net" {
      * 代表了一個 ip 地址
      */
     export class IP {
-        // bytes 長度必須爲 4 或 16
-        constructor(bytes: Uint8Array)
+        /** 
+         * 將 ip4 字符串轉爲 IP
+         */
+        static fromIP4(s: string): IP
+        /** 
+         * 將 ip6 字符串轉爲 IP
+         */
+        static fromIP6(s: string): IP
+        /**
+         * @param ip  bytes 長度必須爲 4 或 16
+         */
+        constructor(ip: Uint8Array)
+        /**
+         * 返回 存儲 ip 的字節
+         */
+        readonly ip: Uint8Array
+        /**
+         * 如果是 ipv4 返回 true
+         */
+        readonly ip4: boolean
+        /**
+         * 如果是 ipv6 返回 true
+         */
+        readonly ip6: boolean
+        /**
+         * 將 ip 轉爲人類友好的字符串
+         */
+        toString(): string
+        /**
+         * 類似 toString 但會添加一個版本前綴 ip4:[xxx] ip6:[xxx]
+         */
+        string(): string
     }
+    export function resolveIP(network: 'ip' | 'ip4' | 'ip6'): Promise<Array<IP>>
     export function ipv4(a: number, b: number, c: number, d: number): IP
     /**
      * 表示一個網路端點的地址

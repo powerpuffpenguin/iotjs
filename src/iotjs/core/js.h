@@ -4,12 +4,15 @@
 #include <iotjs/core/defines.h>
 #include <duktape.h>
 #include <event2/event.h>
+#include <event2/dns.h>
 #include <thpool.h>
 #include <pthread.h>
 
 #define VM_IOTJS_VERSION "v0.0.1"
 
 typedef struct event_base event_base_t;
+typedef struct evdns_base evdns_base_t;
+
 typedef struct event event_t;
 typedef struct timeval time_value_t;
 
@@ -19,6 +22,11 @@ typedef struct
     duk_context *ctx;
     // 用於創建 event 以便通知異步完成
     event_base_t *eb;
+    // 用於異步 解析 dns
+    evdns_base_t *esb;
+    // 正在解析的 dns 數量
+    duk_uint64_t dns;
+
     // 線程池用於 將耗時操作提交到工作線程
     threadpool threads;
     // 同步
@@ -33,6 +41,16 @@ void vm_dump_context_stdout(duk_context *ctx);
 // 返回運行環境
 // duk_throw ... => ...
 vm_context_t *vm_get_context(duk_context *ctx);
+
+// if set, return completer
+#define VM_CONTEXT_FLAGS_COMPLETER 0x1
+// if set, init esb
+#define VM_CONTEXT_FLAGS_ESB 0x2
+// 返回運行環境
+// duk_throw ... => ...
+// VM_CONTEXT_FLAGS_ESB
+// duk_throw ... => ... completer
+vm_context_t *vm_get_context_flags(duk_context *ctx, duk_uint32_t flags);
 
 // 動態申請一塊內存，將它和 finalizer 函數關聯，以便 js 可以自動關聯它
 // duk_throw ... => ... obj{ptr}
@@ -78,7 +96,7 @@ vm_async_job_t *vm_get_async_job(duk_context *ctx);
 // duk_throw ... job ... err => ... job ...
 void vm_reject_async_job(duk_context *ctx, duk_idx_t i);
 // 通知 js 異步成功
-// duk_throw ... job ... err => ... job ...
+// duk_throw ... job ... value => ... job ...
 void vm_resolve_async_job(duk_context *ctx, duk_idx_t i);
 
 // duk_throw ... => ... Date

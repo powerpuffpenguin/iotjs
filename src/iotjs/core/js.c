@@ -1,5 +1,7 @@
 #include <iotjs/core/js.h>
 #include <event2/event.h>
+#include <event2/util.h>
+#include <netinet/in.h>
 void vm_dump_context_stdout(duk_context *ctx)
 {
     duk_push_context_dump(ctx);
@@ -20,7 +22,10 @@ duk_ret_t _vm_context_finalizer(duk_context *ctx)
     {
         return 0;
     }
-
+    if (vm->esb)
+    {
+        evdns_base_free(vm->esb, 1);
+    }
     if (vm->eb)
     {
         event_base_free(vm->eb);
@@ -88,6 +93,7 @@ void _vm_init_context(duk_context *ctx, duk_context *main)
         duk_push_error_object(ctx, DUK_ERR_ERROR, "event_base_new error");
         duk_throw(ctx);
     }
+
     vm->threads = thpool_init(8);
     if (!vm->threads)
     {
@@ -102,7 +108,7 @@ vm_context_t *_vm_get_context(duk_context *ctx, BOOL completer)
 
     if (completer)
     {
-        duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_IOTJS);
+        duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_PRIVATE);
         duk_get_prop_lstring(ctx, -1, VM_IOTJS_KEY_COMPLETER);
         duk_swap_top(ctx, -2);
         duk_pop(ctx);
@@ -125,7 +131,32 @@ vm_context_t *vm_get_context(duk_context *ctx)
 {
     return _vm_get_context(ctx, FALSE);
 }
+vm_context_t *vm_get_context_flags(duk_context *ctx, duk_uint32_t flags)
+{
+    vm_context_t *vm = _vm_get_context(ctx, flags & VM_CONTEXT_FLAGS_COMPLETER ? TRUE : FALSE);
+    if ((flags & VM_CONTEXT_FLAGS_ESB) && !vm->esb)
+    {
+        vm->esb = evdns_base_new(vm->eb, EVDNS_BASE_INITIALIZE_NAMESERVERS | EVDNS_BASE_DISABLE_WHEN_INACTIVE);
+        if (!vm->esb)
+        {
+            duk_push_lstring(ctx, "evdns_base_new error", 20);
+            duk_throw(ctx);
+        }
 
+        if (VM_DNS_DEFAULT_NAMESERVER)
+        {
+            int err = evdns_base_nameserver_ip_add(vm->esb, VM_DNS_DEFAULT_NAMESERVER);
+            if (err)
+            {
+                duk_push_lstring(ctx, "evdns_base_nameserver_ip_add error: ", 37);
+                duk_push_string(ctx, VM_DNS_DEFAULT_NAMESERVER);
+                duk_concat(ctx, 2);
+                duk_throw(ctx);
+            }
+        }
+    }
+    return vm;
+}
 duk_ret_t _vm_async_job_finalizer(duk_context *ctx)
 {
     vm_async_job_t *job = vm_get_finalizer_ptr(ctx);

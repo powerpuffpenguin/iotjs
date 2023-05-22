@@ -1,4 +1,5 @@
 #include <iotjs/core/timer.h>
+#include <iotjs/core/js.h>
 typedef struct
 {
     vm_context_t *vm;

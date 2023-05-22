@@ -96,8 +96,17 @@ export function resolve_module(pid: string, native: Record<string, boolean>, id:
     throw new Error(`require id not found: ${id}`)
 }
 export class IotError extends Error {
-    constructor(message?: string | undefined, options?: ErrorOptions | undefined) {
+    constructor(message: string, options?: ErrorOptions | undefined) {
         super(message, options)
+        // restore prototype chain   
+        const proto = new.target.prototype
+        if (Object.setPrototypeOf) {
+            Object.setPrototypeOf(this, proto)
+        }
+        else {
+            (this as any).__proto__ = proto
+        }
+        this.name = "IotError"
     }
 }
 /**

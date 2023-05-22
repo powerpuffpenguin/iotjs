@@ -2,6 +2,7 @@
 #include <iotjs/core/js.h>
 #include <iotjs/core/module.h>
 #include <iotjs/core/timer.h>
+#include <iotjs/core/c.h>
 #include <iotjs/core/xxd.h>
 
 #include <duk_module_node.h>
@@ -168,6 +169,14 @@ duk_ret_t _native_vm_init(duk_context *ctx)
     duk_push_c_function(ctx, _native_vm_load_module, 3);
     duk_put_prop_lstring(ctx, -2, "load", 4);
     duk_module_node_init(ctx);
+
+    duk_push_heap_stash(ctx);
+    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_PRIVATE);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
+
+    _vm_init_c(ctx);
+    duk_pop(ctx);
     return 0;
 }
 
@@ -374,6 +383,8 @@ void _native_vm_init_stash(duk_context *ctx, duk_context *main)
     duk_put_prop_lstring(ctx, -2, VM_STASH_KEY_INTERVAL);
     duk_push_object(ctx);
     duk_put_prop_lstring(ctx, -2, VM_STASH_KEY_JOBS);
+    duk_push_object(ctx);
+    duk_put_prop_lstring(ctx, -2, VM_STASH_KEY_ASYNC);
 
     _vm_init_context(ctx, main);
     _vm_init_native(ctx);

@@ -33,8 +33,18 @@ declare namespace _iotjs {
     export class IotError extends Error {
         constructor(message?: string | undefined, options?: ErrorOptions | undefined);
     }
+    export class Completer<T>{
+        constructor()
+        readonly isCompleted: boolean
+        readonly promise: Promise<T>
+        resolve(value?: T | PromiseLike<T>): void
+        reject(reason?: any): void
+    }
     declare namespace dns {
-        export function resolve_ip4(address: string): Promise<Uint8Array>;
-        export function resolve_ip6(address: string): Promise<Uint8Array>;
+        export function resolveIP4(address: string): Promise<Array<Uint8Array>>;
+        export function resolveIP6(address: string): Promise<Array<Uint8Array>>;
+        export function ipToString(b: Uint8Array): string
+        export function parseIP4(s: string): Uint8Array
+        export function parseIP6(s: string): Uint8Array
     }
 }
