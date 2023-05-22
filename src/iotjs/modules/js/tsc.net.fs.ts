@@ -62,15 +62,24 @@ export function resolveIP(network: 'ip' | 'ip4' | 'ip6', address: string): Promi
         switch (network) {
             case 'ip':
                 ip = await new Promise<Array<Uint8Array>>((resolve, reject) => {
+                    let err = false
                     _iotjs.dns.resolveIP4(address).then((v) => {
                         resolve(v)
                     }).catch((e) => {
-                        reject(e)
+                        if (err) {
+                            reject(e)
+                        } else {
+                            err = true
+                        }
                     })
                     _iotjs.dns.resolveIP6(address).then((v) => {
                         resolve(v)
                     }).catch((e) => {
-                        reject(e)
+                        if (err) {
+                            reject(e)
+                        } else {
+                            err = true
+                        }
                     })
                 })
                 break

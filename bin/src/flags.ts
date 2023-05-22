@@ -858,7 +858,7 @@ export class FlagBase<T> implements FlagDefine<T> {
         }
         if (Array.isArray(v)) {
             for (const i of v) {
-                if (!isFinite(i)) {
+                if (typeof i === "number" && !isFinite(i)) {
                     return false;
                 }
             }

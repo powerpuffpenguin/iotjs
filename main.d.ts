@@ -196,8 +196,7 @@ declare module "iotjs/net" {
          */
         string(): string
     }
-    export function resolveIP(network: 'ip' | 'ip4' | 'ip6'): Promise<Array<IP>>
-    export function ipv4(a: number, b: number, c: number, d: number): IP
+    export function resolveIP(network: 'ip' | 'ip4' | 'ip6', address: string): Promise<Array<IP>>
     /**
      * 表示一個網路端點的地址
      */
