@@ -3,6 +3,11 @@
 #include <iotjs/core/number.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+
 // ... name => return
 void _native_iotjs_fs_stat_push(duk_context *ctx, struct stat *info)
 {
@@ -136,44 +141,66 @@ duk_ret_t _native_iotjs_fs_stat_sync(duk_context *ctx)
 }
 duk_ret_t native_iotjs_fs_init(duk_context *ctx)
 {
+    // [id, exports, module]
     duk_push_c_function(ctx, _native_iotjs_fs_stat, 1);
     duk_put_prop_lstring(ctx, 1, "stat", 4);
     duk_push_c_function(ctx, _native_iotjs_fs_stat_sync, 1);
     duk_put_prop_lstring(ctx, 1, "statSync", 8);
 
     duk_push_object(ctx);
-    duk_push_number(ctx, IOTJS_FILEMODE_DIR);
-    duk_put_prop_lstring(ctx, -2, "dir", 3);
-    duk_push_number(ctx, IOTJS_FILEMODE_APPEND);
-    duk_put_prop_lstring(ctx, -2, "append", 6);
-    duk_push_number(ctx, IOTJS_FILEMODE_EXCLUSIVE);
-    duk_put_prop_lstring(ctx, -2, "exclusive", 9);
-    duk_push_number(ctx, IOTJS_FILEMODE_TEMPORARY);
-    duk_put_prop_lstring(ctx, -2, "temporary", 9);
-    duk_push_number(ctx, IOTJS_FILEMODE_LINK);
-    duk_put_prop_lstring(ctx, -2, "link", 4);
-    duk_push_number(ctx, IOTJS_FILEMODE_DEVICE);
-    duk_put_prop_lstring(ctx, -2, "device", 6);
-    duk_push_number(ctx, IOTJS_FILEMODE_PIPE);
-    duk_put_prop_lstring(ctx, -2, "pipe", 4);
-    duk_push_number(ctx, IOTJS_FILEMODE_SOCKET);
-    duk_put_prop_lstring(ctx, -2, "socket", 6);
-    duk_push_number(ctx, IOTJS_FILEMODE_SETUID);
-    duk_put_prop_lstring(ctx, -2, "setuid", 6);
-    duk_push_number(ctx, IOTJS_FILEMODE_SETGID);
-    duk_put_prop_lstring(ctx, -2, "setgid", 6);
-    duk_push_number(ctx, IOTJS_FILEMODE_CHAR_DEVICE);
-    duk_put_prop_lstring(ctx, -2, "charDevice", 10);
-    duk_push_number(ctx, IOTJS_FILEMODE_IR_REG);
-    duk_put_prop_lstring(ctx, -2, "irregular", 9);
-    duk_push_number(ctx, IOTJS_FILEMODE_STICKY);
-    duk_put_prop_lstring(ctx, -2, "sticky", 6);
+    {
+        duk_push_number(ctx, IOTJS_FILEMODE_DIR);
+        duk_put_prop_lstring(ctx, -2, "dir", 3);
+        duk_push_number(ctx, IOTJS_FILEMODE_APPEND);
+        duk_put_prop_lstring(ctx, -2, "append", 6);
+        duk_push_number(ctx, IOTJS_FILEMODE_EXCLUSIVE);
+        duk_put_prop_lstring(ctx, -2, "exclusive", 9);
+        duk_push_number(ctx, IOTJS_FILEMODE_TEMPORARY);
+        duk_put_prop_lstring(ctx, -2, "temporary", 9);
+        duk_push_number(ctx, IOTJS_FILEMODE_LINK);
+        duk_put_prop_lstring(ctx, -2, "link", 4);
+        duk_push_number(ctx, IOTJS_FILEMODE_DEVICE);
+        duk_put_prop_lstring(ctx, -2, "device", 6);
+        duk_push_number(ctx, IOTJS_FILEMODE_PIPE);
+        duk_put_prop_lstring(ctx, -2, "pipe", 4);
+        duk_push_number(ctx, IOTJS_FILEMODE_SOCKET);
+        duk_put_prop_lstring(ctx, -2, "socket", 6);
+        duk_push_number(ctx, IOTJS_FILEMODE_SETUID);
+        duk_put_prop_lstring(ctx, -2, "setuid", 6);
+        duk_push_number(ctx, IOTJS_FILEMODE_SETGID);
+        duk_put_prop_lstring(ctx, -2, "setgid", 6);
+        duk_push_number(ctx, IOTJS_FILEMODE_CHAR_DEVICE);
+        duk_put_prop_lstring(ctx, -2, "charDevice", 10);
+        duk_push_number(ctx, IOTJS_FILEMODE_IR_REG);
+        duk_put_prop_lstring(ctx, -2, "irregular", 9);
+        duk_push_number(ctx, IOTJS_FILEMODE_STICKY);
+        duk_put_prop_lstring(ctx, -2, "sticky", 6);
 
-    duk_push_number(ctx, IOTJS_FILEMODE_TYPE);
-    duk_put_prop_lstring(ctx, -2, "type", 4);
-    duk_push_number(ctx, IOTJS_FILEMODE_PERM);
-    duk_put_prop_lstring(ctx, -2, "perm", 4);
-
+        duk_push_number(ctx, IOTJS_FILEMODE_TYPE);
+        duk_put_prop_lstring(ctx, -2, "type", 4);
+        duk_push_number(ctx, IOTJS_FILEMODE_PERM);
+        duk_put_prop_lstring(ctx, -2, "perm", 4);
+    }
     duk_put_prop_lstring(ctx, 1, "FileMode", 8);
+
+    // flags
+    {
+        duk_push_number(ctx, 0x0);
+        duk_put_prop_lstring(ctx, 1, "O_RDONLY", 8);
+        duk_push_number(ctx, 0x1);
+        duk_put_prop_lstring(ctx, 1, "O_WRONLY", 8);
+        duk_push_number(ctx, 0x2);
+        duk_put_prop_lstring(ctx, 1, "O_RDWR", 6);
+        duk_push_number(ctx, 0x400);
+        duk_put_prop_lstring(ctx, 1, "O_APPEND", 8);
+        duk_push_number(ctx, 0x40);
+        duk_put_prop_lstring(ctx, 1, "O_CREATE", 8);
+        duk_push_number(ctx, 0x80);
+        duk_put_prop_lstring(ctx, 1, "O_EXCL", 6);
+        duk_push_number(ctx, 0x101000);
+        duk_put_prop_lstring(ctx, 1, "O_SYNC", 6);
+        duk_push_number(ctx, 0x200);
+        duk_put_prop_lstring(ctx, 1, "O_TRUNC", 7);
+    }
     return 0;
 }

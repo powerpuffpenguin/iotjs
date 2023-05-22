@@ -13,7 +13,7 @@ duk_ret_t native_iotjs_net_init(duk_context *ctx)
     duk_swap(ctx, 0, 1);
     duk_pop_2(ctx);
 
-    duk_eval_lstring(ctx, (const char *)iotjs_modules_js_tsc_net_fs_min_js, iotjs_modules_js_tsc_net_fs_min_js_len);
+    duk_eval_lstring(ctx, (const char *)iotjs_modules_js_tsc_net_min_js, iotjs_modules_js_tsc_net_min_js_len);
     duk_swap_top(ctx, -2);
 
     // [ func, exports]
