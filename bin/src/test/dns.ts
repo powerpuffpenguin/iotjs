@@ -51,6 +51,10 @@ export const command = new Command({
             usage: "resolve ipv6",
         })
         return (args) => {
+            const nameserver = iotjs.nameserver()
+            if (nameserver) {
+                console.log("nameserver:", nameserver)
+            }
             const helper = new MyHelper()
             for (const v of v4.value) {
                 helper.v4(v)

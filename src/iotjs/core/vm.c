@@ -395,7 +395,7 @@ void _native_vm_init_stash(duk_context *ctx, duk_context *main)
 duk_ret_t _native_nameserver(duk_context *ctx)
 {
     duk_idx_t n = duk_get_top(ctx);
-    if (n >= 0)
+    if (n > 0)
     {
         if (n > 1)
         {
