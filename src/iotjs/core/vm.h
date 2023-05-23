@@ -6,6 +6,10 @@
 duk_int_t vm_init(duk_context *ctx, int argc, char *argv[]);
 // 加載 最初的 main 腳本
 duk_int_t vm_main(duk_context *ctx, const char *path);
+// 加載 最初的 main 腳本
+// ... source => ... return
+duk_int_t vm_main_source(duk_context *ctx, const char *path);
+
 // 執行 主循環
 duk_int_t vm_loop(duk_context *ctx);
 // #define VM_DEBUG_MODULE_LOAD 1

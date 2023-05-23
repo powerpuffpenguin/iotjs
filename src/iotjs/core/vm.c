@@ -230,6 +230,25 @@ duk_ret_t _native_vm_main(duk_context *ctx)
     }
     return 1;
 }
+duk_ret_t _native_vm_main_source(duk_context *ctx)
+{
+    const char *path = duk_get_string(ctx, 1);
+    if (path[0] != '/')
+    {
+        _vm_native_getcwd(ctx);
+        duk_swap_top(ctx, -2);
+        duk_push_lstring(ctx, "/", 1);
+        duk_swap_top(ctx, -2);
+        duk_concat(ctx, 3);
+        path = duk_get_string(ctx, 0);
+    }
+    duk_pop(ctx);
+    if (duk_module_node_peval_main(ctx, path))
+    {
+        duk_throw(ctx);
+    }
+    return 1;
+}
 duk_int_t vm_main(duk_context *ctx, const char *path)
 {
     if (!duk_check_stack_top(ctx, 2))
@@ -240,6 +259,18 @@ duk_int_t vm_main(duk_context *ctx, const char *path)
     duk_push_c_function(ctx, _native_vm_main, 1);
     duk_push_string(ctx, path);
     return duk_pcall(ctx, 1);
+}
+duk_int_t vm_main_source(duk_context *ctx, const char *path)
+{
+    if (!duk_check_stack_top(ctx, 2))
+    {
+        duk_push_error_object(ctx, DUK_ERR_EVAL_ERROR, "duk_check_stack_top error");
+        return DUK_EXEC_ERROR;
+    }
+    duk_push_c_function(ctx, _native_vm_main_source, 2);
+    duk_swap_top(ctx, -2);
+    duk_push_string(ctx, path);
+    return duk_pcall(ctx, 2);
 }
 duk_ret_t _native_vm_loop(duk_context *ctx)
 {
