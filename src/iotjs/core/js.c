@@ -70,7 +70,37 @@ void *vm_malloc_with_finalizer(duk_context *ctx, size_t sz, duk_c_function func)
     duk_put_prop(ctx, -3);
     return ptr;
 }
+void *vm_malloc_with_finalizer_init(duk_context *ctx, size_t sz, duk_c_function func, void (*init)(void *))
+{
+    duk_require_stack(ctx, 3);
+    // [...]
+    duk_push_object(ctx);
+    duk_push_lstring(ctx, "ptr", 3);
+    duk_push_pointer(ctx, NULL);
+    duk_put_prop(ctx, -3);
 
+    duk_push_c_function(ctx, func, 1);
+    duk_set_finalizer(ctx, -2);
+
+    // [..., obj]
+    duk_push_lstring(ctx, "ptr", 3);
+    duk_push_pointer(ctx, NULL);
+    duk_pop(ctx);
+
+    // [..., obj, "ptr"]
+    void *ptr = IOTJS_MALLOC(sz);
+    if (!ptr)
+    {
+        duk_pop_2(ctx);
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "vm_malloc_with_finalizer error");
+        duk_throw(ctx);
+    }
+    init(ptr);
+
+    duk_push_pointer(ctx, ptr);
+    duk_put_prop(ctx, -3);
+    return ptr;
+}
 void _vm_init_context(duk_context *ctx, duk_context *main)
 {
     // [..., stash]
@@ -136,21 +166,35 @@ vm_context_t *vm_get_context_flags(duk_context *ctx, duk_uint32_t flags)
     vm_context_t *vm = _vm_get_context(ctx, flags & VM_CONTEXT_FLAGS_COMPLETER ? TRUE : FALSE);
     if ((flags & VM_CONTEXT_FLAGS_ESB) && !vm->esb)
     {
-        vm->esb = evdns_base_new(vm->eb, EVDNS_BASE_INITIALIZE_NAMESERVERS | EVDNS_BASE_DISABLE_WHEN_INACTIVE);
-        if (!vm->esb)
+        duk_push_heap_stash(ctx);
+        duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_NAMESERVER);
+        if (duk_is_string(ctx, -1))
         {
-            duk_push_lstring(ctx, "evdns_base_new error", 20);
-            duk_throw(ctx);
-        }
-
-        if (VM_DNS_DEFAULT_NAMESERVER)
-        {
-            int err = evdns_base_nameserver_ip_add(vm->esb, VM_DNS_DEFAULT_NAMESERVER);
+            vm->esb = evdns_base_new(vm->eb, EVDNS_BASE_DISABLE_WHEN_INACTIVE);
+            if (!vm->esb)
+            {
+                duk_pop_2(ctx);
+                duk_push_lstring(ctx, "evdns_base_new error", 20);
+                duk_throw(ctx);
+            }
+            const char *nameserver = duk_get_string(ctx, -1);
+            int err = evdns_base_nameserver_ip_add(vm->esb, nameserver);
+            duk_pop_2(ctx);
             if (err)
             {
                 duk_push_lstring(ctx, "evdns_base_nameserver_ip_add error: ", 37);
-                duk_push_string(ctx, VM_DNS_DEFAULT_NAMESERVER);
+                duk_push_string(ctx, nameserver);
                 duk_concat(ctx, 2);
+                duk_throw(ctx);
+            }
+        }
+        else
+        {
+            duk_pop_2(ctx);
+            vm->esb = evdns_base_new(vm->eb, EVDNS_BASE_INITIALIZE_NAMESERVERS | EVDNS_BASE_DISABLE_WHEN_INACTIVE);
+            if (!vm->esb)
+            {
+                duk_push_lstring(ctx, "evdns_base_new error", 20);
                 duk_throw(ctx);
             }
         }
@@ -335,4 +379,12 @@ void vm_require_date(duk_context *ctx)
     duk_get_prop_lstring(ctx, -1, "Date", 4);
     duk_swap_top(ctx, -2);
     duk_pop(ctx);
+}
+void vm_push_error_object(duk_context *ctx, int code, const char *message)
+{
+    duk_push_object(ctx);
+    duk_push_int(ctx, code);
+    duk_put_prop_lstring(ctx, -2, "code", 4);
+    duk_push_string(ctx, message);
+    duk_put_prop_lstring(ctx, -2, "message", 7);
 }

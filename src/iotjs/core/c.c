@@ -9,9 +9,10 @@ typedef struct
 
 duk_ret_t dns_resolve_finalizer(duk_context *ctx)
 {
+
     duk_get_prop_lstring(ctx, 0, "ptr", 3);
     dns_resolve_async_t *p = duk_require_pointer(ctx, -1);
-    if (!p)
+    if (!p || !p->vm)
     {
         return 0;
     }
@@ -25,6 +26,7 @@ duk_ret_t dns_resolve_finalizer(duk_context *ctx)
         evdns_base_free(vm->esb, 1);
         vm->esb = NULL;
     }
+
     IOTJS_FREE(p);
     return 0;
 }
@@ -125,6 +127,7 @@ void _vm_iotjs_nativa_dns_resolve_ip(duk_context *ctx, BOOL v6)
     duk_put_prop_lstring(ctx, -2, "name", 4);
 
     vm_context_t *vm = vm_get_context_flags(ctx, VM_CONTEXT_FLAGS_ESB | VM_CONTEXT_FLAGS_COMPLETER);
+
     vm->dns++;
     p->vm = vm;
 

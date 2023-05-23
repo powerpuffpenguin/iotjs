@@ -8,11 +8,23 @@ declare module "iotjs" {
     // 編譯目標 os
     export const os: string
     // 編譯目標 arch
-    export const arch: string
+    export const arch: 'amd64' | 'csky'
     // 啓動進程的命令參數
     export const argv: Array<string>
     // 大部分系統錯誤的基類
     export class IotError extends Error { }
+
+
+    /**
+     * 返回系統使用的 dns 服務器
+     */
+    export function nameserver(): string | undefined
+    /**
+     * 設置系統使用的 dns 服務器地址
+     * @param addr 如果爲空白字符串，則使用 /etc/resolv.conf  的設定
+     */
+    export function nameserver(addr: string): void
+
     /**
      * 返回當前工作目錄
      */
@@ -187,6 +199,13 @@ declare module "iotjs/fs" {
      * 打開時截斷常規可寫檔案
      */
     export const O_TRUNC = 0x200
+
+    export class File {
+        static open(name: string, flags = O_RDONLY, perm = 0): Promise<File>
+        static openSync(name: string, flags = O_RDONLY, perm = 0): File
+        static create(name: string, flags = O_RDWR | O_CREATE | O_TRUNC, perm = 0o666): Promise<File>
+        static createSync(name: string, flags = O_RDWR | O_CREATE | O_TRUNC, perm = 0o666): File
+    }
 }
 declare module "iotjs/net" {
     export const IPv4len = 4

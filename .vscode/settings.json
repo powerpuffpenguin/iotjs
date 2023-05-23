@@ -68,6 +68,23 @@
     "defines.h": "c",
     "event.h": "c",
     "dns.h": "c",
-    "tsc.fs.h": "c"
+    "tsc.fs.h": "c",
+    "cctype": "c",
+    "clocale": "c",
+    "cmath": "c",
+    "cstdarg": "c",
+    "cwctype": "c",
+    "condition_variable": "c",
+    "cstdint": "c",
+    "exception": "c",
+    "iomanip": "c",
+    "iosfwd": "c",
+    "iostream": "c",
+    "sstream": "c",
+    "streambuf": "c",
+    "cinttypes": "c",
+    "__config": "c",
+    "__mutex_base": "c",
+    "__nullptr": "c"
   }
 }

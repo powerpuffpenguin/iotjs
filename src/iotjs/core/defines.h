@@ -28,10 +28,6 @@
 #define VM_IOTJS_ARCH "amd64"
 #endif
 
-#ifndef VM_DNS_DEFAULT_NAMESERVER
-#define VM_DNS_DEFAULT_NAMESERVER "114.114.114.114:53"
-#endif
-
 // 存儲導出給 js 的核心 c 代碼，用於實現 js 核心庫使用
 #define VM_STASH_KEY_PRIVATE "_iotjs", 6
 // 全局變量存儲了一些 iotjs 的 runtime 信息
@@ -46,6 +42,8 @@
 #define VM_STASH_KEY_JOBS "jobs", 4
 // 存儲的正在執行的異步請求
 #define VM_STASH_KEY_ASYNC "async", 5
+// 服務器 dns 設定
+#define VM_STASH_KEY_NAMESERVER "nameserver", 10
 
 #define VM_IOTJS_KEY_COMPLETER "Completer", 9
 #define VM_IOTJS_KEY_ERROR "IotError", 8

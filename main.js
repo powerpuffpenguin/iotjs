@@ -1,3 +1,4 @@
 var hex = require("iotjs/encoding/hex")
 var fs = require("iotjs/fs")
-console.log(fs)
+var f = fs.File.create("0.txt")
+

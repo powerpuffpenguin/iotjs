@@ -55,6 +55,7 @@ vm_context_t *vm_get_context_flags(duk_context *ctx, duk_uint32_t flags);
 // 動態申請一塊內存，將它和 finalizer 函數關聯，以便 js 可以自動關聯它
 // duk_throw ... => ... obj{ptr}
 void *vm_malloc_with_finalizer(duk_context *ctx, size_t sz, duk_c_function func);
+void *vm_malloc_with_finalizer_init(duk_context *ctx, size_t sz, duk_c_function func, void (*init)(void *));
 
 // 返回 finalizer 關聯的 c 指針
 // duk_throw ... obj{ptr} => ...
@@ -101,4 +102,6 @@ void vm_resolve_async_job(duk_context *ctx, duk_idx_t i);
 
 // duk_throw ... => ... Date
 void vm_require_date(duk_context *ctx);
+
+void vm_push_error_object(duk_context *ctx, int code, const char *message);
 #endif
