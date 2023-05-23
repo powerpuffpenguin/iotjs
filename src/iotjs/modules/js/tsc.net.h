@@ -1,9 +1,5 @@
-#ifndef IOTJS_iotjs_modules_XXD_H
-#define IOTJS_iotjs_modules_XXD_H
-unsigned char iotjs_modules_js_tsc_fs_min_js[] = {
-  0x0a
-};
-unsigned int iotjs_modules_js_tsc_fs_min_js_len = 1;
+#ifndef IOTJS_iotjs_modules_js_tsc_net_h_XXD_H
+#define IOTJS_iotjs_modules_js_tsc_net_h_XXD_H
 unsigned char iotjs_modules_js_tsc_net_min_js[] = {
   0x28, 0x66, 0x75, 0x6e, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x28, 0x29, 0x7b,
   0x72, 0x65, 0x74, 0x75, 0x72, 0x6e, 0x20, 0x66, 0x75, 0x6e, 0x63, 0x74,
@@ -189,4 +185,4 @@ unsigned char iotjs_modules_js_tsc_net_min_js[] = {
   0x29, 0x28, 0x29, 0x3b, 0x0a
 };
 unsigned int iotjs_modules_js_tsc_net_min_js_len = 2177;
-#endif // IOTJS_iotjs_modules_XXD_H
+#endif // IOTJS_iotjs_modules_js_tsc_net_h_XXD_H

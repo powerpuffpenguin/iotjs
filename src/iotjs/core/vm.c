@@ -3,7 +3,10 @@
 #include <iotjs/core/module.h>
 #include <iotjs/core/timer.h>
 #include <iotjs/core/c.h>
-#include <iotjs/core/xxd.h>
+#include <iotjs/core/js/tsc_hook.h>
+#include <iotjs/core/js/tsc.path.h>
+#include <iotjs/core/ts/tsc.module.h>
+#include <iotjs/core/es6-shim.h>
 
 #include <duk_module_node.h>
 #include <duk_console.h>

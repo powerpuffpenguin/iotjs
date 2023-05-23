@@ -1,6 +1,7 @@
 #include <iotjs/core/js.h>
 #include <iotjs/core/module.h>
 #include <iotjs/core/number.h>
+#include <iotjs/modules/js/tsc.fs.h>
 #include <sys/stat.h>
 #include <errno.h>
 #include <sys/types.h>
@@ -183,24 +184,15 @@ duk_ret_t native_iotjs_fs_init(duk_context *ctx)
     }
     duk_put_prop_lstring(ctx, 1, "FileMode", 8);
 
-    // flags
-    {
-        duk_push_number(ctx, 0x0);
-        duk_put_prop_lstring(ctx, 1, "O_RDONLY", 8);
-        duk_push_number(ctx, 0x1);
-        duk_put_prop_lstring(ctx, 1, "O_WRONLY", 8);
-        duk_push_number(ctx, 0x2);
-        duk_put_prop_lstring(ctx, 1, "O_RDWR", 6);
-        duk_push_number(ctx, 0x400);
-        duk_put_prop_lstring(ctx, 1, "O_APPEND", 8);
-        duk_push_number(ctx, 0x40);
-        duk_put_prop_lstring(ctx, 1, "O_CREATE", 8);
-        duk_push_number(ctx, 0x80);
-        duk_put_prop_lstring(ctx, 1, "O_EXCL", 6);
-        duk_push_number(ctx, 0x101000);
-        duk_put_prop_lstring(ctx, 1, "O_SYNC", 6);
-        duk_push_number(ctx, 0x200);
-        duk_put_prop_lstring(ctx, 1, "O_TRUNC", 7);
-    }
+    duk_pop(ctx);
+    duk_eval_lstring(ctx, iotjs_modules_js_tsc_fs_min_js, iotjs_modules_js_tsc_fs_min_js_len);
+    duk_swap_top(ctx, 0);
+    duk_pop(ctx);
+
+    // duk_push_heap_stash(ctx);
+    // duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_PRIVATE);
+    // duk_remove(ctx, -2);
+    vm_dump_context_stdout(ctx);
+    exit(1);
     return 0;
 }

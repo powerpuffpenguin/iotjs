@@ -35,10 +35,7 @@ build_xxd(){
 }
 build_min_xdd(){
     cd "$rootDir/src"
-    local output="$1/xxd.h"
-    local once=${1//\//_}
-    echo "#ifndef IOTJS_${once}_XXD_H" > "$output"
-    echo "#define IOTJS_${once}_XXD_H" >> "$output"
+    
     local ifs=$IFS
     IFS=$'\n'
     files=(`find "$1/" -iname "*.min.js"`)
@@ -46,9 +43,16 @@ build_min_xdd(){
     local file
     for file in "${files[@]}";do
         log_info "xdd -i $file"
+        local output=${file%.min.js}.h
+        local once=${output//\//_}
+        once=${once//./_}
+        once=${once//-/_}
+        echo "#ifndef IOTJS_${once}_XXD_H" > "$output"
+        echo "#define IOTJS_${once}_XXD_H" >> "$output"
+       
         xxd -i "$file" >> "$output"
+        echo "#endif // IOTJS_${once}_XXD_H" >> "$output"
     done
-    echo "#endif // IOTJS_${once}_XXD_H" >> "$output"
 }
 build_min_js(){
     local ifs=$IFS

@@ -1,6 +1,6 @@
 
 #include <iotjs/core/js.h>
-#include <iotjs/modules/xxd.h>
+#include <iotjs/modules/js/tsc.net.h>
 duk_ret_t _buffer(duk_context *ctx)
 {
     duk_push_buffer(ctx, 10, 0);
