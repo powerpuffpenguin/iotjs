@@ -6,8 +6,7 @@ set (dir "${CMAKE_SOURCE_DIR}/${OUTPUT_ROOT_DIR}/libevent")
 include_directories("${dir}/include")
 
 set(items
-    libevent_core.a
-    libevent_extra.a
+    libevent.a
     libevent_pthreads.a
 )
 foreach(item ${items})

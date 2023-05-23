@@ -85,6 +85,7 @@
     "cinttypes": "c",
     "__config": "c",
     "__mutex_base": "c",
-    "__nullptr": "c"
+    "__nullptr": "c",
+    "stdio.h": "c"
   }
 }
