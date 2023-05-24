@@ -123,12 +123,59 @@ declare module "iotjs/hash" {
         readonly blockSize: number
     }
 }
+declare module "iotjs/crypto/md4" {
+    import { BufferData } from "iotjs";
+    import { Hash } from "hash";
+    export function sum(s: string | BufferData): Uint8Array
+    export function hash(params: type): Hash
+}
 declare module "iotjs/crypto/md5" {
-    import { Writer } from "iotjs/io";
-    export function sum(s: string | ArrayBuffer | DataView | Uint8Array | Uint8ClampedArray | Uint16Array | Uint32Array | Int8Array | Int16Array | Int32Array): Uint8Array
-    export function hash(params: type) {
-
-    }
+    import { BufferData } from "iotjs";
+    import { Hash } from "hash";
+    export function sum(s: string | BufferData): Uint8Array
+    export function hash(params: type): Hash
+}
+declare module "iotjs/crypto/sha1" {
+    import { BufferData } from "iotjs";
+    import { Hash } from "hash";
+    export function sum(s: string | BufferData): Uint8Array
+    export function hash(params: type): Hash
+}
+declare module "iotjs/crypto/sha224" {
+    import { BufferData } from "iotjs";
+    import { Hash } from "hash";
+    export function sum(s: string | BufferData): Uint8Array
+    export function hash(params: type): Hash
+}
+declare module "iotjs/crypto/sha256" {
+    import { BufferData } from "iotjs";
+    import { Hash } from "hash";
+    export function sum(s: string | BufferData): Uint8Array
+    export function hash(params: type): Hash
+}
+declare module "iotjs/crypto/sha384" {
+    import { BufferData } from "iotjs";
+    import { Hash } from "hash";
+    export function sum(s: string | BufferData): Uint8Array
+    export function hash(params: type): Hash
+}
+declare module "iotjs/crypto/sha512" {
+    import { BufferData } from "iotjs";
+    import { Hash } from "hash";
+    export function sum(s: string | BufferData): Uint8Array
+    export function hash(params: type): Hash
+}
+declare module "iotjs/crypto/sha512_224" {
+    import { BufferData } from "iotjs";
+    import { Hash } from "hash";
+    export function sum(s: string | BufferData): Uint8Array
+    export function hash(params: type): Hash
+}
+declare module "iotjs/crypto/sha512_256" {
+    import { BufferData } from "iotjs";
+    import { Hash } from "hash";
+    export function sum(s: string | BufferData): Uint8Array
+    export function hash(params: type): Hash
 }
 declare module "iotjs/fs" {
     export enum FileMode {
