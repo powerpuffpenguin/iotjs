@@ -1,3 +1,10 @@
 var hex = require("iotjs/encoding/hex")
+var md5 = require("iotjs/crypto/md5")
 var http = require("iotjs/net/http")
-console.log(http.http())
+
+console.log(hex.encodeToString(md5.sum("ok")))
+var hash = md5.hash()
+hash.write("ok")
+console.log(hex.encodeToString(hash.sum()))
+hash.write("123")
+console.log(hex.encodeToString(hash.sum()))

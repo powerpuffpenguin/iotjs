@@ -4,6 +4,7 @@ __attribute((constructor)) void __iotjs_modules_init()
 {
     vm_register_native("iotjs", native_iotjs_init);
     vm_register_native("iotjs/encoding/hex", native_iotjs_encoding_hex_init);
+    vm_register_native("iotjs/crypto/md5", native_iotjs_crypto_md5_init);
     vm_register_native("iotjs/fs", native_iotjs_fs_init);
     vm_register_native("iotjs/net", native_iotjs_net_init);
     vm_register_native("iotjs/net/http", native_iotjs_net_http_init);

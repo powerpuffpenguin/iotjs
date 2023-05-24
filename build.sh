@@ -147,6 +147,19 @@ build_libevent(){
         fi
     fi
 }
+build_libtomcrypt(){
+    if [[ $cmake == true ]] || [[ $make == true ]];then
+        cd "$rootDir/$dir"
+        if [[ ! -d libtomcrypt ]];then
+            cp "$rootDir/third_party/libtomcrypt-1.18.2" "$rootDir/$dir/libtomcrypt" -r
+        fi
+        if [[ $make == true ]];then
+            cd libtomcrypt
+            log_info "make libtomcrypt for $target"
+            make CFLAGS="-DLTC_NO_TEST" 
+        fi
+    fi
+}
 build_iotjs(){
     if [[ $cmake == true ]] || [[ $make == true ]];then
         # if [[ $cmake == true ]];then
@@ -197,6 +210,7 @@ on_main(){
     )
     case "$target" in
         linux_csky)
+            export CC="$toolchain/bin/csky-linux-gcc"
             cmake_args+=(
                 "-DLINK_STATIC_GLIC=ON"
                 "-DCMAKE_C_COMPILER=$toolchain/bin/csky-linux-gcc"
@@ -204,12 +218,14 @@ on_main(){
             )
         ;;
         linux_arm)
+            export CC="$toolchain/bin/arm-linux-gnueabihf-gcc"
             cmake_args+=(
                 "-DCMAKE_C_COMPILER=$toolchain/bin/arm-linux-gnueabihf-gcc"
                 "-DCMAKE_CXX_COMPILER=$toolchain/bin/arm-linux-gnueabihf-g++"
             )
         ;;
         linux_amd64)
+            export CC="$toolchain/bin/gcc"
             cmake_args+=(
                 "-DCMAKE_C_COMPILER=$toolchain/bin/gcc"
                 "-DCMAKE_CXX_COMPILER=$toolchain/bin/g++"
@@ -237,6 +253,7 @@ on_main(){
     fi
     build_js
     build_libevent
+    build_libtomcrypt
     build_iotjs
 
     core_call_assert time_since "$start"

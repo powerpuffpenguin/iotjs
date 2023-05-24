@@ -33,39 +33,10 @@ declare module "iotjs" {
      * 調用 c 的 exit(code) 退出程式
      */
     export function exit(code: number): void
-    export class Int64 {
-        constructor(o: string | number | Uint64 | Int64)
-        toString(): string
-        cmp(o: number | string | Int64): number
-        add(o: number | string | Int64): Int64
-        sub(o: number | string | Int64): Int64
-        mul(o: number | string | Int64): Int64
-        div(o: number | string | Int64): Int64
-        not(): Int64
-        or(o: number | string | Int64): Int64
-        and(o: number | string | Int64): Int64
-        lsh(o: number): Int64
-        rsh(o: number, unsigned = false): Int64
-    }
-    export class Uint64 {
-        constructor(o: string | number | Uint64 | Int64)
-        toString(): string
-        cmp(o: number | string | Uint64): number
-        add(o: number | string | Uint64): Uint64
-        sub(o: number | string | Uint64): Uint64
-        mul(o: number | string | Uint64): Uint64
-        div(o: number | string | Uint64): Uint64
-        not(): Uint64
-        or(o: number | string | Uint64): Uint64
-        and(o: number | string | Uint64): Uint64
-        lsh(o: number): Uint64
-        rsh(o: number): Uint64
-    }
-    export type Int64Like = Int64 | number;
-    export type Uint64Like = Uint64 | number;
+
+    export type BufferData = string | ArrayBuffer | DataView | Uint8Array | Uint8ClampedArray | Uint16Array | Uint32Array | Int8Array | Int16Array | Int32Array | Float32Array | Float64Array
 }
 declare module "iotjs/io" {
-    import { Int64Like } from "iotjs";
     /**
      * Seek whence values.
      */
@@ -78,11 +49,11 @@ declare module "iotjs/io" {
         /**
          * 返回已經讀取或寫入的字節長度
          */
-        n: Int64Like = 0
+        n: number = 0
     }
     export class EofError extends IoError { }
     export interface Writer {
-        write(p: Uint8Array): Int64Like | Promise<Int64Like>
+        write(p: Uint8Array): number | Promise<number>
     }
     export interface Reader {
         /**
@@ -90,13 +61,13 @@ declare module "iotjs/io" {
          * @param p 
          * @returns 返回隨機讀取到數據的長度
          */
-        read(p: Uint8Array): Int64Like | Promise<Int64Like>
+        read(p: Uint8Array): number | Promise<number>
     }
     export interface Closer {
         close(): void | Promise<void>
     }
     export interface Seeker {
-        seek(offset: Int64Like, whence: Seek): Int64Like | Promise<Int64Like>
+        seek(offset: number, whence: Seek): number | Promise<number>
     }
     export interface ReadWriter extends Reader, Writer { }
     export interface ReadCloser extends Reader, Closer { }
@@ -107,26 +78,57 @@ declare module "iotjs/io" {
     export interface WriteSeeker extends Writer, Seeker { }
     export interface ReadWriteSeeker extends Reader, Writer, Seeker { }
     export interface ReaderFrom {
-        ReadFrom(r: Reader): Int64Like | Promise<Int64Like>
+        ReadFrom(r: Reader): number | Promise<number>
     }
     export interface WriterTo {
-        WriteTo(w: Writer): Int64Like | Promise<Int64Like>
+        WriteTo(w: Writer): number | Promise<number>
     }
     export interface ReaderAt {
-        ReadAt(p: Uint8Array, off: Int64Like): Int64Like | Promise<Int64Like>
+        ReadAt(p: Uint8Array, off: number): number | Promise<number>
     }
     export interface WriterAt {
-        WriteAt(p: Uint8Array, off: Int64Like): Int64Like | Promise<Int64Like>
+        WriteAt(p: Uint8Array, off: number): number | Promise<number>
     }
 }
 declare module "iotjs/encoding/hex" {
-    export type Buffer = ArrayBuffer | DataView | Int8Array | Uint8Array | Uint8ClampedArray | Int16Array | Uint16Array | Int32Array | Uint32Array | Float32Array | Float64Array
     export function encodeLen(n: number): number
-    export function encodeToString(src: Buffer): string
-    export function encode(dst: Buffer, src: Buffer): number
+    export function encodeToString(src: BufferData | string): string
+    export function encode(dst: BufferData, src: BufferData | string): number
     export function decodedLen(x: number): number
     export function decodeString(s: string): Uint8Array;
-    export function decode(dst: Buffer, src: Buffer): number
+    export function decode(dst: BufferData, src: BufferData): number
+}
+declare module "iotjs/hash" {
+    import { BufferData } from "iotjs";
+    import { Writer } from "iotjs/io";
+    interface Hash extends Writer {
+        /**
+         * 返回當前 hash 寫入 b 後的最終值，但是它不會改變底層 hash 的狀態
+         */
+        sum(b?: BufferData | string): Uint8Array
+
+        /**
+         * 重置 hash
+         */
+        reset(): void
+
+        /**
+         * 返回 hash 長度
+         */
+        readonly size: number
+
+        /**
+         * 返回 hash 塊數據大小，write 可以接收任意長度的數據，但寫入 塊大小的整數倍可能會有更好的效率
+         */
+        readonly blockSize: number
+    }
+}
+declare module "iotjs/crypto/md5" {
+    import { Writer } from "iotjs/io";
+    export function sum(s: string | ArrayBuffer | DataView | Uint8Array | Uint8ClampedArray | Uint16Array | Uint32Array | Int8Array | Int16Array | Int32Array): Uint8Array
+    export function hash(params: type) {
+
+    }
 }
 declare module "iotjs/fs" {
     export enum FileMode {

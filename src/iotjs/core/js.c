@@ -39,6 +39,16 @@ duk_ret_t _vm_context_finalizer(duk_context *ctx)
     IOTJS_FREE(vm);
     return 0;
 }
+duk_ret_t vm_native_default_finalizer(duk_context *ctx)
+{
+    duk_get_prop_lstring(ctx, -1, "ptr", 3);
+    void *p = duk_require_pointer(ctx, -1);
+    if (p)
+    {
+        IOTJS_FREE(p);
+    }
+    return 0;
+}
 void *vm_malloc_with_finalizer(duk_context *ctx, size_t sz, duk_c_function func)
 {
     duk_require_stack(ctx, 3);
@@ -48,7 +58,7 @@ void *vm_malloc_with_finalizer(duk_context *ctx, size_t sz, duk_c_function func)
     duk_push_pointer(ctx, NULL);
     duk_put_prop(ctx, -3);
 
-    duk_push_c_function(ctx, func, 1);
+    duk_push_c_function(ctx, func ? func : vm_native_default_finalizer, 1);
     duk_set_finalizer(ctx, -2);
 
     // [..., obj]

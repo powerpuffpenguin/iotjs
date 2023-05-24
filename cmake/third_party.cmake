@@ -1,8 +1,11 @@
 include("${CMAKE_CURRENT_LIST_DIR}/third_party/threads.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/third_party/duktape.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/third_party/libevent.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/third_party/libtomcrypt.cmake")
+# include("${CMAKE_CURRENT_LIST_DIR}/third_party/tlse.cmake")
 find_package(Threads REQUIRED)
 if (NOT CMAKE_USE_PTHREADS_INIT)
     message(FATAL_ERROR "Failed to find Pthreads")
 endif()
 list(APPEND target_libs ${CMAKE_THREAD_LIBS_INIT})
+

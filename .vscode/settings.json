@@ -86,6 +86,9 @@
     "__config": "c",
     "__mutex_base": "c",
     "__nullptr": "c",
-    "stdio.h": "c"
+    "stdio.h": "c",
+    "tomcrypt.h": "c",
+    "tomcrypt_hash.h": "c",
+    "tsc.hash.h": "c"
   }
 }
