@@ -120,61 +120,187 @@ declare module "iotjs/hash" {
         /**
          * 返回 hash 塊數據大小，write 可以接收任意長度的數據，但寫入 塊大小的整數倍可能會有更好的效率
          */
-        readonly blockSize: number
+        readonly block: number
     }
 }
 declare module "iotjs/crypto/md4" {
     import { BufferData } from "iotjs";
     import { Hash } from "hash";
+    /**
+     * 返回 hash 長度
+     */
+    export const size: number
+    /**
+     * 返回 hash 塊數據大小，write 可以接收任意長度的數據，但寫入 塊大小的整數倍可能會有更好的效率
+     */
+    export const block: number
+    /**
+     * 計算 s 的 hash 並返回
+     */
     export function sum(s: string | BufferData): Uint8Array
+    /**
+     * 創建一個 hash 對象用於計算大量數據的 hash 值
+     */
     export function hash(params: type): Hash
 }
 declare module "iotjs/crypto/md5" {
     import { BufferData } from "iotjs";
     import { Hash } from "hash";
+    /**
+     * 返回 hash 長度
+     */
+    export const size: number
+    /**
+     * 返回 hash 塊數據大小，write 可以接收任意長度的數據，但寫入 塊大小的整數倍可能會有更好的效率
+     */
+    export const block: number
+    /**
+     * 計算 s 的 hash 並返回
+     */
     export function sum(s: string | BufferData): Uint8Array
+    /**
+     * 創建一個 hash 對象用於計算大量數據的 hash 值
+     */
     export function hash(params: type): Hash
 }
 declare module "iotjs/crypto/sha1" {
     import { BufferData } from "iotjs";
     import { Hash } from "hash";
+    /**
+     * 返回 hash 長度
+     */
+    export const size: number
+    /**
+     * 返回 hash 塊數據大小，write 可以接收任意長度的數據，但寫入 塊大小的整數倍可能會有更好的效率
+     */
+    export const block: number
+    /**
+     * 計算 s 的 hash 並返回
+     */
     export function sum(s: string | BufferData): Uint8Array
+    /**
+     * 創建一個 hash 對象用於計算大量數據的 hash 值
+     */
     export function hash(params: type): Hash
 }
 declare module "iotjs/crypto/sha224" {
     import { BufferData } from "iotjs";
     import { Hash } from "hash";
+    /**
+     * 返回 hash 長度
+     */
+    export const size: number
+    /**
+     * 返回 hash 塊數據大小，write 可以接收任意長度的數據，但寫入 塊大小的整數倍可能會有更好的效率
+     */
+    export const block: number
+    /**
+     * 計算 s 的 hash 並返回
+     */
     export function sum(s: string | BufferData): Uint8Array
+    /**
+     * 創建一個 hash 對象用於計算大量數據的 hash 值
+     */
     export function hash(params: type): Hash
 }
 declare module "iotjs/crypto/sha256" {
     import { BufferData } from "iotjs";
     import { Hash } from "hash";
+    /**
+     * 返回 hash 長度
+     */
+    export const size: number
+    /**
+     * 返回 hash 塊數據大小，write 可以接收任意長度的數據，但寫入 塊大小的整數倍可能會有更好的效率
+     */
+    export const block: number
+    /**
+     * 計算 s 的 hash 並返回
+     */
     export function sum(s: string | BufferData): Uint8Array
+    /**
+     * 創建一個 hash 對象用於計算大量數據的 hash 值
+     */
     export function hash(params: type): Hash
 }
 declare module "iotjs/crypto/sha384" {
     import { BufferData } from "iotjs";
     import { Hash } from "hash";
+    /**
+     * 返回 hash 長度
+     */
+    export const size: number
+    /**
+     * 返回 hash 塊數據大小，write 可以接收任意長度的數據，但寫入 塊大小的整數倍可能會有更好的效率
+     */
+    export const block: number
+    /**
+     * 計算 s 的 hash 並返回
+     */
     export function sum(s: string | BufferData): Uint8Array
+    /**
+     * 創建一個 hash 對象用於計算大量數據的 hash 值
+     */
     export function hash(params: type): Hash
 }
 declare module "iotjs/crypto/sha512" {
     import { BufferData } from "iotjs";
     import { Hash } from "hash";
+    /**
+     * 返回 hash 長度
+     */
+    export const size: number
+    /**
+     * 返回 hash 塊數據大小，write 可以接收任意長度的數據，但寫入 塊大小的整數倍可能會有更好的效率
+     */
+    export const block: number
+    /**
+     * 計算 s 的 hash 並返回
+     */
     export function sum(s: string | BufferData): Uint8Array
+    /**
+     * 創建一個 hash 對象用於計算大量數據的 hash 值
+     */
     export function hash(params: type): Hash
 }
 declare module "iotjs/crypto/sha512_224" {
     import { BufferData } from "iotjs";
     import { Hash } from "hash";
+    /**
+     * 返回 hash 長度
+     */
+    export const size: number
+    /**
+     * 返回 hash 塊數據大小，write 可以接收任意長度的數據，但寫入 塊大小的整數倍可能會有更好的效率
+     */
+    export const block: number
+    /**
+     * 計算 s 的 hash 並返回
+     */
     export function sum(s: string | BufferData): Uint8Array
+    /**
+     * 創建一個 hash 對象用於計算大量數據的 hash 值
+     */
     export function hash(params: type): Hash
 }
 declare module "iotjs/crypto/sha512_256" {
     import { BufferData } from "iotjs";
     import { Hash } from "hash";
+    /**
+     * 返回 hash 長度
+     */
+    export const size: number
+    /**
+     * 返回 hash 塊數據大小，write 可以接收任意長度的數據，但寫入 塊大小的整數倍可能會有更好的效率
+     */
+    export const block: number
+    /**
+     * 計算 s 的 hash 並返回
+     */
     export function sum(s: string | BufferData): Uint8Array
+    /**
+     * 創建一個 hash 對象用於計算大量數據的 hash 值
+     */
     export function hash(params: type): Hash
 }
 declare module "iotjs/fs" {

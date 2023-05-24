@@ -7,7 +7,8 @@ declare namespace deps {
     export function write(n: native, s: Uint8Array): number
     export function done(n: native): Uint8Array
 }
-
+export const size = deps.size
+export const block = deps.block
 export function hash(): Hash {
     return new Hash(deps.clone())
 }

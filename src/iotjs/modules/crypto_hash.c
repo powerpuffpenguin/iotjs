@@ -3,7 +3,7 @@
 #include <tomcrypt.h>
 #include <iotjs/modules/js/tsc.hash.h>
 
-#define VM_MODULE_HASH(HASH, SIZE, BLOCK)                                                              \
+#define VM_MODULE_HASH_RAW(HASH, SIZE, BLOCK)                                                          \
     duk_ret_t native_iotjs_crypto_##HASH##_sum(duk_context *ctx)                                       \
     {                                                                                                  \
         const char *in;                                                                                \
@@ -144,13 +144,14 @@
         duk_call(ctx, 3);                                                                              \
         return 0;                                                                                      \
     }
+#define VM_MODULE_HASH(HASH) VM_MODULE_HASH_RAW(HASH, HASH##_desc.hashsize, HASH##_desc.blocksize)
 
-VM_MODULE_HASH(md4, 16, 64)
-VM_MODULE_HASH(md5, 16, 64)
-VM_MODULE_HASH(sha1, 20, 64)
-VM_MODULE_HASH(sha224, 28, 64)
-VM_MODULE_HASH(sha256, 32, 64)
-VM_MODULE_HASH(sha384, 48, 128)
-VM_MODULE_HASH(sha512, 64, 128)
-VM_MODULE_HASH(sha512_224, 28, 128)
-VM_MODULE_HASH(sha512_256, 32, 128)
+VM_MODULE_HASH(md4)
+VM_MODULE_HASH(md5)
+VM_MODULE_HASH(sha1)
+VM_MODULE_HASH(sha224)
+VM_MODULE_HASH(sha256)
+VM_MODULE_HASH(sha384)
+VM_MODULE_HASH(sha512)
+VM_MODULE_HASH(sha512_224)
+VM_MODULE_HASH(sha512_256)
