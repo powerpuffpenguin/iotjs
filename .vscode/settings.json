@@ -98,6 +98,7 @@
     "openssl_hostname_validation.h": "c",
     "bio.h": "c",
     "bufferevent_ssl.h": "c",
-    "options.h": "c"
+    "options.h": "c",
+    "sniffer.h": "c"
   }
 }

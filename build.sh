@@ -139,10 +139,12 @@ build_wolfssl(){
                 --enable-crypttests=no \
                 --enable-memtest=no \
                 --enable-examples=no \
+                --enable-debug=no \
                 --enable-opensslall \
                 --enable-opensslextra \
                 --enable-secure-renegotiation \
                 --enable-sessioncerts \
+                --enable-sni \
                 --enable-static=yes \
                 --enable-shared=no 
         fi

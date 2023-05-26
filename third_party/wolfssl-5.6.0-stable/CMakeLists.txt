@@ -1920,7 +1920,7 @@ set(LIB_SOURCES "")
 # Corresponds to the instances of "src_libwolfssl_la_SOURCES += ..."
 # in the *.am files.
 generate_lib_src_list("${LIB_SOURCES}")
-add_library(wolfssl STATIC ${LIB_SOURCES})
+add_library(wolfssl ${LIB_SOURCES})
 
 set_target_properties(wolfssl
     PROPERTIES

@@ -1,6 +1,6 @@
-#include <stdio.h>
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
+#include <wolfssl/sniffer.h>
 
 #include <event2/event.h>
 #include <event2/dns.h>
@@ -15,14 +15,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#define TEST_METHOD EVHTTP_REQ_GET
 #define TEST_NAMESERVER "192.168.251.1:53"
-#define TEST_URI "https://192.168.251.50:9443/abc?id=1&level=2#kate"
+#define TEST_URI "https://192.168.251.50:9443/"
 typedef struct
 {
     struct evhttp_uri *uri;
     struct evhttp_request *request;
     struct bufferevent *bev;
     struct evhttp_connection *conn;
+    SSL_CTX *sctx;
+    SSL *ssl;
 } request_t;
 
 void request_free(request_t *p)
@@ -43,6 +46,14 @@ void request_free(request_t *p)
     {
         bufferevent_free(p->bev);
     }
+    if (p->ssl)
+    {
+        SSL_free(p->ssl);
+    }
+    if (p->sctx)
+    {
+        SSL_CTX_free(p->sctx);
+    }
     free(p);
 }
 void on_connection_close(struct evhttp_connection *conn, void *arg)
@@ -53,37 +64,41 @@ void on_request_cb(struct evhttp_request *req, void *arg)
 {
     if (!req)
     {
+        request_free(arg);
         puts("error req NULL");
         return;
     }
     puts("on_request_cb");
     int code = evhttp_request_get_response_code(req);
-    const char *line = evhttp_request_get_response_code_line(req);
-    printf("code: %d %s\n", code, line);
-
-    struct evbuffer *buf = evhttp_request_get_input_buffer(req);
-    size_t n = evbuffer_get_length(buf);
-    if (n > 0)
+    if (code)
     {
-        char *body = malloc(n + 1);
-        if (body)
+        const char *line = evhttp_request_get_response_code_line(req);
+        printf("code: %d %s\n", code, line);
+
+        struct evbuffer *buf = evhttp_request_get_input_buffer(req);
+        size_t n = evbuffer_get_length(buf);
+        if (n > 0)
         {
-            n = evbuffer_remove(buf, body, n);
-            body[n] = 0;
-            puts(body);
-        }
-        else
-        {
-            printf("malloc body(%zu) error\n", n);
+            char *body = malloc(n + 1);
+            if (body)
+            {
+                n = evbuffer_remove(buf, body, n);
+                body[n] = 0;
+                puts(body);
+            }
+            else
+            {
+                printf("malloc body(%zu) error\n", n);
+            }
         }
     }
+    request_free(arg);
 }
 void on_error_cb(enum evhttp_request_error err, void *arg)
 {
     switch (EVREQ_HTTP_TIMEOUT)
     {
     case EVREQ_HTTP_TIMEOUT:
-        puts("Timeout reached.");
         break;
     case EVREQ_HTTP_EOF:
         puts("EOF reached.");
@@ -107,10 +122,22 @@ void on_error_cb(enum evhttp_request_error err, void *arg)
 }
 int verify_callback(int preverify_ok, X509_STORE_CTX *ctx)
 {
-    printf("SSLX_CTX_verify_callback %d\n", preverify_ok);
+    // https://www.openssl.org/docs/manmaster/man3/SSL_CTX_set_verify.html
+    char buf[256];
+    X509 *err_cert;
+    int err, depth;
+    SSL *ssl;
+
+    err_cert = X509_STORE_CTX_get_current_cert(ctx);
+    err = X509_STORE_CTX_get_error(ctx);
+    depth = X509_STORE_CTX_get_error_depth(ctx);
+    ssl = X509_STORE_CTX_get_ex_data(ctx, SSL_get_ex_data_X509_STORE_CTX_idx());
+    X509_NAME_oneline(X509_get_subject_name(err_cert), buf, 256);
+
+    printf("----------- depth=%d ok=%d %s\n", depth, preverify_ok, buf);
     return 1;
-    return preverify_ok;
 }
+
 int http_example(struct event_base *eb, struct evdns_base *esb)
 {
     int ret = -1;
@@ -136,6 +163,25 @@ int http_example(struct event_base *eb, struct evdns_base *esb)
     const char *host = evhttp_uri_get_host(req->uri);
     printf("host: %s\n", host);
     int port = evhttp_uri_get_port(req->uri);
+    if (!strcmp(scheme, "http"))
+    {
+        if (port < 1)
+        {
+            port = 80;
+        }
+    }
+    else if (!strcmp(scheme, "https"))
+    {
+        if (port < 1)
+        {
+            port = 443;
+        }
+    }
+    else
+    {
+        printf("scheme not supported: %s\n", scheme);
+        goto END;
+    }
     printf("port: %d\n", port);
     printf("userinfo: %s\n", evhttp_uri_get_userinfo(req->uri));
     const char *path = evhttp_uri_get_path(req->uri);
@@ -143,11 +189,7 @@ int http_example(struct event_base *eb, struct evdns_base *esb)
     const char *query = evhttp_uri_get_query(req->uri);
     printf("query: %s\n", query);
     printf("fragment: %s\n", evhttp_uri_get_fragment(req->uri));
-    if (strcmp(scheme, "http") && strcmp(scheme, "https"))
-    {
-        printf("scheme not supported: %s\n", scheme);
-        goto END;
-    }
+
     // 創建請求
     req->request = evhttp_request_new(on_request_cb, req);
     if (!req->request)
@@ -162,39 +204,53 @@ int http_example(struct event_base *eb, struct evdns_base *esb)
     evhttp_add_header(headers, "Host", host); // Host 是必須設置的 其它可選
     evhttp_add_header(headers, "User-Agent", "iotjs");
 
-    struct evbuffer *buf = evhttp_request_get_output_buffer(req->request);
-    const char *body = "{\"id\":1,\"name\":\"kate\"}";
-    if (evbuffer_add(buf, body, strlen(body)))
+    if (TEST_METHOD == EVHTTP_REQ_POST ||
+        TEST_METHOD == EVHTTP_REQ_PUT ||
+        TEST_METHOD == EVHTTP_REQ_PATCH)
     {
-        puts("evbuffer_add error");
-        goto END;
+        struct evbuffer *buf = evhttp_request_get_output_buffer(req->request);
+        const char *body = "{\"id\":1,\"name\":\"kate\"}";
+        if (evbuffer_add(buf, body, strlen(body)))
+        {
+            puts("evbuffer_add error");
+            goto END;
+        }
     }
     // 創建 socket 連接
     if (strcmp(scheme, "http"))
     {
-        // tls
-        SSL_CTX *sctx;
-        SSL *ssl;
-        sctx = SSL_CTX_new(SSLv23_client_method());
-        if (!sctx)
+        SSL_library_init();
+        ERR_load_crypto_strings();
+        SSL_load_error_strings();
+        OpenSSL_add_all_algorithms();
+        // 創建 ssl 上下文
+        req->sctx = SSL_CTX_new(TLS_client_method());
+        if (!req->sctx)
         {
             puts("SSL_CTX_new error");
             goto END;
         }
-        SSL_CTX_set_options(sctx, SSL_OP_NO_TLSv1_2);
-        // SSL_CTX_set_options (sctx, SSL_OP_ALL);
-        SSL_CTX_set_timeout(sctx, 3000);
-        SSL_CTX_set_verify(sctx, SSL_VERIFY_PEER, verify_callback);
-        SSL_CTX_set_default_verify_paths(sctx);
-        SSL_CTX_set_cipher_list(sctx, "RC4-MD5");
-        ssl = SSL_new(sctx);
-        if (!ssl)
+
+        SSL_CTX_set_timeout(req->sctx, 3000);
+        // 設置如何驗證服務器證書
+        SSL_CTX_set_verify(req->sctx, SSL_VERIFY_PEER, verify_callback);
+        SSL_CTX_set_default_verify_paths(req->sctx);
+
+        // 創建 ssl 層
+        req->ssl = SSL_new(req->sctx);
+        if (!req->ssl)
         {
             puts("SSL_new error");
             goto END;
         }
+        // set sni
+        if (SSL_set_tlsext_host_name(req->ssl, host) != SSL_SUCCESS)
+        {
+            puts("SSL_set_tlsext_host_name error");
+            goto END;
+        }
 
-        req->bev = bufferevent_openssl_socket_new(eb, -1, ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE);
+        req->bev = bufferevent_openssl_socket_new(eb, -1, req->ssl, BUFFEREVENT_SSL_CONNECTING, 0);
         if (!req->bev)
         {
             puts("bufferevent_openssl_socket_new error");
@@ -203,7 +259,7 @@ int http_example(struct event_base *eb, struct evdns_base *esb)
     }
     else
     {
-        req->bev = bufferevent_socket_new(eb, -1, BEV_OPT_CLOSE_ON_FREE);
+        req->bev = bufferevent_socket_new(eb, -1, 0);
         if (!req->bev)
         {
             puts("bufferevent_socket_new error");
@@ -219,10 +275,9 @@ int http_example(struct event_base *eb, struct evdns_base *esb)
     }
     evhttp_connection_set_closecb(req->conn, on_connection_close, NULL);
     evhttp_connection_set_timeout(req->conn, 10);
-
     // 發送請求
-    int sz_path = strlen(path);
-    int sz_query = strlen(query);
+    int sz_path = path ? strlen(path) : 0;
+    int sz_query = query ? strlen(query) : 0;
     if (!sz_path)
     {
         path = "/";
@@ -245,13 +300,14 @@ int http_example(struct event_base *eb, struct evdns_base *esb)
     }
     else
     {
-        ret = evhttp_make_request(req->conn, req->request, EVHTTP_REQ_PUT, path);
+        ret = evhttp_make_request(req->conn, req->request, TEST_METHOD, path);
     }
     if (ret)
     {
         puts("evhttp_make_request error");
         goto END;
     }
+    req->request = NULL; // 回調後 evhhtp 會自動釋放資源，避免多次釋放
     ret = 0;
 END:
     if (!ret)
@@ -264,6 +320,7 @@ END:
     }
     return ret;
 }
+
 int main(int argc, char *argv[])
 {
     int ret = -1;
@@ -317,5 +374,6 @@ END:
     {
         event_base_free(eb);
     }
+    puts("end");
     return ret;
 }
