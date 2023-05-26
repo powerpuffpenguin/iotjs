@@ -841,7 +841,9 @@ if(EVENT__HAVE_EVENT_PORTS)
 endif()
 
 if (NOT EVENT__DISABLE_OPENSSL)
-    find_package(OpenSSL REQUIRED)
+    if(NOT OPENSSL_LIBRARIES)
+     find_package(OpenSSL REQUIRED)
+    endif()
 
     set(EVENT__HAVE_OPENSSL 1)
 
@@ -853,6 +855,8 @@ if (NOT EVENT__DISABLE_OPENSSL)
     list(APPEND SRC_OPENSSL bufferevent_openssl.c)
     list(APPEND HDR_PUBLIC include/event2/bufferevent_ssl.h)
     list(APPEND LIB_APPS ${OPENSSL_LIBRARIES})
+    list(APPEND LIB_APPS -lm)
+    add_definitions(-DOPENSSL_EXTRA=1 -DOPENSSL_ALL=1 -DHAVE_SECURE_RENEGOTIATION=1)
 endif()
 
 if (NOT EVENT__DISABLE_THREAD_SUPPORT)
@@ -956,7 +960,7 @@ if (NOT EVENT__DISABLE_OPENSSL)
     add_event_library(event_openssl
         INNER_LIBRARIES event_core
         OUTER_INCLUDES ${OPENSSL_INCLUDE_DIR}
-        LIBRARIES ${OPENSSL_LIBRARIES}
+        LIBRARIES ${OPENSSL_LIBRARIES} 
         SOURCES ${SRC_OPENSSL})
 endif()
 

@@ -16,6 +16,7 @@ set(CMAKE_C_FLAGS "-std=c99")
 include(${CMAKE_SOURCE_DIR}/cmake/third_party.cmake)
 include(${CMAKE_SOURCE_DIR}/cmake/source.cmake)
 
+
 add_definitions(${target_definitions})
 if(build_test)
     add_executable(${target_name} ${target_sources})

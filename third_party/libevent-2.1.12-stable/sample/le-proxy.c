@@ -31,9 +31,9 @@
 #include <event2/util.h>
 
 #include "util-internal.h"
-#include <openssl/ssl.h>
-#include <openssl/err.h>
-#include <openssl/rand.h>
+#include <wolfssl/openssl/ssl.h>
+#include <wolfssl/openssl/err.h>
+#include <wolfssl/openssl/rand.h>
 #include "openssl-compat.h"
 
 static struct event_base *base;

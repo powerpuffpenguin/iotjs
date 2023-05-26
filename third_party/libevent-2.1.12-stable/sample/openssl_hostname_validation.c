@@ -39,8 +39,8 @@ SOFTWARE.
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #endif
 
-#include <openssl/x509v3.h>
-#include <openssl/ssl.h>
+#include <wolfssl/openssl/x509v3.h>
+#include <wolfssl/openssl/ssl.h>
 #include <string.h>
 
 #include "openssl_hostname_validation.h"

@@ -56,7 +56,7 @@
     "duk_module_node.h": "c",
     "__threading_support": "c",
     "map": "c",
-    "*.txt": "c",
+    "*.txt": "cmake",
     "stat.h": "c",
     "__tree": "cpp",
     "modules.h": "c",
@@ -89,6 +89,15 @@
     "stdio.h": "c",
     "tomcrypt.h": "c",
     "tomcrypt_hash.h": "c",
-    "tsc.hash.h": "c"
+    "tsc.hash.h": "c",
+    "openssl-compat.h": "c",
+    "util-internal.h": "c",
+    "ssl.h": "c",
+    "err.h": "c",
+    "rand.h": "c",
+    "openssl_hostname_validation.h": "c",
+    "bio.h": "c",
+    "bufferevent_ssl.h": "c",
+    "options.h": "c"
   }
 }

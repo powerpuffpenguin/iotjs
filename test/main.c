@@ -1,44 +1,321 @@
-#include <tomcrypt.h>
+#include <stdio.h>
+#include <wolfssl/options.h>
+#include <wolfssl/ssl.h>
+
+#include <event2/event.h>
+#include <event2/dns.h>
+#include <event2/http.h>
+#include <event2/buffer.h>
+#include <event2/bufferevent.h>
+#ifndef EVENT__HAVE_OPENSSL
+#define EVENT__HAVE_OPENSSL 1
+#endif
+#include <event2/bufferevent_ssl.h>
+
 #include <stdio.h>
 #include <stdlib.h>
-void puts_hex(const unsigned char *s, int n)
+#include <string.h>
+#define TEST_NAMESERVER "192.168.251.1:53"
+#define TEST_URI "https://192.168.251.50:9443/abc?id=1&level=2#kate"
+typedef struct
 {
-    static unsigned char *hextable = "0123456789abcdef";
-    int j = 0;
-    for (int i = 0; i < n; i++)
+    struct evhttp_uri *uri;
+    struct evhttp_request *request;
+    struct bufferevent *bev;
+    struct evhttp_connection *conn;
+} request_t;
+
+void request_free(request_t *p)
+{
+    if (p->uri)
     {
-        unsigned char v = s[i];
-        putc(hextable[v >> 4], stdout);
-        putc(hextable[v & 0x0f], stdout);
-        j += 2;
+        evhttp_uri_free(p->uri);
     }
-    putc('\n', stdout);
+    if (p->request)
+    {
+        evhttp_request_free(p->request);
+    }
+    if (p->conn)
+    {
+        evhttp_connection_free(p->conn);
+    }
+    if (p->bev)
+    {
+        bufferevent_free(p->bev);
+    }
+    free(p);
+}
+void on_connection_close(struct evhttp_connection *conn, void *arg)
+{
+    puts("on_connection_close");
+}
+void on_request_cb(struct evhttp_request *req, void *arg)
+{
+    if (!req)
+    {
+        puts("error req NULL");
+        return;
+    }
+    puts("on_request_cb");
+    int code = evhttp_request_get_response_code(req);
+    const char *line = evhttp_request_get_response_code_line(req);
+    printf("code: %d %s\n", code, line);
+
+    struct evbuffer *buf = evhttp_request_get_input_buffer(req);
+    size_t n = evbuffer_get_length(buf);
+    if (n > 0)
+    {
+        char *body = malloc(n + 1);
+        if (body)
+        {
+            n = evbuffer_remove(buf, body, n);
+            body[n] = 0;
+            puts(body);
+        }
+        else
+        {
+            printf("malloc body(%zu) error\n", n);
+        }
+    }
+}
+void on_error_cb(enum evhttp_request_error err, void *arg)
+{
+    switch (EVREQ_HTTP_TIMEOUT)
+    {
+    case EVREQ_HTTP_TIMEOUT:
+        puts("Timeout reached.");
+        break;
+    case EVREQ_HTTP_EOF:
+        puts("EOF reached.");
+        break;
+    case EVREQ_HTTP_INVALID_HEADER:
+        puts("Error while reading header, or invalid header.");
+        break;
+    case EVREQ_HTTP_BUFFER_ERROR:
+        puts("Error encountered while reading or writing.");
+        break;
+    case EVREQ_HTTP_REQUEST_CANCEL:
+        puts("The evhttp_cancel_request() called on this request.");
+        break;
+    case EVREQ_HTTP_DATA_TOO_LONG:
+        puts("Body is greater then evhttp_connection_set_max_body_size()");
+        break;
+    default:
+        puts("unknow error");
+        break;
+    }
+}
+int verify_callback(int preverify_ok, X509_STORE_CTX *ctx)
+{
+    printf("SSLX_CTX_verify_callback %d\n", preverify_ok);
+    return 1;
+    return preverify_ok;
+}
+int http_example(struct event_base *eb, struct evdns_base *esb)
+{
+    int ret = -1;
+    request_t *req = NULL;
+    // 動態申請內存，存儲請求資源
+    req = malloc(sizeof(request_t));
+    if (!req)
+    {
+        puts("malloc request_t error");
+        goto END;
+    }
+    memset(req, 0, sizeof(request_t));
+    // 解析請求 uri
+    req->uri = evhttp_uri_parse(TEST_URI);
+    if (!req->uri)
+    {
+        printf("not a valid uri: %s\n", TEST_URI);
+        goto END;
+    }
+    puts("new request");
+    const char *scheme = evhttp_uri_get_scheme(req->uri);
+    printf("scheme: %s\n", scheme);
+    const char *host = evhttp_uri_get_host(req->uri);
+    printf("host: %s\n", host);
+    int port = evhttp_uri_get_port(req->uri);
+    printf("port: %d\n", port);
+    printf("userinfo: %s\n", evhttp_uri_get_userinfo(req->uri));
+    const char *path = evhttp_uri_get_path(req->uri);
+    printf("path: %s\n", path);
+    const char *query = evhttp_uri_get_query(req->uri);
+    printf("query: %s\n", query);
+    printf("fragment: %s\n", evhttp_uri_get_fragment(req->uri));
+    if (strcmp(scheme, "http") && strcmp(scheme, "https"))
+    {
+        printf("scheme not supported: %s\n", scheme);
+        goto END;
+    }
+    // 創建請求
+    req->request = evhttp_request_new(on_request_cb, req);
+    if (!req->request)
+    {
+        puts("evhttp_request_new error");
+        goto END;
+    }
+    // 設置錯誤處理
+    evhttp_request_set_error_cb(req->request, on_error_cb);
+    // 設置 headers
+    struct evkeyvalq *headers = evhttp_request_get_output_headers(req->request);
+    evhttp_add_header(headers, "Host", host); // Host 是必須設置的 其它可選
+    evhttp_add_header(headers, "User-Agent", "iotjs");
+
+    struct evbuffer *buf = evhttp_request_get_output_buffer(req->request);
+    const char *body = "{\"id\":1,\"name\":\"kate\"}";
+    if (evbuffer_add(buf, body, strlen(body)))
+    {
+        puts("evbuffer_add error");
+        goto END;
+    }
+    // 創建 socket 連接
+    if (strcmp(scheme, "http"))
+    {
+        // tls
+        SSL_CTX *sctx;
+        SSL *ssl;
+        sctx = SSL_CTX_new(SSLv23_client_method());
+        if (!sctx)
+        {
+            puts("SSL_CTX_new error");
+            goto END;
+        }
+        SSL_CTX_set_options(sctx, SSL_OP_NO_TLSv1_2);
+        // SSL_CTX_set_options (sctx, SSL_OP_ALL);
+        SSL_CTX_set_timeout(sctx, 3000);
+        SSL_CTX_set_verify(sctx, SSL_VERIFY_PEER, verify_callback);
+        SSL_CTX_set_default_verify_paths(sctx);
+        SSL_CTX_set_cipher_list(sctx, "RC4-MD5");
+        ssl = SSL_new(sctx);
+        if (!ssl)
+        {
+            puts("SSL_new error");
+            goto END;
+        }
+
+        req->bev = bufferevent_openssl_socket_new(eb, -1, ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE);
+        if (!req->bev)
+        {
+            puts("bufferevent_openssl_socket_new error");
+            goto END;
+        }
+    }
+    else
+    {
+        req->bev = bufferevent_socket_new(eb, -1, BEV_OPT_CLOSE_ON_FREE);
+        if (!req->bev)
+        {
+            puts("bufferevent_socket_new error");
+            goto END;
+        }
+    }
+    // 創建 http 連接
+    req->conn = evhttp_connection_base_bufferevent_new(eb, esb, req->bev, host, port);
+    if (!req->conn)
+    {
+        puts("connect error");
+        goto END;
+    }
+    evhttp_connection_set_closecb(req->conn, on_connection_close, NULL);
+    evhttp_connection_set_timeout(req->conn, 10);
+
+    // 發送請求
+    int sz_path = strlen(path);
+    int sz_query = strlen(query);
+    if (!sz_path)
+    {
+        path = "/";
+        sz_path = 1;
+    }
+    if (sz_query)
+    {
+        char *uri = malloc(sz_path + sz_query + 2);
+        if (!uri)
+        {
+            puts("malloc uri error");
+            goto END;
+        }
+        memcpy(uri, path, sz_path);
+        uri[sz_path] = '?';
+        memcpy(uri + sz_path + 1, query, sz_query);
+        uri[sz_path + 1 + sz_query] = 0;
+        ret = evhttp_make_request(req->conn, req->request, EVHTTP_REQ_PUT, uri);
+        free(uri);
+    }
+    else
+    {
+        ret = evhttp_make_request(req->conn, req->request, EVHTTP_REQ_PUT, path);
+    }
+    if (ret)
+    {
+        puts("evhttp_make_request error");
+        goto END;
+    }
+    ret = 0;
+END:
+    if (!ret)
+    {
+        return 0;
+    }
+    if (req)
+    {
+        request_free(req);
+    }
+    return ret;
 }
 int main(int argc, char *argv[])
 {
-    hash_state md;
-    if (sha512_desc.init(&md))
+    int ret = -1;
+    struct event_base *eb = NULL;
+    struct evdns_base *esb = NULL;
+    eb = event_base_new();
+    if (!eb)
     {
-        puts("sha512_init error");
-        return 1;
+        puts("event_base_new error");
+        goto END;
     }
-    if (sha512_desc.process(&md, "ok", 2))
+#ifdef TEST_NAMESERVER
+    esb = evdns_base_new(eb, EVDNS_BASE_DISABLE_WHEN_INACTIVE);
+    if (!esb)
     {
-        puts("sha512_init error");
-        return 1;
+        puts("evdns_base_new error");
+        goto END;
     }
-    printf("%ld\n", sha512_desc.hashsize);
-    unsigned char *out = malloc(sha512_desc.hashsize);
-    if (!out)
+    if (evdns_base_nameserver_ip_add(esb, TEST_NAMESERVER))
     {
-        puts("malloc error");
-        return 1;
+        puts("evdns_base_nameserver_ip_add error");
+        goto END;
     }
-    if (sha512_desc.done(&md, out))
+#else
+    esb = evdns_base_new(eb, EVDNS_BASE_INITIALIZE_NAMESERVERS | EVDNS_BASE_DISABLE_WHEN_INACTIVE);
+    if (!esb)
     {
-        puts("sha512_init error");
-        return 1;
+        puts("evdns_base_new error");
+        goto END;
     }
-    puts_hex(out, sha512_desc.hashsize);
-    return 0;
+#endif
+
+    if (http_example(eb, esb))
+    {
+        goto END;
+    }
+    ret = event_base_dispatch(eb);
+    if (ret < 0)
+    {
+        puts("event_base_dispatch error");
+        goto END;
+    }
+    esb = NULL;
+    ret = 0;
+END:
+    if (esb)
+    {
+        evdns_base_free(esb, 0);
+    }
+    if (eb)
+    {
+        event_base_free(eb);
+    }
+    return ret;
 }

@@ -39,9 +39,9 @@
 #include <event2/util.h>
 #include <event2/http.h>
 
-#include <openssl/ssl.h>
-#include <openssl/err.h>
-#include <openssl/rand.h>
+#include <wolfssl/openssl/ssl.h>
+#include <wolfssl/openssl/err.h>
+#include <wolfssl/openssl/rand.h>
 
 #include "openssl_hostname_validation.h"
 

@@ -40,7 +40,7 @@ extern "C" {
 #endif
 
 /* This is what openssl's SSL objects are underneath. */
-struct ssl_st;
+struct WOLFSSL;
 
 /**
    The state of an SSL object to be used when creating a new
@@ -68,7 +68,7 @@ EVENT2_EXPORT_SYMBOL
 struct bufferevent *
 bufferevent_openssl_filter_new(struct event_base *base,
     struct bufferevent *underlying,
-    struct ssl_st *ssl,
+    struct WOLFSSL *ssl,
     enum bufferevent_ssl_state state,
     int options);
 
@@ -86,7 +86,7 @@ EVENT2_EXPORT_SYMBOL
 struct bufferevent *
 bufferevent_openssl_socket_new(struct event_base *base,
     evutil_socket_t fd,
-    struct ssl_st *ssl,
+    struct WOLFSSL *ssl,
     enum bufferevent_ssl_state state,
     int options);
 
@@ -114,7 +114,7 @@ void bufferevent_openssl_set_allow_dirty_shutdown(struct bufferevent *bev,
 
 /** Return the underlying openssl SSL * object for an SSL bufferevent. */
 EVENT2_EXPORT_SYMBOL
-struct ssl_st *
+struct WOLFSSL *
 bufferevent_openssl_get_ssl(struct bufferevent *bufev);
 
 /** Tells a bufferevent to begin SSL renegotiation. */

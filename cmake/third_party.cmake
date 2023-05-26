@@ -1,6 +1,7 @@
 include("${CMAKE_CURRENT_LIST_DIR}/third_party/threads.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/third_party/duktape.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/third_party/libevent.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/third_party/wolfssl.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/third_party/libtomcrypt.cmake")
 find_package(Threads REQUIRED)
 if (NOT CMAKE_USE_PTHREADS_INIT)

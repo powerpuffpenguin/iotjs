@@ -53,8 +53,8 @@
 #include "tinytest.h"
 #include "tinytest_macros.h"
 
-#include <openssl/err.h>
-#include <openssl/pem.h>
+#include <wolfssl/openssl/err.h>
+#include <wolfssl/openssl/pem.h>
 #include "openssl-compat.h"
 
 #include <string.h>

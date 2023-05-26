@@ -4,6 +4,8 @@ set -e
 cd `dirname "$BASH_SOURCE"`
 rootDir=`pwd`
 
+wolfssl_version=wolfssl-5.6.0-stable
+
 source scripts/lib/core.sh
 source scripts/lib/log.sh
 source scripts/lib/time.sh
@@ -117,6 +119,72 @@ build_js(){
         build_min_xdd "$node"
     done
 }
+build_wolfssl(){
+    if [[ $cmake == true ]] || [[ $make == true ]];then
+        cd "$rootDir/$dir"
+        if [[ ! -d wolfssl ]];then
+            log_info "cp $wolfssl_version"
+            cp "$rootDir/third_party/$wolfssl_version" ./wolfssl -r
+        fi
+        cd wolfssl
+        if [[ ! -f configure ]];then
+            log_info "autogen.sh $wolfssl_version"
+            ./autogen.sh
+        fi
+        if [[ ! -f Makefile ]];then
+            log_info "configure $wolfssl_version"
+            ./configure --host=$wolfssl_host    \
+                --enable-benchmark=no \
+                --enable-selftest=no \
+                --enable-crypttests=no \
+                --enable-memtest=no \
+                --enable-examples=no \
+                --enable-opensslall \
+                --enable-opensslextra \
+                --enable-secure-renegotiation \
+                --enable-sessioncerts \
+                --enable-static=yes \
+                --enable-shared=no 
+        fi
+        if [[ $make == true ]];then
+            if [[ $third_party == true ]] || [[ ! -f src/.libs/libwolfssl.a ]];then
+                log_info "make wolfssl for $target"
+                make
+            fi
+        fi
+        return 0
+        if [[ ! -d wolfssl ]];then
+            mkdir wolfssl
+        fi
+        cd wolfssl
+        if [[ $cmake == true ]];then
+            if [[ $third_party == true ]] || [[ ! -f Makefile ]];then
+                log_info "cmake wolfssl for $target"
+                local args=(cmake "$rootDir/third_party/$wolfssl_version"
+                    -DWOLFSSL_EXAMPLES=no
+                    -DWOLFSSL_OPENSSLEXTRA=ON
+                    -DWOLFSSL_OPENSSLALL=ON
+                )
+                args+=("${cmake_args[@]}")
+                log_info "${args[@]}"
+                "${args[@]}"
+            fi
+        fi
+        if [[ $make == true ]];then
+            if [[ $third_party == true ]] || [[ ! -f libwolfssl.a ]];then
+                log_info "make wolfssl for $target"
+                make
+            fi
+        fi
+
+        if [[ ! -d include ]];then
+            mkdir include
+        fi
+        if [[ ! -d "include/wolfssl" ]];then
+            cp "$rootDir/third_party/$wolfssl_version/wolfssl" include/ -r
+        fi
+    fi
+}
 build_libevent(){
     if [[ $cmake == true ]] || [[ $make == true ]];then
         cd "$rootDir/$dir"
@@ -124,16 +192,31 @@ build_libevent(){
             mkdir libevent
         fi
         cd libevent
-        
+
         if [[ $cmake == true ]];then
             if [[ $third_party == true ]] || [[ ! -f Makefile ]];then
                 log_info "cmake libevent for $target"
+                echo "$rootDir/$dir/wolfssl/src/.libs/libwolfssl.a"
+                local DISABLE_OPENSSL=ON
+                DISABLE_OPENSSL=OFF
                 local args=(cmake ../../../third_party/libevent-2.1.12-stable
                     -DCMAKE_BUILD_TYPE=Release
+                    -DEVENT__DISABLE_SAMPLES=ON
                     -DEVENT__DISABLE_TESTS=ON
-                    -DEVENT__DISABLE_OPENSSL=ON
+                    "-DEVENT__DISABLE_OPENSSL=$DISABLE_OPENSSL"
+                    "-DOPENSSL_INCLUDE_DIR=$rootDir/$dir/wolfssl"
+                    "-DOPENSSL_LIBRARIES=$rootDir/$dir/wolfssl/src/.libs/libwolfssl.a"
                     -DEVENT__LIBRARY_TYPE=STATIC
                 )
+                # local args=(cmake ../../../third_party/libevent-2.1.12-stable
+                #     -DCMAKE_BUILD_TYPE=Release
+                #     -DEVENT__DISABLE_SAMPLES=ON
+                #     -DEVENT__DISABLE_TESTS=ON
+                #     "-DEVENT__DISABLE_OPENSSL=$DISABLE_OPENSSL"
+                #     "-DOPENSSL_INCLUDE_DIR=$rootDir/$dir/wolfssl/include"
+                #     "-DOPENSSL_LIBRARIES=$rootDir/$dir/wolfssl/libwolfssl.a"
+                #     -DEVENT__LIBRARY_TYPE=STATIC
+                # )
                 args+=("${cmake_args[@]}")
                 log_info "${args[@]}"
                 "${args[@]}"
@@ -177,6 +260,9 @@ build_iotjs(){
             log_info "cmake iotjs for $target"
             local args=(cmake ../../../
                 -DCMAKE_BUILD_TYPE=$build_type
+                -DVM_IOTJS_OS=$os
+                -DVM_IOTJS_ARCH=$iotjs_arch
+                "-DOUTPUT_ROOT_DIR=dst/$target"
             )
             args+=("${cmake_args[@]}")
             log_info "${args[@]}"
@@ -203,11 +289,9 @@ on_main(){
         iotjs_arch=amd64
     fi
     local cmake_args=(
-        -DVM_IOTJS_OS=$os
-        -DVM_IOTJS_ARCH=$iotjs_arch
         -DCMAKE_SYSTEM_NAME=Linux
-        "-DOUTPUT_ROOT_DIR=dst/$target"
     )
+    local wolfssl_host
     case "$target" in
         linux_csky)
             export CC="$toolchain/bin/csky-linux-gcc"
@@ -216,15 +300,18 @@ on_main(){
                 "-DCMAKE_C_COMPILER=$toolchain/bin/csky-linux-gcc"
                 "-DCMAKE_CXX_COMPILER=$toolchain/bin/csky-linux-g++"
             )
+            wolfssl_host=i386-linux
         ;;
         linux_arm)
             export CC="$toolchain/bin/arm-linux-gnueabihf-gcc"
+            wolfssl_host=arm-linux
             cmake_args+=(
                 "-DCMAKE_C_COMPILER=$toolchain/bin/arm-linux-gnueabihf-gcc"
                 "-DCMAKE_CXX_COMPILER=$toolchain/bin/arm-linux-gnueabihf-g++"
             )
         ;;
         linux_amd64)
+            wolfssl_host=x86_64-linux
             export CC="$toolchain/bin/gcc"
             cmake_args+=(
                 "-DCMAKE_C_COMPILER=$toolchain/bin/gcc"
@@ -252,6 +339,7 @@ on_main(){
         fi
     fi
     build_js
+    build_wolfssl
     build_libevent
     build_libtomcrypt
     build_iotjs

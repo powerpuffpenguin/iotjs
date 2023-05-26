@@ -8,6 +8,7 @@ include_directories("${dir}/include")
 set(items
     libevent.a
     libevent_pthreads.a
+    libevent_openssl.a
 )
 foreach(item ${items})
     list(APPEND target_libs
