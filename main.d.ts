@@ -303,6 +303,17 @@ declare module "iotjs/crypto/sha512_256" {
      */
     export function hash(params: type): Hash
 }
+declare module "iotjs/crypto/tls" {
+    /**
+     * 用於配置 tls 客戶端或服務器，在被傳遞給 tls 函數後就不能再對它進行修改
+     */
+    export interface ConfigOptions {
+        /**
+         * 如果被設置爲 true 則客戶端不會驗證 tls 證書
+         */
+        insecureSkipVerify: boolean
+    }
+}
 declare module "iotjs/fs" {
     export enum FileMode {
         dir = 0x80000000,// d: 是一個目錄
@@ -447,5 +458,21 @@ declare module "iotjs/net" {
         setDeadline(t: Date): void
         setReadDeadline(t: Date): void
         setWriteDeadline(t: Date): void
+    }
+}
+declare module "iotjs/net/http" {
+    export class Request {
+    }
+    export class Response {
+    }
+    /**
+     * 這是一個 http 客戶端
+     */
+    export class Client {
+        /**
+         * 發送一個 請求
+         * @param req 
+         */
+        do(req: Request): Response | Promise<Response>
     }
 }

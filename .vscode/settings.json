@@ -99,6 +99,7 @@
     "bio.h": "c",
     "bufferevent_ssl.h": "c",
     "options.h": "c",
-    "sniffer.h": "c"
+    "sniffer.h": "c",
+    "keyvalq_struct.h": "c"
   }
 }

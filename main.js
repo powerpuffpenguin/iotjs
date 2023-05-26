@@ -1,19 +1,9 @@
 console.log(new Date())
 var at = Date.now()
 var hex = require("iotjs/encoding/hex")
-var md5 = require("iotjs/crypto/md5")
-var sha224 = require("iotjs/crypto/sha224")
-var sha512 = require("iotjs/crypto/sha512")
 var http = require("iotjs/net/http")
 
-console.log(hex.encodeToString(md5.sum("ok")))
-console.log(hex.encodeToString(sha224.sum("ok")))
-var hash = sha512.hash()
-hash.write("ok")
-console.log(hex.encodeToString(hash.sum()))
-hash.write("123")
-console.log(hex.encodeToString(hash.sum()))
+console.log(http.http())
 
 var used = (Date.now() - at) / 1000
 console.log("used", used + "s")
-console.log(md5.size, md5.block)
