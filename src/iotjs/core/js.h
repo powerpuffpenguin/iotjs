@@ -32,6 +32,7 @@ typedef struct
     // 同步
     pthread_mutex_t mutex;
 } vm_context_t;
+void vm_free_dns(vm_context_t *vm);
 // 由系統調用，初始化 vm_context_t
 void _vm_init_context(duk_context *ctx, duk_context *main);
 
@@ -104,4 +105,26 @@ void vm_resolve_async_job(duk_context *ctx, duk_idx_t i);
 void vm_require_date(duk_context *ctx);
 
 void vm_push_error_object(duk_context *ctx, int code, const char *message);
+
+// 終結器
+typedef struct
+{
+    void *p;
+    void (*free)(void *p);
+} finalizer_t;
+
+// duk api 出錯時可能永遠不會返回(內部使用 jmp 指令 跳轉到了調用棧外部)，這對於資源釋放是一個挑戰，
+// 一個合理的解決方案是，使用 duk 提供的 set_finalizer 將資源釋放代碼和一個 object 關聯，當 object 被釋放時自動調用 資源釋放代碼，
+// 然而 set_finalizer 和 創建 關聯 object 也可能出現錯誤。
+//
+// vm_create_finalizer 創建好一個 object 並將其 finalizer 與 finalizer_t 關聯，如果失敗則 duk_throw，
+//
+// error ... => ..., e
+// success ... => ..., obj
+finalizer_t *vm_create_finalizer(duk_context *ctx);
+
+// 類似 vm_create_finalizer, 但自動爲爲p 申請內存和釋放, p=malloc(n)
+finalizer_t *vm_create_finalizer_n(duk_context *ctx, size_t n);
+// 如果 終結器 一致 返回 finalizer_t*，否則 duk_throw
+finalizer_t *vm_require_finalizer(duk_context *ctx, duk_idx_t idx, void (*free)(void *p));
 #endif

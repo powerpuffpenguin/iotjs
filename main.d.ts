@@ -461,18 +461,18 @@ declare module "iotjs/net" {
     }
 }
 declare module "iotjs/net/http" {
-    export class Request {
+    export interface RequestOptions {
+        method?: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+        header?: Record<string, string>
     }
     export class Response {
+        code: number
+        body?: Uint8Array
     }
     /**
-     * 這是一個 http 客戶端
+     * 發送一個 請求
+     * @param req 
      */
-    export class Client {
-        /**
-         * 發送一個 請求
-         * @param req 
-         */
-        do(req: Request): Response | Promise<Response>
-    }
+    export function request(url: string, opts: RequestOptions): Response | Promise<Response>
+
 }

@@ -167,6 +167,18 @@ vm_context_t *_vm_get_context(duk_context *ctx, BOOL completer)
     duk_pop(ctx);
     return vm;
 }
+void vm_free_dns(vm_context_t *vm)
+{
+    if (vm->dns > 0)
+    {
+        vm->dns--;
+    }
+    if (!vm->dns && vm->esb)
+    {
+        evdns_base_free(vm->esb, 1);
+        vm->esb = NULL;
+    }
+}
 vm_context_t *vm_get_context(duk_context *ctx)
 {
     return _vm_get_context(ctx, FALSE);
@@ -397,4 +409,128 @@ void vm_push_error_object(duk_context *ctx, int code, const char *message)
     duk_put_prop_lstring(ctx, -2, "code", 4);
     duk_push_string(ctx, message);
     duk_put_prop_lstring(ctx, -2, "message", 7);
+}
+static duk_ret_t native_finalizer(duk_context *ctx)
+{
+    duk_get_prop_lstring(ctx, 0, "p", 1);
+    finalizer_t *finalizer = duk_require_pointer(ctx, -1);
+    if (finalizer->free && finalizer->p)
+    {
+        finalizer->free(finalizer->p);
+    }
+    IOTJS_FREE(finalizer);
+    return 0;
+}
+static duk_ret_t native_finalizer_n(duk_context *ctx)
+{
+    duk_get_prop_lstring(ctx, 0, "p", 1);
+    finalizer_t *finalizer = duk_require_pointer(ctx, -1);
+    if (finalizer->free)
+    {
+        finalizer->free(finalizer->p);
+    }
+    IOTJS_FREE(finalizer);
+    return 0;
+}
+static duk_ret_t native_create_finalizer(duk_context *ctx)
+{
+    duk_push_object(ctx);
+    duk_swap_top(ctx, -2);
+    duk_put_prop_lstring(ctx, -2, "p", 1);
+    duk_push_c_lightfunc(ctx, native_finalizer, 1, 1, 0);
+    duk_set_finalizer(ctx, -2);
+    return 1;
+}
+static duk_ret_t native_create_finalizer_n(duk_context *ctx)
+{
+    duk_push_object(ctx);
+    duk_swap_top(ctx, -2);
+    duk_put_prop_lstring(ctx, -2, "p", 1);
+    duk_push_c_lightfunc(ctx, native_finalizer_n, 1, 1, 0);
+    duk_set_finalizer(ctx, -2);
+    return 1;
+}
+finalizer_t *vm_create_finalizer(duk_context *ctx)
+{
+    duk_require_stack(ctx, 2);
+    finalizer_t *finalizer = IOTJS_MALLOC(sizeof(finalizer_t));
+    if (!finalizer)
+    {
+        duk_error(ctx, DUK_ERR_ERROR, "cannot  malloc finalizer");
+    }
+
+    if (!duk_check_stack(ctx, 2))
+    {
+        IOTJS_FREE(finalizer);
+        duk_range_error(ctx, "valstack limit");
+    }
+
+    duk_push_c_lightfunc(ctx, native_create_finalizer, 1, 1, 0);
+    duk_push_pointer(ctx, (void *)finalizer);
+    if (duk_pcall(ctx, 1))
+    {
+        IOTJS_FREE(finalizer);
+        duk_throw(ctx);
+    }
+    finalizer->p = 0;
+    finalizer->free = NULL;
+    return finalizer;
+}
+finalizer_t *vm_create_finalizer_n(duk_context *ctx, size_t n)
+{
+    duk_require_stack(ctx, 2);
+    finalizer_t *finalizer = IOTJS_MALLOC(sizeof(finalizer_t) + n);
+    if (!finalizer)
+    {
+        duk_error(ctx, DUK_ERR_ERROR, "cannot  malloc finalizer");
+    }
+
+    if (!duk_check_stack(ctx, 2))
+    {
+        IOTJS_FREE(finalizer);
+        duk_range_error(ctx, "valstack limit");
+    }
+
+    duk_push_c_lightfunc(ctx, native_create_finalizer_n, 1, 1, 0);
+    duk_push_pointer(ctx, (void *)finalizer);
+    if (duk_pcall(ctx, 1))
+    {
+        IOTJS_FREE(finalizer);
+        duk_throw(ctx);
+    }
+    finalizer->free = NULL;
+    if (n)
+    {
+        finalizer->p = ((char *)finalizer) + sizeof(finalizer_t);
+        memset(finalizer->p, 0, n);
+    }
+    else
+    {
+        finalizer->p = 0;
+    }
+    return finalizer;
+}
+finalizer_t *vm_require_finalizer(duk_context *ctx, duk_idx_t idx, void (*free)(void *p))
+{
+    duk_get_finalizer(ctx, idx);
+    if (duk_is_undefined(ctx, -1))
+    {
+        duk_pop(ctx);
+        duk_type_error(ctx, "finalizer not exist");
+    }
+    if (!duk_is_lightfunc(ctx, -1))
+    {
+        duk_type_error(ctx, "finalizer is inconsistent");
+    }
+    duk_pop(ctx);
+
+    duk_get_prop_lstring(ctx, idx, "p", 1);
+    finalizer_t *finalizer = duk_require_pointer(ctx, -1);
+    duk_pop(ctx);
+    if (finalizer->free != free)
+    {
+        duk_type_error(ctx, "finalizer is inconsistent");
+    }
+
+    return finalizer;
 }
