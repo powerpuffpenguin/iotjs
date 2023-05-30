@@ -122,7 +122,8 @@ typedef struct
 // error ... => ..., e
 // success ... => ..., obj
 finalizer_t *vm_create_finalizer(duk_context *ctx);
-
+// error ... => ..., e
+// success ... => ..., obj
 // 類似 vm_create_finalizer, 但自動爲爲p 申請內存和釋放, p=malloc(n)
 finalizer_t *vm_create_finalizer_n(duk_context *ctx, size_t n);
 // 如果 終結器 一致 返回 finalizer_t*，否則 duk_throw

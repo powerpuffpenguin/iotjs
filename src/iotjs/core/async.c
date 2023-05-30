@@ -22,7 +22,7 @@ void vm_async_completer_args(duk_context *ctx, void *key)
     duk_put_prop(ctx, -3);
     duk_pop(ctx);
 }
-void vm_async_complete(duk_context *ctx, void *key, duk_bool_t ok)
+void vm_async_complete(duk_context *ctx, void *key, duk_bool_t ok, duk_bool_t get)
 {
     duk_require_stack(ctx, 3);
     duk_push_heap_stash(ctx);
@@ -48,5 +48,12 @@ void vm_async_complete(duk_context *ctx, void *key, duk_bool_t ok)
     }
     duk_swap_top(ctx, -2);
     duk_call_prop(ctx, -3, 1);
-    duk_pop_2(ctx);
+    if (get)
+    {
+        duk_pop(ctx);
+    }
+    else
+    {
+        duk_pop_2(ctx);
+    }
 }

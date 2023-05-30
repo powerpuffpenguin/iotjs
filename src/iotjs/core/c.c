@@ -1,34 +1,25 @@
+#include <iotjs/core/configure.h>
 #include <iotjs/core/c.h>
 #include <iotjs/core/js.h>
+#include <iotjs/core/async.h>
 #include <netinet/in.h>
+
 typedef struct
 {
     vm_context_t *vm;
     const char *name;
-} dns_resolve_async_t;
-
-duk_ret_t dns_resolve_finalizer(duk_context *ctx)
+} dns_resolve_t;
+void dns_resolve_free(void *arg)
 {
-
-    duk_get_prop_lstring(ctx, 0, "ptr", 3);
-    dns_resolve_async_t *p = duk_require_pointer(ctx, -1);
+#ifdef VM_TRACE_FINALIZER
+    puts("dns_resolve_free");
+#endif
+    dns_resolve_t *p = arg;
     if (!p || !p->vm)
     {
-        return 0;
+        return;
     }
-    vm_context_t *vm = p->vm;
-    if (vm->dns > 0)
-    {
-        vm->dns--;
-    }
-    if (!vm->dns && vm->esb)
-    {
-        evdns_base_free(vm->esb, 1);
-        vm->esb = NULL;
-    }
-
-    IOTJS_FREE(p);
-    return 0;
+    vm_free_dns(p->vm);
 }
 typedef struct
 {
@@ -38,7 +29,7 @@ typedef struct
     // int ttl;
     void *addresses;
 } dns_resolve_handler_t;
-duk_ret_t _vm_iotjs_nativa_dns_resolve_handler(duk_context *ctx)
+static duk_ret_t nativa_dns_resolve_handler(duk_context *ctx)
 {
     dns_resolve_handler_t *result = duk_require_pointer(ctx, 0);
     duk_pop(ctx);
@@ -77,21 +68,11 @@ duk_ret_t _vm_iotjs_nativa_dns_resolve_handler(duk_context *ctx)
     }
     return 1;
 }
-void dns_resolve_handler(int err, char type, int count, int ttl, void *addresses, void *arg)
+static void dns_resolve_handler(int err, char type, int count, int ttl, void *addresses, void *arg)
 {
-    dns_resolve_async_t *req = (dns_resolve_async_t *)arg;
+    finalizer_t *finalizer = arg;
+    dns_resolve_t *req = finalizer->p;
     duk_context *ctx = req->vm->ctx;
-
-    duk_push_heap_stash(ctx);
-    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_ASYNC);
-    duk_remove(ctx, -2);
-    duk_push_pointer(ctx, req);
-    duk_get_prop(ctx, -2);
-    duk_push_pointer(ctx, req);
-    duk_del_prop(ctx, -3);
-    duk_remove(ctx, -2);
-
-    duk_get_prop_lstring(ctx, -1, "completer", 9);
 
     dns_resolve_handler_t result = {
         .err = err,
@@ -101,74 +82,69 @@ void dns_resolve_handler(int err, char type, int count, int ttl, void *addresses
         .addresses = addresses,
     };
 
-    duk_push_c_function(ctx, _vm_iotjs_nativa_dns_resolve_handler, 1);
+    duk_push_c_lightfunc(ctx, nativa_dns_resolve_handler, 1, 1, 0);
     duk_push_pointer(ctx, &result);
     if (duk_pcall(ctx, 1))
     {
-        duk_push_lstring(ctx, "reject", 6);
-        duk_swap_top(ctx, -2);
-        duk_call_prop(ctx, -3, 1);
+        vm_async_reject_get(ctx, finalizer);
     }
     else
     {
-        duk_push_lstring(ctx, "resolve", 7);
-        duk_swap_top(ctx, -2);
-        duk_call_prop(ctx, -3, 1);
+        vm_async_resolve_get(ctx, finalizer);
     }
-    duk_pop_3(ctx);
-    // vm_dump_context_stdout(ctx);
+    duk_get_prop_lstring(ctx, -1, "args", 4);
+    vm_finalizer_free(ctx, -1, dns_resolve_free);
+    duk_pop_2(ctx);
 }
-void _vm_iotjs_nativa_dns_resolve_ip(duk_context *ctx, BOOL v6)
+static void nativa_resolve_ip(duk_context *ctx, BOOL v6)
 {
     const char *name = duk_require_string(ctx, 0);
-    dns_resolve_async_t *p = vm_malloc_with_finalizer(ctx, sizeof(dns_resolve_async_t), dns_resolve_finalizer);
-    p->name = name;
+    finalizer_t *finalizer = vm_create_finalizer_n(ctx, sizeof(dns_resolve_t));
+    finalizer->free = dns_resolve_free;
     duk_swap_top(ctx, -2);
     duk_put_prop_lstring(ctx, -2, "name", 4);
 
-    vm_context_t *vm = vm_get_context_flags(ctx, VM_CONTEXT_FLAGS_ESB | VM_CONTEXT_FLAGS_COMPLETER);
+    // [finalizer]
+    dns_resolve_t *p = finalizer->p;
+    p->name = name;
 
+    vm_context_t *vm = vm_get_context_flags(ctx, VM_CONTEXT_FLAGS_ESB | VM_CONTEXT_FLAGS_COMPLETER);
     vm->dns++;
     p->vm = vm;
 
-    duk_new(ctx, 0);
-    duk_get_prop_lstring(ctx, -1, "promise", 7);
-    duk_swap_top(ctx, -2);
-    duk_put_prop_lstring(ctx, -3, "completer", 9);
-    duk_swap_top(ctx, -2);
-
-    // [promise, finalizer]
+    // [finalizer, complater]
     if (v6)
     {
-        evdns_base_resolve_ipv6(vm->esb, name, 0, dns_resolve_handler, p);
+        struct evdns_request *req = evdns_base_resolve_ipv6(vm->esb, name, 0, dns_resolve_handler, finalizer);
+        if (!req)
+        {
+            vm_finalizer_free(ctx, -3, dns_resolve_free);
+            duk_error(ctx, DUK_ERR_ERROR, "evdns_base_resolve_ipv6 error");
+        }
     }
     else
     {
-        evdns_base_resolve_ipv4(vm->esb, name, 0, dns_resolve_handler, p);
+        struct evdns_request *req = evdns_base_resolve_ipv4(vm->esb, name, 0, dns_resolve_handler, finalizer);
+        if (!req)
+        {
+            vm_finalizer_free(ctx, -3, dns_resolve_free);
+            duk_error(ctx, DUK_ERR_ERROR, "evdns_base_resolve_ipv4 error");
+        }
     }
 
-    duk_push_pointer(ctx, p);
-
-    duk_push_heap_stash(ctx);
-    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_ASYNC);
-    duk_swap_top(ctx, -2);
-    duk_pop(ctx);
-    duk_swap_top(ctx, -3);
-    duk_put_prop(ctx, -3);
-
-    duk_pop(ctx);
+    vm_async_completer_args(ctx, finalizer);
 }
-duk_ret_t _vm_iotjs_nativa_dns_resolve_ip4(duk_context *ctx)
+static duk_ret_t nativa_resolve_ip4(duk_context *ctx)
 {
-    _vm_iotjs_nativa_dns_resolve_ip(ctx, FALSE);
+    nativa_resolve_ip(ctx, FALSE);
     return 1;
 }
-duk_ret_t _vm_iotjs_nativa_dns_resolve_ip6(duk_context *ctx)
+static duk_ret_t nativa_resolve_ip6(duk_context *ctx)
 {
-    _vm_iotjs_nativa_dns_resolve_ip(ctx, TRUE);
+    nativa_resolve_ip(ctx, TRUE);
     return 1;
 }
-duk_ret_t _vm_iotjs_nativa_dns_ip_to_string(duk_context *ctx)
+static duk_ret_t nativa_ip_to_string(duk_context *ctx)
 {
     duk_size_t out_size;
     char *p = duk_require_buffer_data(ctx, 0, &out_size);
@@ -196,7 +172,7 @@ duk_ret_t _vm_iotjs_nativa_dns_ip_to_string(duk_context *ctx)
     }
     return 1;
 }
-duk_ret_t _vm_iotjs_nativa_dns_parse_ip4(duk_context *ctx)
+static duk_ret_t nativa_parse_ip4(duk_context *ctx)
 {
     const char *s = duk_require_string(ctx, 0);
     struct in_addr *addr = malloc(sizeof(struct in_addr));
@@ -212,7 +188,7 @@ duk_ret_t _vm_iotjs_nativa_dns_parse_ip4(duk_context *ctx)
     memcpy(dst, &addr->s_addr, 4);
     return 1;
 }
-duk_ret_t _vm_iotjs_nativa_dns_parse_ip6(duk_context *ctx)
+static duk_ret_t nativa_parse_ip6(duk_context *ctx)
 {
     const char *s = duk_require_string(ctx, 0);
     struct in6_addr *addr = malloc(sizeof(struct in6_addr));
@@ -233,15 +209,15 @@ void _vm_init_c(duk_context *ctx)
     // dns
     duk_push_object(ctx);
     {
-        duk_push_c_function(ctx, _vm_iotjs_nativa_dns_resolve_ip4, 1);
+        duk_push_c_function(ctx, nativa_resolve_ip4, 1);
         duk_put_prop_lstring(ctx, -2, "resolveIP4", 10);
-        duk_push_c_function(ctx, _vm_iotjs_nativa_dns_resolve_ip6, 1);
+        duk_push_c_function(ctx, nativa_resolve_ip6, 1);
         duk_put_prop_lstring(ctx, -2, "resolveIP6", 10);
-        duk_push_c_function(ctx, _vm_iotjs_nativa_dns_ip_to_string, 1);
+        duk_push_c_function(ctx, nativa_ip_to_string, 1);
         duk_put_prop_lstring(ctx, -2, "ipToString", 10);
-        duk_push_c_function(ctx, _vm_iotjs_nativa_dns_parse_ip4, 1);
+        duk_push_c_function(ctx, nativa_parse_ip4, 1);
         duk_put_prop_lstring(ctx, -2, "parseIP4", 8);
-        duk_push_c_function(ctx, _vm_iotjs_nativa_dns_parse_ip6, 1);
+        duk_push_c_function(ctx, nativa_parse_ip6, 1);
         duk_put_prop_lstring(ctx, -2, "parseIP6", 8);
     }
     duk_put_prop_lstring(ctx, -2, "dns", 3);
