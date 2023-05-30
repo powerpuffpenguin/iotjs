@@ -476,12 +476,19 @@ declare module "iotjs/net/http" {
     export class Response {
         code: number
         header?: Record<string, string>
+        /**
+         * 最大 5M，超過將 拋出異常
+         */
         body?: Uint8Array
     }
     /**
-     * 發送一個 請求
+     * 發送一個 http 請求
      * @param req 
      */
     export function request(url: string, opts: RequestOptions): Response | Promise<Response>
 
+    /**
+     * 關閉所有空閒的連接
+     */
+    export function close_idle(): void
 }

@@ -221,6 +221,23 @@ static duk_ret_t _native_free_connect(duk_context *ctx)
     vm_finalizer_free(ctx, 0, http_conn_free);
     return 0;
 }
+
+static duk_ret_t _native_is_close_conn(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, http_conn_free);
+    http_conn_t *p = finalizer->p;
+    duk_bool_t closed = p->closed;
+    duk_pop(ctx);
+    if (closed)
+    {
+        duk_push_true(ctx);
+    }
+    else
+    {
+        duk_push_false(ctx);
+    }
+    return 1;
+}
 typedef struct
 {
     vm_context_t *vm;
@@ -510,6 +527,8 @@ duk_ret_t native_iotjs_net_http_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "connect", 7);
         duk_push_c_function(ctx, _native_free_connect, 1);
         duk_put_prop_lstring(ctx, -2, "free_connect", 12);
+        duk_push_c_function(ctx, _native_is_close_conn, 1);
+        duk_put_prop_lstring(ctx, -2, "is_close_conn", 13);
         duk_push_c_function(ctx, _native_new_request, 1);
         duk_put_prop_lstring(ctx, -2, "new_request", 11);
         duk_push_c_function(ctx, _native_free_request, 1);

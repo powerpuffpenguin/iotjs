@@ -12,6 +12,7 @@ declare namespace deps {
     export class Conn { }
     export function connect(tls: boolean, host: string, port: number): Conn
     export function free_connect(conn: Conn): void
+    export function is_close_conn(conn: Conn): boolean
     export class Request { }
     export function new_request(body?: string | Uint8Array | ArrayBuffer): Request
     export function free_request(req: Request): void
@@ -40,10 +41,23 @@ interface Conn {
     host: string
     port: number
 }
+function safe_free_connect(conn: deps.Conn) {
+    try {
+        deps.free_connect(conn)
+    } catch (_) {
+
+    }
+}
 class Conns {
     private arrs_: Array<Conn> = new Array()
     connect(tls: boolean, host: string, port: number): Conn {
         const arrs = this.arrs_
+        for (let i = arrs.length - 1; i >= 0; i--) {
+            if (deps.is_close_conn(arrs[i].conn)) {
+                safe_free_connect(arrs[i].conn)
+                arrs.splice(i, 1)
+            }
+        }
         for (let i = 0; i < arrs.length; i++) {
             const node = arrs[i];
             if (node.tls === tls && node.port === port && node.host === host) {
@@ -66,6 +80,15 @@ class Conns {
             arrs.splice(0, 1)
         }
         arrs.push(node)
+    }
+    close() {
+        const arrs = this.arrs_
+        if (arrs.length) {
+            for (let i = 0; i < arrs.length; i++) {
+                safe_free_connect(arrs[i].conn)
+            }
+            arrs.splice(0, arrs.length)
+        }
     }
 }
 const defaultConns = new Conns()
@@ -138,9 +161,7 @@ export async function request(url: string, opts?: RequestOptions): Promise<Respo
         defaultConns.push(conn)
         return new Response(resp.code, resp.header, resp.body)
     } catch (e) {
-        try {
-            deps.free_connect(conn.conn)
-        } catch (e) { }
+        safe_free_connect(conn.conn)
         throw e;
     } finally {
         if (req) {
@@ -149,4 +170,7 @@ export async function request(url: string, opts?: RequestOptions): Promise<Respo
             } catch (e) { }
         }
     }
+}
+export function close_idle() {
+    defaultConns.close()
 }

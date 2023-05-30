@@ -46,7 +46,7 @@ export const command = new Command({
                 const used = Date.now() - at
                 console.log(`used ${used / 1000}s`)
             }
-            iotjs.exit(0)
+            http.close_idle()
         }
     }
 })
