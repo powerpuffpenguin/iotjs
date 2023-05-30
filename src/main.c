@@ -4,10 +4,11 @@
 
 int main(int argc, char *argv[])
 {
+    int ret = -1;
     if (evthread_use_pthreads())
     {
         puts("evthread_use_pthreads error");
-        return -1;
+        return ret;
     }
 
     char *filename;
@@ -23,7 +24,7 @@ int main(int argc, char *argv[])
     if (!ctx)
     {
         puts("duk_create_heap_default error");
-        return -1;
+        return ret;
     }
     if (vm_init(ctx, argc, argv))
     {
@@ -44,10 +45,8 @@ int main(int argc, char *argv[])
         duk_pop(ctx);
         goto EXIT_ERROR;
     }
-
-    duk_destroy_heap(ctx);
-    return 0;
+    ret = 0;
 EXIT_ERROR:
     duk_destroy_heap(ctx);
-    return -1;
+    return ret;
 }

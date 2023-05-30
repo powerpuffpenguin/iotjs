@@ -1,4 +1,5 @@
 #include <iotjs/core/timer.h>
+#include <iotjs/core/configure.h>
 #include <iotjs/core/js.h>
 typedef struct
 {
@@ -6,8 +7,24 @@ typedef struct
     event_t *ev;
 } _vm_timer_t;
 
-void _vm_timer_handler(_vm_timer_t *timer, BOOL interval)
+static void timer_free(void *arg)
 {
+#ifdef VM_TRACE_FINALIZER
+    puts("timer_free");
+#endif
+    if (!arg)
+    {
+        return;
+    }
+    _vm_timer_t *timer = arg;
+    if (timer->ev)
+    {
+        event_del(timer->ev);
+    }
+}
+static void _vm_timer_handler(finalizer_t *finalizer, BOOL interval)
+{
+    _vm_timer_t *timer = finalizer->p;
     duk_context *ctx = timer->vm->ctx;
     duk_push_heap_stash(ctx);
     if (interval)
@@ -18,10 +35,9 @@ void _vm_timer_handler(_vm_timer_t *timer, BOOL interval)
     {
         duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_TIMEOUT);
     }
-    duk_swap_top(ctx, -2);
-    duk_pop(ctx); // [..., timeout]
+    duk_remove(ctx, -2); // [..., timeout]
 
-    duk_push_pointer(ctx, timer);
+    duk_push_pointer(ctx, finalizer);
     duk_get_prop(ctx, -2);
     if (!duk_is_object(ctx, -1))
     {
@@ -31,41 +47,34 @@ void _vm_timer_handler(_vm_timer_t *timer, BOOL interval)
     duk_swap_top(ctx, -2); // [..., timer, timeout]
     if (!interval)
     {
-        duk_push_pointer(ctx, timer);
+        duk_push_pointer(ctx, finalizer);
         duk_del_prop(ctx, -2);
     }
     duk_pop(ctx); // [..., timer]
 
     duk_get_prop_lstring(ctx, -1, "cb", 2);
     duk_call(ctx, 0);
-    duk_pop_2(ctx);
+    if (!interval)
+    {
+        duk_pop(ctx);
+        vm_finalizer_free(ctx, -1, timer_free);
+        duk_pop(ctx);
+    }
+    else
+    {
+        duk_pop_2(ctx);
+    }
 }
-void _vm_interval_handler(evutil_socket_t fs, short events, void *arg)
+static void _vm_interval_handler(evutil_socket_t fs, short events, void *arg)
 {
-    _vm_timer_handler((_vm_timer_t *)arg, TRUE);
+    _vm_timer_handler((finalizer_t *)arg, TRUE);
 }
-void _vm_timeout_handler(evutil_socket_t fs, short events, void *arg)
+static void _vm_timeout_handler(evutil_socket_t fs, short events, void *arg)
 {
-    _vm_timer_handler((_vm_timer_t *)arg, FALSE);
+    _vm_timer_handler((finalizer_t *)arg, FALSE);
 }
 
-duk_ret_t _vm_iotjs_timer_finalizer(duk_context *ctx)
-{
-    _vm_timer_t *timer = (_vm_timer_t *)vm_get_finalizer_ptr(ctx);
-    if (!timer)
-    {
-        return 0;
-    }
-
-    if (timer->ev)
-    {
-        event_del(timer->ev);
-        // event_free(timer->ev);
-    }
-    IOTJS_FREE(timer);
-    return 0;
-}
-int _vm_iotjs_nativa_set_timer(duk_context *ctx, BOOL interval)
+static int _nativa_set_timer(duk_context *ctx, BOOL interval)
 {
     duk_idx_t nargs = duk_get_top(ctx);
     if (nargs < 1 || !duk_is_function(ctx, 0))
@@ -92,15 +101,16 @@ int _vm_iotjs_nativa_set_timer(duk_context *ctx, BOOL interval)
 
     // [func]
     vm_context_t *vm = vm_get_context(ctx);
-    _vm_timer_t *timer = vm_malloc_with_finalizer(ctx, sizeof(_vm_timer_t) + event_get_struct_event_size(), _vm_iotjs_timer_finalizer);
+    finalizer_t *finalizer = vm_create_finalizer_n(ctx, sizeof(_vm_timer_t) + event_get_struct_event_size());
     duk_swap_top(ctx, -2);
     duk_put_prop_lstring(ctx, -2, "cb", 2); // [timer]
+    _vm_timer_t *timer = finalizer->p;
 
     timer->vm = vm;
     timer->ev = NULL;
     // timer->ev = event_new(vm->eb, -1, interval ? EV_PERSIST : 0, interval ? _vm_interval_handler : _vm_timeout_handler, timer);
     event_t *ev = (event_t *)((char *)timer + sizeof(_vm_timer_t));
-    if (event_assign(ev, vm->eb, -1, interval ? EV_PERSIST : 0, interval ? _vm_interval_handler : _vm_timeout_handler, timer))
+    if (event_assign(ev, vm->eb, -1, interval ? EV_PERSIST : 0, interval ? _vm_interval_handler : _vm_timeout_handler, finalizer))
     {
         duk_pop(ctx);
         if (interval)
@@ -113,12 +123,11 @@ int _vm_iotjs_nativa_set_timer(duk_context *ctx, BOOL interval)
         }
         duk_throw(ctx);
     }
-    timer->ev = ev;
     time_value_t tv = {
         .tv_sec = ms / 1000,
         .tv_usec = (ms % 1000) * 1000,
     };
-    if (event_add(timer->ev, &tv))
+    if (event_add(ev, &tv))
     {
         duk_pop(ctx);
         if (interval)
@@ -131,6 +140,8 @@ int _vm_iotjs_nativa_set_timer(duk_context *ctx, BOOL interval)
         }
         duk_throw(ctx);
     }
+    finalizer->free = timer_free;
+    timer->ev = ev;
 
     duk_push_heap_stash(ctx);
     if (interval)
@@ -141,28 +152,30 @@ int _vm_iotjs_nativa_set_timer(duk_context *ctx, BOOL interval)
     {
         duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_TIMEOUT);
     }
-    duk_swap_top(ctx, -2);
-    duk_pop(ctx);
+    duk_remove(ctx, -2);
     duk_swap_top(ctx, -2); // [obj, timer]
 
-    duk_push_pointer(ctx, timer);
+    duk_push_pointer(ctx, finalizer);
     duk_swap_top(ctx, -2);
     duk_put_prop(ctx, -3);
     duk_pop(ctx);
 
-    duk_push_pointer(ctx, timer);
+    duk_push_pointer(ctx, finalizer);
     return 1;
 }
-duk_ret_t _vm_iotjs_nativa_setTimeout(duk_context *ctx)
+static duk_ret_t nativa_setTimeout(duk_context *ctx)
 {
-    return _vm_iotjs_nativa_set_timer(ctx, FALSE);
+    return _nativa_set_timer(ctx, FALSE);
 }
-duk_ret_t _vm_iotjs_nativa_setInterval(duk_context *ctx)
+static duk_ret_t nativa_setInterval(duk_context *ctx)
 {
-    return _vm_iotjs_nativa_set_timer(ctx, TRUE);
+    return _nativa_set_timer(ctx, TRUE);
 }
-void _vm_iotjs_nativa_clear_timer(duk_context *ctx, BOOL interval)
+static void nativa_clear_timer(duk_context *ctx, BOOL interval)
 {
+    finalizer_t *finalizer = duk_require_pointer(ctx, 0);
+    duk_pop(ctx);
+
     duk_push_heap_stash(ctx);
     if (interval)
     {
@@ -172,25 +185,38 @@ void _vm_iotjs_nativa_clear_timer(duk_context *ctx, BOOL interval)
     {
         duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_TIMEOUT);
     }
-    duk_swap_top(ctx, -2);
-    duk_pop(ctx); // [ptr, timeout]
+    duk_remove(ctx, -2); // [timeout]
 
+    duk_push_pointer(ctx, finalizer);
+    duk_get_prop(ctx, -2);
+    if (duk_is_undefined(ctx, -1))
+    {
+        duk_pop_2(ctx);
+
+        return;
+    }
+    // timeout, obj
     duk_swap_top(ctx, -2);
+    duk_push_pointer(ctx, finalizer);
     duk_del_prop(ctx, -2);
+    duk_pop(ctx);
+
+    vm_finalizer_free(ctx, -1, timer_free);
+    duk_pop(ctx);
 }
-duk_ret_t _vm_iotjs_nativa_clearTimeout(duk_context *ctx)
+static duk_ret_t nativa_clearTimeout(duk_context *ctx)
 {
     if (duk_is_pointer(ctx, 0))
     {
-        _vm_iotjs_nativa_clear_timer(ctx, FALSE);
+        nativa_clear_timer(ctx, FALSE);
     }
     return 0;
 }
-duk_ret_t _vm_iotjs_nativa_clearInterval(duk_context *ctx)
+static duk_ret_t nativa_clearInterval(duk_context *ctx)
 {
     if (duk_is_pointer(ctx, 0))
     {
-        _vm_iotjs_nativa_clear_timer(ctx, TRUE);
+        nativa_clear_timer(ctx, TRUE);
     }
     return 0;
 }
@@ -198,12 +224,12 @@ void _vm_init_timer(duk_context *ctx)
 {
     duk_require_stack(ctx, 2);
 
-    duk_push_c_function(ctx, _vm_iotjs_nativa_setTimeout, 2);
+    duk_push_c_function(ctx, nativa_setTimeout, 2);
     duk_put_prop_lstring(ctx, -2, "setTimeout", 10);
-    duk_push_c_function(ctx, _vm_iotjs_nativa_clearTimeout, 1);
+    duk_push_c_function(ctx, nativa_clearTimeout, 1);
     duk_put_prop_lstring(ctx, -2, "clearTimeout", 12);
-    duk_push_c_function(ctx, _vm_iotjs_nativa_setInterval, 2);
+    duk_push_c_function(ctx, nativa_setInterval, 2);
     duk_put_prop_lstring(ctx, -2, "setInterval", 11);
-    duk_push_c_function(ctx, _vm_iotjs_nativa_clearInterval, 1);
+    duk_push_c_function(ctx, nativa_clearInterval, 1);
     duk_put_prop_lstring(ctx, -2, "clearInterval", 13);
 }
