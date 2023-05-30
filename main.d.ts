@@ -26,6 +26,13 @@ declare module "iotjs" {
     export function nameserver(addr: string): void
 
     /**
+     * 強制執行 gc，可能需要連續調用兩次
+     * 
+     * 第一輪將對象標記為可終結並運行終結器。 
+     * 第二輪確保對像在完成後仍然無法訪問，然後釋放對象
+     */
+    export function gc(): void
+    /**
      * 返回當前工作目錄
      */
     export function getcwd(): string
@@ -464,9 +471,11 @@ declare module "iotjs/net/http" {
     export interface RequestOptions {
         method?: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
         header?: Record<string, string>
+        body?: string | Uint8Array | ArrayBuffer
     }
     export class Response {
         code: number
+        header?: Record<string, string>
         body?: Uint8Array
     }
     /**

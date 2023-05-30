@@ -423,7 +423,12 @@ void _native_vm_init_stash(duk_context *ctx, duk_context *main)
     _vm_init_context(ctx, main);
     _vm_init_native(ctx);
 }
-duk_ret_t _native_nameserver(duk_context *ctx)
+static duk_ret_t _native_gc(duk_context *ctx)
+{
+    duk_gc(ctx, 0);
+    return 0;
+}
+static duk_ret_t _native_nameserver(duk_context *ctx)
 {
     duk_idx_t n = duk_get_top(ctx);
     if (n > 0)
@@ -467,6 +472,8 @@ void _native_vm_init_global(duk_context *ctx)
     duk_put_prop_lstring(ctx, -2, "version", 7);
     duk_push_c_function(ctx, _native_nameserver, DUK_VARARGS);
     duk_put_prop_lstring(ctx, -2, "nameserver", 10);
+    duk_push_c_lightfunc(ctx, _native_gc, 0, 0, 0);
+    duk_put_prop_lstring(ctx, -2, "gc", 2);
 
     duk_push_heap_stash(ctx);
     duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_PRIVATE);

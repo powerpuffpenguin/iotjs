@@ -1,5 +1,7 @@
+#include <iotjs/core/configure.h>
 #include <iotjs/modules/module.h>
 #include <iotjs/core/js.h>
+#include <iotjs/core/async.h>
 
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
@@ -20,35 +22,31 @@
 #include <iotjs/modules/js/tsc.net_http.h>
 #include <string.h>
 #include <stdlib.h>
-static duk_ret_t _native_uri_finalizer(duk_context *ctx)
+static void http_uri_free(void *arg)
 {
-    duk_get_prop_lstring(ctx, 0, "ptr", 3);
-    struct evhttp_uri *uri = duk_require_pointer(ctx, -1);
-    evhttp_uri_free(uri);
+#ifdef VM_TRACE_FINALIZER
+    puts(" --------- http_uri_free");
+#endif
+    if (arg)
+    {
+        evhttp_uri_free(arg);
+    }
 }
 static duk_ret_t _native_uri_parse(duk_context *ctx)
 {
     const char *url = duk_require_string(ctx, 0);
+    finalizer_t *finalizer = vm_create_finalizer(ctx);
     struct evhttp_uri *uri = evhttp_uri_parse(url);
+    duk_remove(ctx, -2);
     if (!uri)
     {
         duk_push_error_object(ctx, DUK_ERR_ERROR, "parse url error");
         duk_throw(ctx);
     }
-    duk_pop(ctx);
+    finalizer->free = http_uri_free;
+    finalizer->p = uri;
 
-    if (!duk_check_stack(ctx, 3))
-    {
-        evhttp_uri_free(uri);
-        duk_push_error_object(ctx, DUK_ERR_ERROR, "check_stack error");
-        duk_throw(ctx);
-    }
     duk_push_object(ctx);
-    duk_push_pointer(ctx, uri);
-    duk_put_prop_lstring(ctx, -2, "ptr", 3);
-    duk_push_c_function(ctx, _native_uri_finalizer, 1);
-    duk_set_finalizer(ctx, -2);
-
     const char *scheme = evhttp_uri_get_scheme(uri);
     const int len_scheme = scheme ? strlen(scheme) : 0;
     if (len_scheme)
@@ -99,9 +97,8 @@ static duk_ret_t _native_uri_parse(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "query", 5);
     }
 
-    duk_push_undefined(ctx);
-    duk_set_finalizer(ctx, -2);
-    duk_del_prop_lstring(ctx, -1, "ptr", 3);
+    evhttp_uri_free(finalizer->p);
+    finalizer->free = NULL;
     return 1;
 }
 typedef struct
@@ -120,29 +117,42 @@ static void http_conn_on_close(struct evhttp_connection *conn, void *arg)
 }
 static void http_conn_free(void *arg)
 {
+#ifdef VM_TRACE_FINALIZER
+    puts(" --------- http_conn_free");
+#endif
+    if (!arg)
+    {
+        return;
+    }
     http_conn_t *p = arg;
     if (p->conn)
     {
         evhttp_connection_free(p->conn);
+        p->conn = NULL;
     }
     if (p->bev)
     {
         bufferevent_free(p->bev);
+        p->bev = NULL;
     }
     if (p->ssl)
     {
         SSL_free(p->ssl);
+        p->ssl = NULL;
     }
     if (p->sctx)
     {
         SSL_CTX_free(p->sctx);
+        p->sctx = NULL;
     }
     vm_context_t *vm = p->vm;
     if (vm)
     {
         vm_free_dns(vm);
+        p->vm = NULL;
     }
 }
+
 static int tls_verify_callback(int preverify_ok, X509_STORE_CTX *ctx)
 {
     return 1;
@@ -206,43 +216,139 @@ static duk_ret_t _native_connect(duk_context *ctx)
     evhttp_connection_set_closecb(p->conn, http_conn_on_close, p);
     return 1;
 }
+static duk_ret_t _native_free_connect(duk_context *ctx)
+{
+    vm_finalizer_free(ctx, 0, http_conn_free);
+    return 0;
+}
 typedef struct
 {
-    duk_context *vm;
+    vm_context_t *vm;
     struct evhttp_request *req;
     enum evhttp_request_error err;
+    duk_bool_t hasErr;
 } http_request_t;
-void http_request_free(void *arg)
+static void http_request_free(void *arg)
 {
+#ifdef VM_TRACE_FINALIZER
+    puts(" --------- http_request_free");
+#endif
+    if (!arg)
+    {
+        return;
+    }
     http_request_t *p = arg;
     if (p->req)
     {
         evhttp_request_free(p->req);
     }
 }
-void on_http_cb(struct evhttp_request *req, void *arg)
+static duk_ret_t native_http_cb(duk_context *ctx)
+{
+    struct evhttp_request *req = duk_require_pointer(ctx, 0);
+    http_request_t *p = duk_require_pointer(ctx, 1);
+    duk_pop_2(ctx);
+    if (p->hasErr)
+    {
+        switch (p->err)
+        {
+        case EVREQ_HTTP_TIMEOUT:
+            duk_error(ctx, DUK_ERR_ERROR, "Timeout.");
+            break;
+        case EVREQ_HTTP_EOF:
+            duk_error(ctx, DUK_ERR_ERROR, "EOF reached.");
+            break;
+        case EVREQ_HTTP_INVALID_HEADER:
+            duk_error(ctx, DUK_ERR_ERROR, "Error while reading header, or invalid header.");
+            break;
+        case EVREQ_HTTP_BUFFER_ERROR:
+            duk_error(ctx, DUK_ERR_ERROR, "Error encountered while reading or writing.");
+            break;
+        case EVREQ_HTTP_REQUEST_CANCEL:
+            duk_error(ctx, DUK_ERR_ERROR, "The evhttp_cancel_request() called on this request.");
+            break;
+        case EVREQ_HTTP_DATA_TOO_LONG:
+            duk_error(ctx, DUK_ERR_ERROR, "Body is greater then evhttp_connection_set_max_body_size().");
+            break;
+        default:
+            duk_error(ctx, DUK_ERR_ERROR, "Unknow error.");
+            break;
+        }
+    }
+    if (!req)
+    {
+        duk_error(ctx, DUK_ERR_ERROR, "connect server error");
+    }
+    int code = evhttp_request_get_response_code(req);
+    if (!code)
+    {
+        duk_error(ctx, DUK_ERR_ERROR, "response code 0");
+    }
+    duk_push_object(ctx);
+    duk_push_int(ctx, code);
+    duk_put_prop_lstring(ctx, -2, "code", 4);
+    struct evkeyvalq *header = evhttp_request_get_input_headers(req);
+    duk_push_object(ctx);
+    if (header)
+    {
+        for (struct evkeyval *node = header->tqh_first; node; node = node->next.tqe_next)
+        {
+            duk_push_string(ctx, node->key);
+            duk_push_string(ctx, node->value);
+            duk_put_prop(ctx, -3);
+        }
+    }
+    duk_put_prop_lstring(ctx, -2, "header", 6);
+    struct evbuffer *buffer = evhttp_request_get_input_buffer(req);
+    if (buffer)
+    {
+        size_t n = evbuffer_get_length(buffer);
+        if (n > 0)
+        {
+            void *dst = duk_push_buffer(ctx, n, 0);
+            if (evbuffer_remove(buffer, dst, n) < 0)
+            {
+                duk_error(ctx, DUK_ERR_ERROR, "read response.body error");
+            }
+            duk_put_prop_lstring(ctx, -2, "body", 4);
+        }
+        else if (n > 1024 * 1024 * 5)
+        {
+            duk_range_error(ctx, "response.body too large %d", n);
+        }
+    }
+    return 1;
+}
+static void on_http_cb(struct evhttp_request *req, void *arg)
 {
     http_request_t *p = arg;
     if (!p->vm)
     {
         return;
     }
-    if (!req)
+    duk_context *ctx = p->vm->ctx;
+    duk_push_c_lightfunc(ctx, native_http_cb, 2, 2, 0);
+    duk_push_pointer(ctx, req);
+    duk_push_pointer(ctx, arg);
+    if (duk_pcall(ctx, 2))
     {
+        vm_async_reject(ctx, p);
         return;
     }
-    int code = evhttp_request_get_response_code(req);
-    if (!code)
-    {
-        return;
-    }
+    vm_async_resolve(ctx, p);
 }
-void on_http_error(enum evhttp_request_error err, void *arg)
+static void on_http_error(enum evhttp_request_error err, void *arg)
 {
     http_request_t *p = arg;
     p->err = err;
+    p->hasErr = 1;
 }
-duk_ret_t _native_new_request(duk_context *ctx)
+static duk_ret_t _native_free_request(duk_context *ctx)
+{
+    vm_finalizer_free(ctx, 0, http_request_free);
+    return 0;
+}
+static duk_ret_t _native_new_request(duk_context *ctx)
 {
     duk_size_t sz = 0;
     const char *body;
@@ -254,7 +360,11 @@ duk_ret_t _native_new_request(duk_context *ctx)
     {
         body = duk_get_buffer_data(ctx, 0, &sz);
     }
-    else if (!duk_is_null_or_undefined(ctx, 0))
+    else if (duk_is_null_or_undefined(ctx, 0))
+    {
+        duk_pop(ctx);
+    }
+    else
     {
         duk_type_error(ctx, "body invalid");
     }
@@ -284,7 +394,7 @@ duk_ret_t _native_new_request(duk_context *ctx)
     }
     return 1;
 }
-duk_ret_t _native_add_header(duk_context *ctx)
+static duk_ret_t _native_add_header(duk_context *ctx)
 {
     finalizer_t *finalizer = vm_require_finalizer(ctx, 0, http_request_free);
     http_request_t *p = finalizer->p;
@@ -306,7 +416,7 @@ duk_ret_t _native_add_header(duk_context *ctx)
     }
     return 0;
 }
-enum evhttp_cmd_type _native_check_method(duk_context *ctx, const char *method, duk_size_t sz)
+static enum evhttp_cmd_type _native_check_method(duk_context *ctx, const char *method, duk_size_t sz)
 {
     switch (sz)
     {
@@ -348,8 +458,9 @@ enum evhttp_cmd_type _native_check_method(duk_context *ctx, const char *method, 
     duk_type_error(ctx, "method invalid");
     return EVHTTP_REQ_GET;
 }
-duk_ret_t _native_make_request(duk_context *ctx)
+static duk_ret_t _native_make_request(duk_context *ctx)
 {
+
     finalizer_t *finalizer = vm_require_finalizer(ctx, 0, http_conn_free);
     http_conn_t *conn = finalizer->p;
     finalizer = vm_require_finalizer(ctx, 1, http_request_free);
@@ -358,58 +469,33 @@ duk_ret_t _native_make_request(duk_context *ctx)
     const char *method = duk_require_lstring(ctx, 2, &sz_method);
     enum evhttp_cmd_type type = _native_check_method(ctx, method, sz_method);
     const char *path = duk_require_string(ctx, 3);
-    duk_swap_top(ctx, -2);
+
+    // push args
+    duk_push_object(ctx);
+    duk_swap_top(ctx, 0);
+    duk_put_prop_lstring(ctx, 0, "finalizer", 9);
+    duk_put_prop_lstring(ctx, 0, "path", 4);
     duk_pop(ctx);
+    duk_put_prop_lstring(ctx, 0, "conn", 4);
 
     vm_context_t *vm = vm_get_context_flags(ctx, VM_CONTEXT_FLAGS_COMPLETER);
-    duk_new(ctx, 0);
-    duk_get_prop_lstring(ctx, -1, "promise", 7);
-    duk_swap_top(ctx, 0);
-    duk_put_prop_lstring(ctx, -2, "conn", 4);
-    duk_swap_top(ctx, -2);
-    duk_swap_top(ctx, 1);
-    duk_put_prop_lstring(ctx, -2, "req", 3);
-    duk_swap(ctx, 0, 1);
 
-    // [path, promise, completer]
-    req->vm = vm;
-    vm_dump_context_stdout(ctx);
-    exit(1);
-    if (evhttp_make_request(conn->conn, req->req, type, path))
+    // [args,  completer]
+    struct evhttp_request *request = req->req;
+    req->req = NULL;
+    if (evhttp_make_request(conn->conn, request, type, path))
     {
         duk_error(ctx, DUK_ERR_ERROR, "evhttp_make_request error");
     }
-    req->req = NULL;
+    vm_async_completer_args(ctx, req);
+    req->vm = vm;
     return 1;
 }
-duk_ret_t _native_iotjs_net_http_request(duk_context *ctx)
-{
-    // struct evkeyvalq querys;
-    // if (evhttp_parse_query_str("id=1&id=2&lv=3", &querys))
-    // {
-    //     duk_push_error_object(ctx, DUK_ERR_ERROR, "evhttp_parse_query_str error");
-    //     duk_throw(ctx);
-    // }
-    // duk_push_object(ctx);
-    // for (struct evkeyval *node = querys.tqh_first; node; node = node->next.tqe_next)
-    // {
-    //     duk_push_string(ctx, node->key);
-    //     duk_push_string(ctx, node->value);
-    //     duk_put_prop(ctx, -3);
-    // }
-    // finalizer_t *finalizer = vm_create_finalizer(ctx);
-    // finalizer->free = test_free;
-    // finalizer->p = 123;
-    // vm_dump_context_stdout(ctx);
-    return 1;
-}
+
 duk_ret_t native_iotjs_net_http_init(duk_context *ctx)
 {
     duk_swap(ctx, 0, 1);
     duk_pop_2(ctx);
-
-    // duk_push_c_function(ctx, _native_iotjs_net_http_request, 2);
-    // duk_put_prop_string(ctx, -2, "test");
 
     duk_eval_lstring(ctx, iotjs_modules_js_tsc_net_http_min_js, iotjs_modules_js_tsc_net_http_min_js_len);
     duk_swap_top(ctx, -2);
@@ -422,8 +508,12 @@ duk_ret_t native_iotjs_net_http_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "uri_parse", 9);
         duk_push_c_function(ctx, _native_connect, 3);
         duk_put_prop_lstring(ctx, -2, "connect", 7);
+        duk_push_c_function(ctx, _native_free_connect, 1);
+        duk_put_prop_lstring(ctx, -2, "free_connect", 12);
         duk_push_c_function(ctx, _native_new_request, 1);
         duk_put_prop_lstring(ctx, -2, "new_request", 11);
+        duk_push_c_function(ctx, _native_free_request, 1);
+        duk_put_prop_lstring(ctx, -2, "free_request", 12);
         duk_push_c_function(ctx, _native_add_header, 3);
         duk_put_prop_lstring(ctx, -2, "add_header", 10);
         duk_push_c_function(ctx, _native_make_request, 4);

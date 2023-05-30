@@ -101,6 +101,7 @@
     "options.h": "c",
     "sniffer.h": "c",
     "keyvalq_struct.h": "c",
-    "tsc.net_http.h": "c"
+    "tsc.net_http.h": "c",
+    "async.h": "c"
   }
 }

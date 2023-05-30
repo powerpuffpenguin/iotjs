@@ -1,6 +1,18 @@
 #ifndef IOTJS_CORE_ASYNC_H
 #define IOTJS_CORE_ASYNC_H
 #include <duktape.h>
-// 這個一個輔助函數，用於將原本的同步函數 f 用 Promise 包裝爲異步函數，並在工作線程中執行原本的同步代碼
-duk_ret_t vm_call_async(duk_context *ctx, duk_c_function f);
+// ... args, class completer => ... promise
+// 1. new Completer()..args=args
+// 2. push completer to heas
+// 3. return completer.promise
+void vm_async_completer_args(duk_context *ctx, void *key);
+
+void vm_async_complete(duk_context *ctx, void *key, duk_bool_t ok);
+
+// ... error => ...
+// 完成 completer 以 reject 回覆 promise
+#define vm_async_reject(ctx, key) vm_async_complete(ctx, key, 0);
+// ... value => ...
+// 完成 completer 以 resolve 回覆 promise
+#define vm_async_resolve(ctx, key) vm_async_complete(ctx, key, 1);
 #endif

@@ -11,10 +11,16 @@ declare namespace deps {
     export function uri_parse(url: string): URL
     export class Conn { }
     export function connect(tls: boolean, host: string, port: number): Conn
+    export function free_connect(conn: Conn): void
     export class Request { }
     export function new_request(body?: string | Uint8Array | ArrayBuffer): Request
+    export function free_request(req: Request): void
     export function add_header(req: Request, key: string, value: string): void
-    export class Response { }
+    export class Response {
+        code: number
+        header: Record<string, string>
+        body?: Uint8Array
+    }
     export function make_request(conn: Conn, req: Request, method: string, path: string): Promise<Response>
 }
 export interface RequestOptions {
@@ -23,7 +29,10 @@ export interface RequestOptions {
     body?: string | Uint8Array | ArrayBuffer
 }
 export class Response {
-    constructor(private readonly resp_: deps.Response) { }
+    constructor(public code: number,
+        public header: Record<string, string>,
+        public body?: Uint8Array,
+    ) { }
 }
 interface Conn {
     conn: deps.Conn
@@ -60,7 +69,7 @@ class Conns {
     }
 }
 const defaultConns = new Conns()
-export function request(url: string, opts?: RequestOptions): Promise<Response> {
+export async function request(url: string, opts?: RequestOptions): Promise<Response> {
     const method = opts?.method ?? 'GET'
     let body: undefined | string | Uint8Array | ArrayBuffer
     switch (method) {
@@ -92,33 +101,52 @@ export function request(url: string, opts?: RequestOptions): Promise<Response> {
         throw new Error(`not supported scheme: ${uri.scheme}`)
     }
     const conn = defaultConns.connect(tls, uri.host, port)
-
-    const req = deps.new_request(body)
-    const header = opts?.header
-    let host = false
-    let userAgent = false
-    if (header) {
-        for (const key in header) {
-            if (Object.prototype.hasOwnProperty.call(header, key)) {
-                deps.add_header(req, key, header[key])
-                const lower = key.toLowerCase()
-                if (lower === "host") {
-                    host = true
-                } else if (lower === "user-agent") {
-                    userAgent = true
+    let req: undefined | deps.Request
+    try {
+        req = deps.new_request(body)
+        const header = opts?.header
+        let host = false
+        let userAgent = false
+        let accept = false
+        if (header) {
+            for (const key in header) {
+                if (Object.prototype.hasOwnProperty.call(header, key)) {
+                    deps.add_header(req, key, header[key])
+                    const lower = key.toLowerCase()
+                    if (lower === "host") {
+                        host = true
+                    } else if (lower === "user-agent") {
+                        userAgent = true
+                    } else if (lower === "accept") {
+                        accept = true
+                    }
                 }
             }
         }
-    }
-    if (!host) {
-        deps.add_header(req, "Host", uri.port ? `${uri.host}:${uri.port}` : uri.host)
-    }
-    if (!userAgent) {
-        deps.add_header(req, "User-Agent", "iotjs")
-    }
-    const path = uri.query ? `${uri.path}?${uri.query}` : uri.path;
-    return deps.make_request(conn.conn, req, method, path).then(function (resp) {
+        if (!host) {
+            deps.add_header(req, "Host", uri.port ? `${uri.host}:${uri.port}` : uri.host)
+        }
+        if (!userAgent) {
+            deps.add_header(req, "User-Agent", "iotjs")
+        }
+        if (!accept) {
+            deps.add_header(req, "Accept", "*/*")
+        }
+        const path = uri.query ? `${uri.path}?${uri.query}` : uri.path;
+
+        const resp = await deps.make_request(conn.conn, req, method, path)
         defaultConns.push(conn)
-        return new Response(resp)
-    })
+        return new Response(resp.code, resp.header, resp.body)
+    } catch (e) {
+        try {
+            deps.free_connect(conn.conn)
+        } catch (e) { }
+        throw e;
+    } finally {
+        if (req) {
+            try {
+                deps.free_request(req)
+            } catch (e) { }
+        }
+    }
 }
