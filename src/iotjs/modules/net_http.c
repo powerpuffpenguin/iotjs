@@ -193,7 +193,7 @@ static duk_ret_t _native_connect(duk_context *ctx)
         {
             duk_error(ctx, DUK_ERR_ERROR, "SSL_set_tlsext_host_name error");
         }
-        p->bev = bufferevent_openssl_socket_new(vm->eb, -1, p->ssl, BUFFEREVENT_SSL_CONNECTING, 0);
+        p->bev = bufferevent_openssl_socket_new(vm->eb, -1, p->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_DEFER_CALLBACKS);
         if (!p->bev)
         {
             duk_error(ctx, DUK_ERR_ERROR, "bufferevent_openssl_socket_new error");
@@ -201,7 +201,7 @@ static duk_ret_t _native_connect(duk_context *ctx)
     }
     else
     {
-        p->bev = bufferevent_socket_new(vm->eb, -1, 0);
+        p->bev = bufferevent_socket_new(vm->eb, -1, BEV_OPT_DEFER_CALLBACKS);
         if (!p->bev)
         {
             duk_error(ctx, DUK_ERR_ERROR, "bufferevent_socket_new error");
