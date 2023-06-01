@@ -456,18 +456,86 @@ declare module "iotjs/net" {
         address: string
     }
 
+    export interface SocketOptions {
+        /**
+         * 如果 爲 true 自動將接收到的數據轉爲 字符串
+         */
+        text?: boolean
+    }
     /**
-     * 抽象的網路流連接，可以在其上進行雙向的數據量傳輸
+     * @alpha
+     * 一個 socket 客戶端
      */
-    export interface Conn {
-        read(buffer: Uint8Array): Promise<number>
-        write(buffer: Uint8Array): Promise<number>
-        close(): Promise<void>
-        localAddr(): Addr
-        remoteAddr(): Addr
-        setDeadline(t: Date): void
-        setReadDeadline(t: Date): void
-        setWriteDeadline(t: Date): void
+    export class Socket {
+        /**
+         * 連接 socket 服務器
+         * @param url 
+         */
+        static connect(address: string, opts?: SocketOptions): Promise<Socket>
+        private constructor()
+        /**
+         * 數據接收回調，每當收到一個數據幀時調用此函數
+         */
+        onMessage: (data: string | Uint8Array) => void
+        /**
+         * 出現錯誤時回調此函數，如果是 eof 錯誤則 傳入 undefined
+         */
+        onClose: (e?: Error) => void
+        /**
+         * 當寫入緩衝區已滿，客戶端將變得不可寫，並且 write 會失敗，當客戶端再次變得可寫時會回調此函數
+         */
+        onWritable: () => void
+        /**
+         * 當讀寫超時時回調
+         */
+        onTimeout: (read: boolean) => void
+        /**
+         * 手動關閉客戶端
+         */
+        close(): void
+
+        /**
+         * 發送數據
+         * @param data
+         * @returns 成功返回 true，失敗返回 false 表示寫入緩衝區已滿，應該等到 onWritable 被回調後才能繼續寫入數據
+         */
+        send(data: string | Uint8Array | ArrayBuffer): boolean
+        /**
+         * 爲底層設置 讀寫緩衝區大小
+         * @param read 
+         * @param write 
+         */
+        setBuffer(read: number, write: number)
+        /**
+         * 返回底層讀寫緩衝區大小
+         */
+        getBuffer(): [/*read*/number,/*write*/ number]
+
+        /**
+         * 設置讀寫超時毫秒，如果小於 0 則禁用超時回調
+         */
+        setTimeout(read: number, write: number): void
+        /**
+         * 返回讀取設置的讀寫超時毫秒數，爲 0 表示禁用超時回調
+         */
+        getTimeout(): [/*read*/number,/*write*/ number]
+        /**
+         * 讀取一個數據幀，如果沒有數據幀則返回一個 Promise 用於異步讀取
+         * 
+         * @remarks
+         * 如果讀取到 eof 會返回 undefined，使用這個函數效率會比 onMessage 低很低，
+         * 實際上它在內部使用了底層的 onMessage 回調，但是它每次都需要創建一個 Promise 這個開銷比單純的
+         * onMessage 回調要大很低，所以如果邏輯簡單應該使用 onMessage。但是 read 比 onMessage 更容易處理複雜
+         * 的邏輯，但這不是性能瓶頸時推薦使用 read 函數
+         */
+        read(): undefined | Uint8Array | string | Promise<undefined | Uint8Array | string>
+        /**
+         * 發送一個數據幀，如果寫入緩衝區已滿則返回一個 Promise 用於異步寫入
+         * @remarks
+         * 這個函數和 read 類似，它比 send 開銷更大。當不可寫時會創建 Promise 並等待
+         * 設備變得可寫後，進行寫入。它在內部調用底層的 send 如果失敗則監聽 底層的 onWritable 回調
+         */
+        write(data: string | Uint8Array | ArrayBuffer): number | Promise<number>
     }
 }
 declare module "iotjs/net/http" {
@@ -494,6 +562,9 @@ declare module "iotjs/net/http" {
      * 關閉所有空閒的連接
      */
     export function close_idle(): void
+    export interface WebsocketOptions {
+
+    }
     /**
      * @alpha
      * 一個 websocket 客戶端
@@ -503,7 +574,7 @@ declare module "iotjs/net/http" {
          * 連接 websocket 服務器
          * @param url 
          */
-        static connect(url: string): Promise<Websocket>
+        static connect(url: string, opts?: WebsocketOptions): Promise<Websocket>
         private constructor()
         /**
          * 數據接收回調，每當收到一個數據幀時調用此函數
@@ -517,6 +588,10 @@ declare module "iotjs/net/http" {
          * 當寫入緩衝區已滿，客戶端將變得不可寫，並且 write 會失敗，當客戶端再次變得可寫時會回調此函數
          */
         onWritable: () => void
+        /**
+         * 當讀寫超時時回調
+         */
+        onTimeout: (read: boolean) => void
         /**
          * 手動關閉客戶端
          */
@@ -539,6 +614,14 @@ declare module "iotjs/net/http" {
          */
         getBuffer(): [/*read*/number,/*write*/ number]
 
+        /**
+         * 設置讀寫超時毫秒，如果小於 0 則禁用超時回調
+         */
+        setTimeout(read: number, write: number): void
+        /**
+         * 返回讀取設置的讀寫超時毫秒數，爲 0 表示禁用超時回調
+         */
+        getTimeout(): [/*read*/number,/*write*/ number]
         /**
          * 讀取一個數據幀，如果沒有數據幀則返回一個 Promise 用於異步讀取
          * 
