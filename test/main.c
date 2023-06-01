@@ -1,6 +1,11 @@
+#define USE_WOLFSSL 1
+#ifdef USE_WOLFSSL
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
 #include <wolfssl/sniffer.h>
+#else
+#include <openssl/ssl.h>
+#endif
 
 #include <event2/event.h>
 #include <event2/dns.h>
@@ -96,7 +101,7 @@ void on_request_cb(struct evhttp_request *req, void *arg)
 }
 void on_error_cb(enum evhttp_request_error err, void *arg)
 {
-    switch (EVREQ_HTTP_TIMEOUT)
+    switch (err)
     {
     case EVREQ_HTTP_TIMEOUT:
         break;
@@ -250,7 +255,8 @@ int http_example(struct event_base *eb, struct evdns_base *esb)
             goto END;
         }
 
-        req->bev = bufferevent_openssl_socket_new(eb, -1, req->ssl, BUFFEREVENT_SSL_CONNECTING, 0);
+        req->bev = bufferevent_openssl_socket_new(eb, -1, req->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+        req->ssl = NULL; // 設置了 BEV_OPT_CLOSE_ON_FREE 無論成功與否 都會自動 釋放 ssl，這裏置空避免兩次釋放
         if (!req->bev)
         {
             puts("bufferevent_openssl_socket_new error");
@@ -259,7 +265,7 @@ int http_example(struct event_base *eb, struct evdns_base *esb)
     }
     else
     {
-        req->bev = bufferevent_socket_new(eb, -1, 0);
+        req->bev = bufferevent_socket_new(eb, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
         if (!req->bev)
         {
             puts("bufferevent_socket_new error");
@@ -273,6 +279,8 @@ int http_example(struct event_base *eb, struct evdns_base *esb)
         puts("connect error");
         goto END;
     }
+    req->bev = NULL; // conn 會自動釋放，這裏置空避免被 釋放兩次
+
     evhttp_connection_set_closecb(req->conn, on_connection_close, NULL);
     evhttp_connection_set_timeout(req->conn, 10);
     // 發送請求
@@ -295,7 +303,7 @@ int http_example(struct event_base *eb, struct evdns_base *esb)
         uri[sz_path] = '?';
         memcpy(uri + sz_path + 1, query, sz_query);
         uri[sz_path + 1 + sz_query] = 0;
-        ret = evhttp_make_request(req->conn, req->request, EVHTTP_REQ_PUT, uri);
+        ret = evhttp_make_request(req->conn, req->request, TEST_METHOD, uri);
         free(uri);
     }
     else

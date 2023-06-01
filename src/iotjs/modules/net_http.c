@@ -104,10 +104,8 @@ static duk_ret_t _native_uri_parse(duk_context *ctx)
 typedef struct
 {
     vm_context_t *vm;
-    struct bufferevent *bev;
     struct evhttp_connection *conn;
     SSL_CTX *sctx;
-    SSL *ssl;
     duk_uint8_t closed;
 } http_conn_t;
 static void http_conn_on_close(struct evhttp_connection *conn, void *arg)
@@ -129,16 +127,6 @@ static void http_conn_free(void *arg)
     {
         evhttp_connection_free(p->conn);
         p->conn = NULL;
-    }
-    if (p->bev)
-    {
-        bufferevent_free(p->bev);
-        p->bev = NULL;
-    }
-    if (p->ssl)
-    {
-        SSL_free(p->ssl);
-        p->ssl = NULL;
     }
     if (p->sctx)
     {
@@ -172,7 +160,7 @@ static duk_ret_t _native_connect(duk_context *ctx)
     vm_context_t *vm = vm_get_context_flags(ctx, VM_CONTEXT_FLAGS_ESB);
     p->vm = vm;
     vm->dns++;
-
+    struct bufferevent *bev;
     if (tls)
     {
         p->sctx = SSL_CTX_new(TLS_client_method());
@@ -183,34 +171,36 @@ static duk_ret_t _native_connect(duk_context *ctx)
         SSL_CTX_set_timeout(p->sctx, 3000);
         SSL_CTX_set_verify(p->sctx, SSL_VERIFY_PEER, tls_verify_callback);
         SSL_CTX_set_default_verify_paths(p->sctx);
-        p->ssl = SSL_new(p->sctx);
-        if (!p->ssl)
+        SSL *ssl = SSL_new(p->sctx);
+        if (!ssl)
         {
             duk_error(ctx, DUK_ERR_ERROR, "SSL_new error");
         }
         // set sni
-        if (SSL_set_tlsext_host_name(p->ssl, host) != SSL_SUCCESS)
+        if (SSL_set_tlsext_host_name(ssl, host) != SSL_SUCCESS)
         {
+            SSL_free(ssl);
             duk_error(ctx, DUK_ERR_ERROR, "SSL_set_tlsext_host_name error");
         }
-        p->bev = bufferevent_openssl_socket_new(vm->eb, -1, p->ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_DEFER_CALLBACKS);
-        if (!p->bev)
+        bev = bufferevent_openssl_socket_new(vm->eb, -1, ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+        if (!bev)
         {
             duk_error(ctx, DUK_ERR_ERROR, "bufferevent_openssl_socket_new error");
         }
     }
     else
     {
-        p->bev = bufferevent_socket_new(vm->eb, -1, BEV_OPT_DEFER_CALLBACKS);
-        if (!p->bev)
+        bev = bufferevent_socket_new(vm->eb, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+        if (!bev)
         {
             duk_error(ctx, DUK_ERR_ERROR, "bufferevent_socket_new error");
         }
     }
 
-    p->conn = evhttp_connection_base_bufferevent_new(vm->eb, vm->esb, p->bev, host, port);
+    p->conn = evhttp_connection_base_bufferevent_new(vm->eb, vm->esb, bev, host, port);
     if (!p->conn)
     {
+        bufferevent_free(bev);
         duk_error(ctx, DUK_ERR_ERROR, "evhttp_connection_base_bufferevent_new error");
     }
     evhttp_connection_set_closecb(p->conn, http_conn_on_close, p);
