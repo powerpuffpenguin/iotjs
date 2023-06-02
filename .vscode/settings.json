@@ -103,6 +103,7 @@
     "keyvalq_struct.h": "c",
     "tsc.net_http.h": "c",
     "async.h": "c",
-    "configure.h": "c"
+    "configure.h": "c",
+    "http.h": "c"
   }
 }

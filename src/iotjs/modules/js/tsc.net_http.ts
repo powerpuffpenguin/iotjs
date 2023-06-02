@@ -1,3 +1,10 @@
+
+declare namespace iotjs {
+    // 編譯目標 os
+    export const os: string
+    // 編譯目標 arch
+    export const arch: string
+}
 declare namespace deps {
     export interface URL {
         scheme: string
@@ -23,6 +30,45 @@ declare namespace deps {
         body?: Uint8Array
     }
     export function make_request(conn: Conn, req: Request, method: string, path: string): Promise<Response>
+
+    export interface WebsocketOptions {
+        /**
+         * 連接地址
+         */
+        addr: string
+        /**
+         * tls 時使用的 
+         * sni hostname
+         */
+        hostname?: string
+        /**
+         * 連接端口
+         */
+        port: number
+        /**
+         *  wss or ws
+         */
+        wss: boolean
+        /**
+         * 讀取到的單個消息最大長度
+         */
+        readlimit: number
+        /**
+         * Sec-WebSocket-Key
+         */
+        key: string
+        /**
+         * 握手消息
+         */
+        handshake: string
+        /**
+         * 連接超時毫秒數
+         */
+        timeout: number
+    }
+    export class Websocket { }
+    export function ws_connect(opts: WebsocketOptions): Promise<Websocket>
+    export function ws_key(): string
 }
 export interface RequestOptions {
     method?: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -173,4 +219,76 @@ export async function request(url: string, opts?: RequestOptions): Promise<Respo
 }
 export function close_idle() {
     defaultConns.close()
+}
+export interface WebsocketOptions {
+    /**
+     * 可設置此屬性覆蓋連接的 header Origin
+     */
+    origin?: string
+    /**
+     * 可設置此屬性覆蓋連接的 header Host
+     */
+    host?: string
+    /**
+     * 讀取到的單個消息最大長度
+     * 默認爲 1024*1024
+     */
+    readlimit?: number
+    /**
+     * 連接超時毫秒數，小於 1 將不設置超時但通常系統 tcp 連接超時是 75s
+     */
+    timeout?: number
+}
+export class Websocket {
+    static connect(url: string, opts?: WebsocketOptions): Promise<Websocket> {
+        const u = deps.uri_parse(url)
+        let port = u.port
+        let host: string
+        let origin: string
+        let wss: boolean
+        if (u.scheme == "ws") {
+            wss = false
+            if (port) {
+                host = opts?.host ?? `${u.host}:${port}`
+            } else {
+                host = opts?.host ?? u.host
+                port = 80
+            }
+            origin = opts?.origin ?? `http://${host}`
+        } else if (u.scheme == "wss") {
+            wss = true
+            if (port) {
+                host = opts?.host ?? `${u.host}:${port}`
+            } else {
+                host = opts?.host ?? u.host
+                port = 443
+            }
+            origin = opts?.origin ?? `https://${host}`
+        } else {
+            throw new Error(`scheme not supported: ${u.scheme}`);
+        }
+        const key = deps.ws_key()
+        return deps.ws_connect({
+            addr: u.host,
+            hostname: wss ? host : undefined,
+            port: port,
+            wss: wss,
+            key: key,
+            handshake: `GET ${u.path} HTTP/1.1
+Host: ${host}
+User-Agent: iotjs-${iotjs.os}-${iotjs.arch}-client/1.1
+Origin: ${origin}
+Connection: Upgrade
+Upgrade: websocket
+Sec-WebSocket-Version: 13
+Sec-WebSocket-Key: ${key}
+
+`,
+            readlimit: opts?.readlimit ?? 1024 * 1024,
+            timeout: opts?.timeout ?? 0,
+        }).then((ws) => new Websocket(ws))
+    }
+    private constructor(private readonly ws_: deps.Websocket) {
+    }
+
 }

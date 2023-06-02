@@ -130,4 +130,14 @@ finalizer_t *vm_create_finalizer_n(duk_context *ctx, size_t n);
 finalizer_t *vm_require_finalizer(duk_context *ctx, duk_idx_t idx, void (*freef)(void *p));
 // 立刻調用 終結器 釋放資源
 void vm_finalizer_free(duk_context *ctx, duk_idx_t idx, void (*freef)(void *p));
+
+#define VM_DUK_REQUIRE_LSTRING(require, ctx, idx, key, len) \
+    duk_get_prop_lstring(ctx, idx, key, len);               \
+    require;                                                \
+    duk_pop(ctx);
+
+#define VM_DUK_REQUIRE_AND_DEL_LSTRING(require, ctx, idx, key, len) \
+    VM_DUK_REQUIRE_LSTRING(require, ctx, idx, key, len)             \
+    duk_del_prop_lstring(ctx, -1, key, len);
+
 #endif

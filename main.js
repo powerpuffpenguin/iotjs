@@ -1,12 +1,10 @@
-console.log(new Date())
-var at = Date.now()
+var http = require("iotjs/net/http")
+var Websocket = http.Websocket
 
-console.log("---------------------")
-var x = setTimeout(function () {
-    console.log('ok')
-
-}, 1000);
-// clearTimeout(x)
-
-var used = (Date.now() - at) / 1000
-console.log("used", used + "s")
+Websocket.connect("wss://192.168.251.50:9443/ws", {
+    timeout: 5000,
+}).then(function (ws) {
+    console.log("ws", ws)
+}).catch(function (e) {
+    console.log("err:", e.toString())
+})

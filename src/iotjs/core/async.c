@@ -1,5 +1,69 @@
 #include <iotjs/core/async.h>
 #include <iotjs/core/defines.h>
+void vm_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_size_t n)
+{
+    // ...
+    duk_push_heap_stash(ctx);
+    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_SNAPSHOTS);
+    if (duk_is_undefined(ctx, -1))
+    {
+        duk_pop(ctx);
+        duk_push_object(ctx);
+        duk_dup_top(ctx);
+        duk_put_prop_lstring(ctx, -3, VM_STASH_KEY_SNAPSHOTS);
+    }
+    duk_remove(ctx, -2);
+    // ... snapshots
+    duk_get_prop_lstring(ctx, -1, bucket, sz_bucket);
+    if (duk_is_undefined(ctx, -1))
+    {
+        duk_pop(ctx);
+        duk_push_object(ctx);
+        duk_dup_top(ctx);
+        duk_put_prop_lstring(ctx, -3, bucket, sz_bucket);
+    }
+    duk_remove(ctx, -2);
+    // ... bucket
+    duk_push_pointer(ctx, key);
+    duk_get_prop(ctx, -2);
+    // ... bucket, snapshot
+    if (duk_is_undefined(ctx, -1))
+    {
+        duk_pop_2(ctx);
+        duk_error(ctx, DUK_ERR_ERROR, "stash snapshot not exists");
+    }
+}
+void vm_restore(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_bool_t del_snapshot)
+{
+    // ...
+    duk_push_heap_stash(ctx);
+    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_SNAPSHOTS);
+    if (duk_is_undefined(ctx, -1))
+    {
+        duk_pop_2(ctx);
+        duk_error(ctx, DUK_ERR_ERROR, "stash snapshot not exists");
+    }
+    duk_remove(ctx, -2);
+
+    // ... snapshots
+    duk_get_prop_lstring(ctx, -1, bucket, sz_bucket);
+    if (duk_is_undefined(ctx, -1))
+    {
+        duk_pop_2(ctx);
+        duk_error(ctx, DUK_ERR_ERROR, "stash snapshot not exists");
+    }
+    duk_remove(ctx, -2);
+    // ... bucket
+    duk_push_pointer(ctx, key);
+    duk_get_prop(ctx, -2);
+    // ... bucket, snapshot
+    if (duk_is_undefined(ctx, -1))
+    {
+        duk_pop_2(ctx);
+        duk_error(ctx, DUK_ERR_ERROR, "stash snapshot not exists");
+    }
+}
+
 void vm_async_completer_args(duk_context *ctx, void *key)
 {
     duk_require_stack(ctx, 3);

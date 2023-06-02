@@ -499,6 +499,156 @@ static duk_ret_t _native_make_request(duk_context *ctx)
     return 1;
 }
 
+static duk_ret_t _native_ws_key(duk_context *ctx)
+{
+    duk_uint8_t *key = duk_push_buffer(ctx, 16, 0);
+    srand((unsigned)time(NULL));
+    for (size_t i = 0; i < 16; i++)
+    {
+        key[i] = rand() % 255;
+    }
+    duk_base64_encode(ctx, -1);
+    return 1;
+}
+typedef struct
+{
+    vm_context_t *vm;
+    struct event *timeout;
+    struct bufferevent *bev;
+    SSL_CTX *sctx;
+    int step;
+} websocket_connect_t;
+void websocket_connect_free(void *p)
+{
+    websocket_connect_t *ws = p;
+#ifdef VM_TRACE_FINALIZER
+    puts(" --------- websocket_connect_free");
+#endif
+    if (ws->timeout)
+    {
+        event_free(ws->timeout);
+    }
+    if (ws->bev)
+    {
+        bufferevent_free(ws->bev);
+    }
+    if (ws->sctx)
+    {
+        SSL_CTX_free(ws->sctx);
+    }
+    if (ws->vm)
+    {
+        vm_free_dns(ws->vm);
+    }
+}
+void websocket_connect_timeout_cb(evutil_socket_t fd, short events, void *arg)
+{
+}
+void websocket_connect_read_cb(struct bufferevent *bev, void *ctx)
+{
+    puts("websocket_connect_read_cb");
+}
+void websocket_connect_event_cb(struct bufferevent *bev, short what, void *ctx)
+{
+    puts("websocket_connect_event_cb");
+}
+static duk_ret_t _native_ws_connect(duk_context *ctx)
+{
+    // duk_require_object(ctx, -1);
+    VM_DUK_REQUIRE_AND_DEL_LSTRING(
+        duk_bool_t wss = duk_require_boolean(ctx, -1),
+        ctx, -1, "wss", 3)
+    VM_DUK_REQUIRE_AND_DEL_LSTRING(
+        int port = duk_require_number(ctx, -1),
+        ctx, -1, "port", 4)
+    VM_DUK_REQUIRE_LSTRING(
+        const char *addr = duk_require_string(ctx, -1),
+        ctx, -1, "addr", 4)
+    VM_DUK_REQUIRE_AND_DEL_LSTRING(
+        int timeout = duk_require_number(ctx, -1),
+        ctx, -1, "timeout", 7)
+    VM_DUK_REQUIRE_LSTRING(
+        const char *key = duk_require_string(ctx, -1),
+        ctx, -1, "key", 3)
+    duk_size_t len;
+    VM_DUK_REQUIRE_LSTRING(
+        const char *handshake = duk_require_lstring(ctx, -1, &len),
+        ctx, -1, "handshake", 9)
+
+    finalizer_t *finalizer = vm_create_finalizer_n(ctx, sizeof(websocket_connect_t));
+    websocket_connect_t *ws = finalizer->p;
+    finalizer->free = websocket_connect_free;
+
+    vm_context_t *vm = vm_get_context_flags(ctx, VM_CONTEXT_FLAGS_COMPLETER | VM_CONTEXT_FLAGS_ESB);
+    ws->vm = vm;
+    vm->dns++;
+    if (wss)
+    {
+        VM_DUK_REQUIRE_LSTRING(
+            const char *hostname = duk_require_string(ctx, -1),
+            ctx, 0, "hostname", 8)
+
+        ws->sctx = SSL_CTX_new(TLS_client_method());
+        if (!ws->sctx)
+        {
+            vm_finalizer_free(ctx, 1, websocket_connect_free);
+            duk_error(ctx, DUK_ERR_ERROR, "SSL_CTX_new error");
+        }
+        SSL_CTX_set_timeout(ws->sctx, 3000);
+        SSL_CTX_set_verify(ws->sctx, SSL_VERIFY_PEER, tls_verify_callback);
+        SSL_CTX_set_default_verify_paths(ws->sctx);
+        SSL *ssl = SSL_new(ws->sctx);
+        if (!ssl)
+        {
+            vm_finalizer_free(ctx, 1, websocket_connect_free);
+            duk_error(ctx, DUK_ERR_ERROR, "SSL_new error");
+        }
+        // set sni
+        if (SSL_set_tlsext_host_name(ssl, hostname) != SSL_SUCCESS)
+        {
+            SSL_free(ssl);
+            vm_finalizer_free(ctx, 1, websocket_connect_free);
+            duk_error(ctx, DUK_ERR_ERROR, "SSL_set_tlsext_host_name error");
+        }
+        ws->bev = bufferevent_openssl_socket_new(vm->eb, -1, ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+    }
+    else
+    {
+        ws->bev = bufferevent_socket_new(vm->eb, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+    }
+
+    bufferevent_setcb(ws->bev, websocket_connect_read_cb, NULL, websocket_connect_event_cb, ws);
+
+    if (bufferevent_socket_connect_hostname(ws->bev, vm->esb, AF_UNSPEC, addr, port))
+    {
+        vm_finalizer_free(ctx, 1, websocket_connect_free);
+        duk_error(ctx, DUK_ERR_ERROR, "bufferevent_socket_connect_hostname error");
+    }
+
+    if (timeout > 0)
+    {
+        ws->timeout = event_new(vm->eb, -1, EV_TIMEOUT, websocket_connect_timeout_cb, ws);
+        if (!ws->timeout)
+        {
+            vm_finalizer_free(ctx, 1, websocket_connect_free);
+            duk_error(ctx, DUK_ERR_ERROR, "event_new connect timeout error");
+        }
+        struct timeval tv = {
+            .tv_sec = 1,
+            .tv_usec = 0,
+        };
+        if (event_add(ws->timeout, &tv))
+        {
+            vm_finalizer_free(ctx, 1, websocket_connect_free);
+            duk_error(ctx, DUK_ERR_ERROR, "event_add connect timeout error");
+        }
+    }
+
+
+    vm_dump_context_stdout(ctx);
+    exit(1);
+    return 0;
+}
 duk_ret_t native_iotjs_net_http_init(duk_context *ctx)
 {
     duk_swap(ctx, 0, 1);
@@ -527,6 +677,11 @@ duk_ret_t native_iotjs_net_http_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "add_header", 10);
         duk_push_c_function(ctx, _native_make_request, 4);
         duk_put_prop_lstring(ctx, -2, "make_request", 12);
+
+        duk_push_c_function(ctx, _native_ws_key, 0);
+        duk_put_prop_lstring(ctx, -2, "ws_key", 6);
+        duk_push_c_function(ctx, _native_ws_connect, 1);
+        duk_put_prop_lstring(ctx, -2, "ws_connect", 10);
     }
     duk_call(ctx, 3);
     return 0;

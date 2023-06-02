@@ -563,7 +563,23 @@ declare module "iotjs/net/http" {
      */
     export function close_idle(): void
     export interface WebsocketOptions {
-
+        /**
+         * 可設置此屬性覆蓋連接的 header Origin
+         */
+        origin?: string
+        /**
+         * 可設置此屬性覆蓋連接的 header Host
+         */
+        host?: string
+        /**
+         * 讀取到的單個消息最大長度
+         * 默認爲 1024*1024
+         */
+        readlimit?: number
+        /**
+         * 連接超時毫秒數，小於 1 將不設置超時但通常系統 tcp 連接超時是 75s
+         */
+        timeout?: number
     }
     /**
      * @alpha
@@ -592,6 +608,7 @@ declare module "iotjs/net/http" {
          * 當讀寫超時時回調
          */
         onTimeout: (read: boolean) => void
+
         /**
          * 手動關閉客戶端
          */
