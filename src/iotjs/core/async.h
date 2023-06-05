@@ -3,10 +3,31 @@
 #include <duktape.h>
 
 // 爲棧頂的 n 個元素創建一個快照，存儲到 heap_stash["snapshot"][bucket][key] 中
-void vm_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_size_t n);
-// 將存儲的快照恢復到棧頂
+duk_context *vm_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_size_t n);
+// 如果快照存在，將存儲的快照恢復到棧頂
 // del_snapshot 爲 true 則在恢復後刪除快照
-void vm_restore(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_bool_t del_snapshot);
+// 恢復失敗說明內存不足應該結束程序，否則可能導致永久的內存泄漏，通常只應該在異步回調中用於恢復棧
+duk_context *vm_restore(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_bool_t del_snapshot);
+// 如果快照存在則刪除快照
+void vm_remove_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key);
+
+// 爲異步 api 創建 promise，並爲棧參數創建快照
+// ... v0, v1, ... vn => promise
+duk_context *vm_new_completer(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_size_t n);
+
+// ... completer, value => ... completer, return
+// 完成 completer 以 resolve 回覆 promise
+void vm_resolve(duk_context *ctx, duk_idx_t obj_idx);
+// ... completer, error => ... completer, return
+// 完成 completer 以 reject 回覆 promise
+void vm_reject(duk_context *ctx, duk_idx_t obj_idx);
+
+// ... => ... val
+// duk_call f(arg)
+void vm_complete_lightfunc(duk_context *ctx, duk_c_function f, void *arg);
+// ... => ...
+// duk_call f(arg)
+void vm_complete_lightfunc_noresult(duk_context *ctx, duk_c_function f, void *arg);
 
 // ... args, class Completer => ... promise
 // 1. new Completer()..args=args

@@ -1,3 +1,41 @@
+declare namespace deps {
+    export class TCPConn {
+        /**
+         * 連接地址
+         */
+        addr: string
+        /**
+         * 連接端口
+         */
+        port: number
+        /**
+         * 如果爲 true 使用 tls
+         */
+        tls: boolean
+        /**
+         * tls 時使用的 
+         * sni hostname
+         */
+        hostname?: string
+        /**
+         * 連接超時毫秒數
+         */
+        timeout: number
+        /**
+         *  當待讀取的 tcp 數據積壓到此值將停止接收數據
+         */
+        read?: number
+        /**
+         * 當待寫入的 tcp 數據積壓到此值，新的寫入將失敗
+         */
+        write?: number
+    }
+    export function tcp_connect(opts: TCPConn): Promise<TCPConn>
+    /**
+     * 手動釋放 conn
+     */
+    export function tcp_free(conn: TCPConn): void
+}
 export const IPv4len = 4
 export const IPv6len = 16
 export class NetError extends _iotjs.IotError {
@@ -6,6 +44,7 @@ export class NetError extends _iotjs.IotError {
         this.name = "NetError"
     }
 }
+
 function runSync<T>(f: () => T) {
     try {
         return f()
@@ -94,4 +133,55 @@ export function resolveIP(network: 'ip' | 'ip4' | 'ip6', address: string): Promi
         }
         return ip.map((v) => new IP(v))
     })
+}
+export interface TCPConnOptions {
+    /**
+     * 如果爲 true 使用 tls
+     */
+    tls?: boolean
+    /**
+     * tls 時使用的 
+     * sni hostname
+     */
+    hostname?: string
+    /**
+     * 連接超時毫秒數，小於 1 將不設置超時但通常系統 tcp 連接超時是 75s
+     */
+    timeout?: number
+    /**
+     *  當待讀取的 tcp 數據積壓到此值將停止接收數據
+     */
+    read?: number
+    /**
+     * 當待寫入的 tcp 數據積壓到此值，新的寫入將失敗
+     */
+    write?: number
+}
+export class TCPConn {
+    static connect(addr: string, port: number, opts?: TCPConnOptions): Promise<TCPConn> {
+        return runAsync(async () => {
+            const tls = opts?.tls ?? false;
+            const conn = await deps.tcp_connect({
+                addr: addr,
+                port: port,
+                tls: tls,
+                hostname: tls ? (opts?.hostname ?? addr) : undefined,
+                timeout: opts?.timeout ?? 0,
+                read: opts?.read ?? 1024 * 1024,
+                write: opts?.write ?? 1024 * 1024,
+            })
+            return new TCPConn(conn)
+        })
+    }
+    private constructor(private readonly conn_: deps.TCPConn) {
+
+    }
+    private closed_ = 0;
+    close(): void {
+        if (!this.closed_) {
+            deps.tcp_free(this.conn_)
+            this.closed_ = 1
+        }
+    }
+
 }

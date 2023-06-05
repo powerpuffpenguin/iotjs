@@ -456,22 +456,31 @@ declare module "iotjs/net" {
         address: string
     }
 
-    export interface SocketOptions {
+    export interface TCPConnOptions {
         /**
-         * 如果 爲 true 自動將接收到的數據轉爲 字符串
+         * 如果爲 true 使用 tls
          */
-        text?: boolean
+        tls?: boolean
+        /**
+         * tls 時使用的 
+         * sni hostname
+         */
+        hostname?: string
+        /**
+         * 連接超時毫秒數，小於 1 將不設置超時但通常系統 tcp 連接超時是 75s
+         */
+        timeout?: number
     }
     /**
      * @alpha
-     * 一個 socket 客戶端
+     * 一個 tcp 連接
      */
-    export class Socket {
+    export class TCPConn {
         /**
          * 連接 socket 服務器
          * @param url 
          */
-        static connect(address: string, opts?: SocketOptions): Promise<Socket>
+        static connect(address: string, opts?: TCPConnOptions): Promise<Socket>
         private constructor()
         /**
          * 數據接收回調，每當收到一個數據幀時調用此函數

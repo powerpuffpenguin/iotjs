@@ -1,4 +1,5 @@
 #include <iotjs/core/configure.h>
+#include <iotjs/core/memory.h>
 #include <iotjs/modules/module.h>
 #include <iotjs/core/js.h>
 #include <iotjs/core/async.h>
@@ -22,6 +23,26 @@
 #include <iotjs/modules/js/tsc.net_http.h>
 #include <string.h>
 #include <stdlib.h>
+
+#define _VM_HTTP_WEBSOCKET_STEP_CONNECT 0
+#define _VM_HTTP_WEBSOCKET_STEP_HANDSHAKE 1
+#define _VM_HTTP_WEBSOCKET_STEP_READY 2
+
+#define _VM_HTTP_WEBSOCKET_CONNECT_ERROR_MALLOC -1
+#define _VM_HTTP_WEBSOCKET_CONNECT_ERROR_TIMEOUT 1
+#define _VM_HTTP_WEBSOCKET_CONNECT_ERROR_SOCKET 2
+#define _VM_HTTP_WEBSOCKET_CONNECT_ERROR_ENABLE_READ 3
+#define _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_READ_EOF 10
+#define _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_READ_TIMEOUT 11
+#define _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_READ_ERROR 12
+#define _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_WRITE_EOF 13
+#define _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_WRITE_TIMEOUT 14
+#define _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_WRITE_ERROR 15
+#define _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_PROTOCOL_ERROR 20
+#define _VM_HTTP_WEBSOCKET_CONNECT_FLAGS_UPGRADE 0x1
+#define _VM_HTTP_WEBSOCKET_CONNECT_FLAGS_CONNECTION 0x2
+#define _VM_HTTP_WEBSOCKET_CONNECT_FLAGS_SEC 0x4
+
 static void http_uri_free(void *arg)
 {
 #ifdef VM_TRACE_FINALIZER
@@ -517,10 +538,16 @@ typedef struct
     struct bufferevent *bev;
     SSL_CTX *sctx;
     int step;
+    int err;
+
+    char *buf;
+    size_t sz_buf;
+    duk_uint32_t flags;
 } websocket_connect_t;
-void websocket_connect_free(void *p)
+static void websocket_connect_free(void *p)
 {
     websocket_connect_t *ws = p;
+    puts(" --------- websocket_connect_free");
 #ifdef VM_TRACE_FINALIZER
     puts(" --------- websocket_connect_free");
 #endif
@@ -532,6 +559,10 @@ void websocket_connect_free(void *p)
     {
         bufferevent_free(ws->bev);
     }
+    if (ws->buf)
+    {
+        vm_free(ws->buf);
+    }
     if (ws->sctx)
     {
         SSL_CTX_free(ws->sctx);
@@ -541,16 +572,265 @@ void websocket_connect_free(void *p)
         vm_free_dns(ws->vm);
     }
 }
-void websocket_connect_timeout_cb(evutil_socket_t fd, short events, void *arg)
+
+static duk_ret_t _native_websocket_connect_event_cb_error(duk_context *ctx)
 {
+    websocket_connect_t *ws = duk_require_pointer(ctx, 0);
+    duk_pop(ctx);
+    vm_restore(ctx, VM_SNAPSHOT_WEBSOCKET, ws, 1);
+    int err = ws->err;
+    switch (err)
+    {
+    case _VM_HTTP_WEBSOCKET_CONNECT_ERROR_MALLOC:
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "malloc failed");
+        break;
+    case _VM_HTTP_WEBSOCKET_CONNECT_ERROR_TIMEOUT:
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "connect timeout");
+        break;
+    case _VM_HTTP_WEBSOCKET_CONNECT_ERROR_SOCKET:
+        err = bufferevent_socket_get_dns_error(ws->bev);
+        if (err)
+        {
+            duk_push_error_object(ctx, DUK_ERR_ERROR, evutil_gai_strerror(err));
+        }
+        else
+        {
+            err = EVUTIL_SOCKET_ERROR();
+            if (err)
+            {
+                duk_push_error_object(ctx, DUK_ERR_ERROR, evutil_socket_error_to_string(err));
+            }
+            else
+            {
+                duk_push_error_object(ctx, DUK_ERR_ERROR, "unknow error");
+            }
+        }
+        break;
+    case _VM_HTTP_WEBSOCKET_CONNECT_ERROR_ENABLE_READ:
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "enable read");
+        break;
+    case _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_READ_EOF:
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "read eof");
+        break;
+    case _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_READ_TIMEOUT:
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "read timeout");
+        break;
+    case _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_READ_ERROR:
+        duk_push_error_object(ctx, DUK_ERR_ERROR, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+        break;
+    case _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_WRITE_EOF:
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "write on eof");
+        break;
+    case _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_WRITE_TIMEOUT:
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "write timeout");
+        break;
+    case _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_WRITE_ERROR:
+        duk_push_error_object(ctx, DUK_ERR_ERROR, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+        break;
+    case _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_PROTOCOL_ERROR:
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "handshake protocol not matched");
+        break;
+    default:
+        duk_push_error_object(ctx, DUK_ERR_ERROR, "unknow error");
+        break;
+    }
+
+    vm_reject(ctx, -2);
+    duk_pop_2(ctx);
+
+    vm_finalizer_free(ctx, -1, websocket_connect_free);
+    return 0;
 }
-void websocket_connect_read_cb(struct bufferevent *bev, void *ctx)
+static void websocket_connect_read_cb(struct bufferevent *bev, void *ctx)
 {
-    puts("websocket_connect_read_cb");
+    websocket_connect_t *ws = ctx;
+    switch (ws->step)
+    {
+    case _VM_HTTP_WEBSOCKET_STEP_HANDSHAKE:
+    {
+        char *p = ws->buf;
+        struct evbuffer *buf = bufferevent_get_input(ws->bev);
+        size_t sz;
+        struct evbuffer_ptr found;
+        int first = p ? 0 : 1;
+        while (1)
+        {
+            found = evbuffer_search_eol(buf, 0, &sz, EVBUFFER_EOL_CRLF);
+            if (found.pos < 0)
+            {
+                return;
+            }
+            else if (!found.pos)
+            {
+                if (first)
+                {
+                    ws->err = _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_PROTOCOL_ERROR;
+                    vm_complete_lightfunc_noresult(ws->vm->ctx, _native_websocket_connect_event_cb_error, ws);
+                    return;
+                }
+                evbuffer_drain(buf, sz);
+                break;
+            }
+            first = 0;
+            if (ws->sz_buf < found.pos)
+            {
+                p = vm_malloc(found.pos < 128 ? 128 : found.pos);
+                if (!p)
+                {
+                    ws->err = _VM_HTTP_WEBSOCKET_CONNECT_ERROR_MALLOC;
+                    vm_complete_lightfunc_noresult(ws->vm->ctx, _native_websocket_connect_event_cb_error, ws);
+                    return;
+                }
+                if (ws->sz_buf)
+                {
+                    vm_free(ws->buf);
+                }
+                ws->buf = p;
+            }
+
+            evbuffer_remove(buf, p, found.pos);
+            evbuffer_drain(buf, 2);
+
+            p[found.pos] = 0;
+
+            if (first)
+            {
+                if (found.pos < 12)
+                {
+                    ws->err = _VM_HTTP_WEBSOCKET_CONNECT_ERROR_MALLOC;
+                    vm_complete_lightfunc_noresult(ws->vm->ctx, _native_websocket_connect_event_cb_error, ws);
+                    return;
+                }
+                else if (found.pos == 12)
+                {
+                    if (memcpy("HTTP/1.1 101", p, 12))
+                    {
+                        ws->err = _VM_HTTP_WEBSOCKET_CONNECT_ERROR_MALLOC;
+                        vm_complete_lightfunc_noresult(ws->vm->ctx, _native_websocket_connect_event_cb_error, ws);
+                        return;
+                    }
+                }
+                else if (memcpy("HTTP/1.1 101 ", p, 13))
+                {
+                    ws->err = _VM_HTTP_WEBSOCKET_CONNECT_ERROR_MALLOC;
+                    vm_complete_lightfunc_noresult(ws->vm->ctx, _native_websocket_connect_event_cb_error, ws);
+                    return;
+                }
+            }
+            else
+            {
+                switch (found.pos)
+                {
+                case 18:
+                    if (memcpy(p, "Upgrade: websocket", 18))
+                    {
+                        ws->err = _VM_HTTP_WEBSOCKET_CONNECT_ERROR_MALLOC;
+                        vm_complete_lightfunc_noresult(ws->vm->ctx, _native_websocket_connect_event_cb_error, ws);
+                        return;
+                    }
+                    ws->flags |= _VM_HTTP_WEBSOCKET_CONNECT_FLAGS_UPGRADE;
+                    break;
+                case 19:
+                    if (memcpy(p, "Connection: Upgrade", 19))
+                    {
+                        ws->err = _VM_HTTP_WEBSOCKET_CONNECT_ERROR_MALLOC;
+                        vm_complete_lightfunc_noresult(ws->vm->ctx, _native_websocket_connect_event_cb_error, ws);
+                        return;
+                    }
+                    ws->flags |= _VM_HTTP_WEBSOCKET_CONNECT_FLAGS_CONNECTION;
+                    break;
+                case 50:
+                    if (!memcpy(p, "Sec-WebSocket-Accept: ", 22))
+                    {
+                        char sec[28] = {0};
+
+                        ws->flags |= _VM_HTTP_WEBSOCKET_CONNECT_FLAGS_SEC;
+                    }
+                    break;
+                }
+            }
+            printf("'%s' %ld\n", p, found.pos);
+        }
+        puts("ok");
+        exit(1);
+    }
+    break;
+    case _VM_HTTP_WEBSOCKET_STEP_READY:
+        break;
+    }
 }
-void websocket_connect_event_cb(struct bufferevent *bev, short what, void *ctx)
+static void websocket_connect_timeout_cb(evutil_socket_t fd, short events, void *arg)
 {
-    puts("websocket_connect_event_cb");
+    websocket_connect_t *ws = arg;
+    ws->err = _VM_HTTP_WEBSOCKET_CONNECT_ERROR_TIMEOUT;
+    vm_complete_lightfunc_noresult(ws->vm->ctx, _native_websocket_connect_event_cb_error, ws);
+}
+static void websocket_connect_event_cb(struct bufferevent *bev, short what, void *ctx)
+{
+    // puts("websocket_connect_event_cb");
+    websocket_connect_t *ws = ctx;
+    switch (ws->step) // 連接響應
+    {
+    case _VM_HTTP_WEBSOCKET_STEP_CONNECT:
+        if (what & BEV_EVENT_CONNECTED) // tcp 連接成功
+        {
+            // 啓用 讀寫
+            if (bufferevent_enable(ws->bev, EV_READ | EV_WRITE))
+            {
+                ws->err = _VM_HTTP_WEBSOCKET_CONNECT_ERROR_ENABLE_READ;
+                vm_complete_lightfunc_noresult(ws->vm->ctx, _native_websocket_connect_event_cb_error, ws);
+            }
+            else
+            {
+                ws->step = _VM_HTTP_WEBSOCKET_STEP_HANDSHAKE;
+            }
+        }
+        else
+        {
+            ws->err = _VM_HTTP_WEBSOCKET_CONNECT_ERROR_SOCKET;
+            vm_complete_lightfunc_noresult(ws->vm->ctx, _native_websocket_connect_event_cb_error, ws);
+        }
+        return;
+    case _VM_HTTP_WEBSOCKET_STEP_HANDSHAKE:
+        if (what & BEV_EVENT_READING)
+        {
+            if (what & BEV_EVENT_EOF)
+            {
+                ws->err = _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_READ_EOF;
+                vm_complete_lightfunc_noresult(ws->vm->ctx, _native_websocket_connect_event_cb_error, ws);
+            }
+            else if (what & BEV_EVENT_TIMEOUT)
+            {
+                ws->err = _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_READ_TIMEOUT;
+                vm_complete_lightfunc_noresult(ws->vm->ctx, _native_websocket_connect_event_cb_error, ws);
+            }
+            else if (what & BEV_EVENT_ERROR)
+            {
+                ws->err = _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_READ_ERROR;
+                vm_complete_lightfunc_noresult(ws->vm->ctx, _native_websocket_connect_event_cb_error, ws);
+            }
+        }
+        else if (what & BEV_EVENT_WRITING)
+        {
+            if (what & BEV_EVENT_EOF)
+            {
+                ws->err = _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_WRITE_EOF;
+                vm_complete_lightfunc_noresult(ws->vm->ctx, _native_websocket_connect_event_cb_error, ws);
+            }
+            else if (what & BEV_EVENT_TIMEOUT)
+            {
+                ws->err = _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_WRITE_TIMEOUT;
+                vm_complete_lightfunc_noresult(ws->vm->ctx, _native_websocket_connect_event_cb_error, ws);
+            }
+            else if (what & BEV_EVENT_ERROR)
+            {
+                ws->err = _VM_HTTP_WEBSOCKET_CONNECT_HANDSHAKE_WRITE_ERROR;
+                vm_complete_lightfunc_noresult(ws->vm->ctx, _native_websocket_connect_event_cb_error, ws);
+            }
+        }
+        return;
+    }
+    // _VM_HTTP_WEBSOCKET_STEP_READY
 }
 static duk_ret_t _native_ws_connect(duk_context *ctx)
 {
@@ -579,7 +859,7 @@ static duk_ret_t _native_ws_connect(duk_context *ctx)
     websocket_connect_t *ws = finalizer->p;
     finalizer->free = websocket_connect_free;
 
-    vm_context_t *vm = vm_get_context_flags(ctx, VM_CONTEXT_FLAGS_COMPLETER | VM_CONTEXT_FLAGS_ESB);
+    vm_context_t *vm = vm_get_context_flags(ctx, VM_CONTEXT_FLAGS_ESB);
     ws->vm = vm;
     vm->dns++;
     if (wss)
@@ -619,12 +899,18 @@ static duk_ret_t _native_ws_connect(duk_context *ctx)
 
     bufferevent_setcb(ws->bev, websocket_connect_read_cb, NULL, websocket_connect_event_cb, ws);
 
+    // 連接服務器
     if (bufferevent_socket_connect_hostname(ws->bev, vm->esb, AF_UNSPEC, addr, port))
     {
         vm_finalizer_free(ctx, 1, websocket_connect_free);
         duk_error(ctx, DUK_ERR_ERROR, "bufferevent_socket_connect_hostname error");
     }
-
+    // 連接成功後自動發送 握手包
+    if (bufferevent_write(ws->bev, handshake, len))
+    {
+        vm_finalizer_free(ctx, 1, websocket_connect_free);
+        duk_error(ctx, DUK_ERR_ERROR, "bufferevent_write handshake error");
+    }
     if (timeout > 0)
     {
         ws->timeout = event_new(vm->eb, -1, EV_TIMEOUT, websocket_connect_timeout_cb, ws);
@@ -634,8 +920,8 @@ static duk_ret_t _native_ws_connect(duk_context *ctx)
             duk_error(ctx, DUK_ERR_ERROR, "event_new connect timeout error");
         }
         struct timeval tv = {
-            .tv_sec = 1,
-            .tv_usec = 0,
+            .tv_sec = timeout / 1000,
+            .tv_usec = (timeout % 1000) * 1000,
         };
         if (event_add(ws->timeout, &tv))
         {
@@ -644,11 +930,11 @@ static duk_ret_t _native_ws_connect(duk_context *ctx)
         }
     }
 
-
-    vm_dump_context_stdout(ctx);
-    exit(1);
-    return 0;
+    // opts, finalizer
+    vm_new_completer(ctx, VM_SNAPSHOT_WEBSOCKET, ws, 2);
+    return 1;
 }
+
 duk_ret_t native_iotjs_net_http_init(duk_context *ctx)
 {
     duk_swap(ctx, 0, 1);

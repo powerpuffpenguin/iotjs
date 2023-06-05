@@ -13,14 +13,6 @@
 #define FALSE 0
 #endif
 
-#ifndef IOTJS_MALLOC
-#define IOTJS_MALLOC(size) malloc(size)
-#endif
-
-#ifndef IOTJS_FREE
-#define IOTJS_FREE(p) free(p)
-#endif
-
 #ifndef VM_IOTJS_OS
 #define VM_IOTJS_OS "linux"
 #endif
@@ -48,6 +40,7 @@
 // 爲異步方法存儲 js 棧快照
 #define VM_STASH_KEY_SNAPSHOTS "snapshots", 9
 #define VM_SNAPSHOT_WEBSOCKET "websocket", 9
+#define VM_SNAPSHOT_TCPCONN "tcpconn", 9
 
 #define VM_IOTJS_KEY_COMPLETER "Completer", 9
 #define VM_IOTJS_KEY_ERROR "IotError", 8

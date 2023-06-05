@@ -1,12 +1,267 @@
 
-#include <iotjs/core/js.h>
+#include <iotjs/modules/module.h>
+#include <iotjs/modules/net.h>
 #include <iotjs/modules/js/tsc.net.h>
-duk_ret_t _buffer(duk_context *ctx)
-{
-    duk_push_buffer(ctx, 10, 0);
-    vm_dump_context_stdout(ctx);
+#include <iotjs/core/configure.h>
+#include <iotjs/core/memory.h>
 
+/***    BEGIN tcp   ***/
+#define IOTJS_NET_TCPCONN_CONNECT_SUCCESS 0
+#define IOTJS_NET_TCPCONN_CONNECT_TIMEOUT 10
+#define IOTJS_NET_TCPCONN_CONNECT_ERROR 11
+static int tls_verify_callback(int preverify_ok, X509_STORE_CTX *ctx)
+{
     return 1;
+}
+static void tcp_connection_free(void *p)
+{
+    puts(" --------- tcp_connection_free");
+    tcp_connection_t *conn = p;
+#ifdef VM_TRACE_FINALIZER
+    puts(" --------- tcp_connection_free");
+#endif
+    if (conn->timeout)
+    {
+        event_free(conn->timeout);
+    }
+    if (conn->bev)
+    {
+        bufferevent_free(conn->bev);
+    }
+    if (conn->ssl_ctx)
+    {
+        SSL_CTX_free(conn->ssl_ctx);
+    }
+    if (conn->vm)
+    {
+        vm_free_dns(conn->vm);
+    }
+}
+static duk_ret_t native_tcp_connect_cb(duk_context *ctx)
+{
+    tcp_connection_t *conn = duk_require_pointer(ctx, 0);
+    duk_int_t err = -1989;
+    if (duk_is_number(ctx, 1))
+    {
+        err = duk_require_int(ctx, 1);
+        duk_pop_2(ctx);
+    }
+    else
+    {
+        duk_remove(ctx, 0);
+    }
+
+    duk_context *snapshot = vm_restore(ctx, VM_SNAPSHOT_TCPCONN, conn, err == IOTJS_NET_TCPCONN_CONNECT_SUCCESS ? 0 : 1);
+    vm_dump_context_stdout(snapshot);
+    switch (err)
+    {
+    case IOTJS_NET_TCPCONN_CONNECT_SUCCESS:
+        duk_swap_top(ctx, -2);
+        vm_resolve(ctx, -2);
+
+        duk_swap(snapshot, 0, 1);
+        duk_pop_2(snapshot);
+        return 0;
+    case -1989:
+        duk_dup(ctx, 0);
+        break;
+    case IOTJS_NET_TCPCONN_CONNECT_TIMEOUT:
+        duk_push_lstring(ctx, "connect timeout", 15);
+        break;
+    case IOTJS_NET_TCPCONN_CONNECT_ERROR:
+    {
+        int e = bufferevent_socket_get_dns_error(conn->bev);
+        if (e)
+        {
+            duk_push_string(ctx, evutil_gai_strerror(e));
+        }
+        else
+        {
+            e = EVUTIL_SOCKET_ERROR();
+            if (e)
+            {
+                duk_push_string(ctx, evutil_socket_error_to_string(e));
+            }
+            else
+            {
+                duk_push_lstring(ctx, "unknow error", 12);
+            }
+        }
+    }
+    break;
+    default:
+        duk_push_lstring(ctx, "unknow error", 12);
+        break;
+    }
+    vm_reject(ctx, -2);
+    duk_pop_2(ctx);
+    vm_finalizer_free(ctx, -1, tcp_connection_free);
+    return 0;
+}
+static void tcp_connection_connect_ec(tcp_connection_t *conn, duk_int_t err)
+{
+    duk_context *ctx = conn->vm->ctx;
+    duk_push_c_lightfunc(ctx, native_tcp_connect_cb, 2, 2, 0);
+    duk_push_pointer(ctx, conn);
+    duk_push_int(ctx, err);
+    duk_call(ctx, 2);
+    duk_pop(ctx);
+}
+static void tcp_connection_timeout_cb(evutil_socket_t fd, short events, void *args)
+{
+    tcp_connection_connect_ec(args, IOTJS_NET_TCPCONN_CONNECT_TIMEOUT);
+}
+static void tcp_connection_read_cb(struct bufferevent *bev, void *args)
+{
+}
+static void tcp_connection_event_cb(struct bufferevent *bev, short what, void *args)
+{
+    tcp_connection_t *conn = args;
+    if (!conn->step)
+    {
+        if (what & BEV_EVENT_CONNECTED)
+        {
+            if (conn->timeout)
+            {
+                event_free(conn->timeout);
+                conn->timeout = NULL;
+            }
+            tcp_connection_connect_ec(conn, IOTJS_NET_TCPCONN_CONNECT_SUCCESS);
+
+            size_t lowmark, highmark;
+            bufferevent_getwatermark(conn->bev, EV_READ, &lowmark, &highmark);
+            printf("read %zu %zu\n", lowmark, highmark);
+            bufferevent_getwatermark(conn->bev, EV_WRITE, &lowmark, &highmark);
+            printf("read %zu %zu\n", lowmark, highmark);
+        }
+        else
+        {
+            tcp_connection_connect_ec(conn, IOTJS_NET_TCPCONN_CONNECT_ERROR);
+        }
+        return;
+    }
+}
+static duk_ret_t native_tcp_connect(duk_context *ctx)
+{
+    VM_DUK_REQUIRE_LSTRING(
+        const char *addr = duk_require_string(ctx, -1),
+        ctx, -1, "addr", 4)
+    VM_DUK_REQUIRE_LSTRING(
+        int port = duk_require_number(ctx, -1),
+        ctx, -1, "port", 4)
+    VM_DUK_REQUIRE_LSTRING(
+        duk_bool_t tls = duk_require_boolean(ctx, -1),
+        ctx, -1, "tls", 3)
+    VM_DUK_REQUIRE_LSTRING(
+        int timeout = duk_require_number(ctx, -1),
+        ctx, -1, "timeout", 7)
+    VM_DUK_REQUIRE_LSTRING(
+        size_t read = duk_require_uint(ctx, -1),
+        ctx, -1, "read", 4)
+    VM_DUK_REQUIRE_LSTRING(
+        size_t write = duk_require_number(ctx, -1),
+        ctx, -1, "write", 5)
+
+    finalizer_t *finalizer = vm_create_finalizer_n(ctx, sizeof(tcp_connection_t));
+    tcp_connection_t *conn = finalizer->p;
+    finalizer->free = tcp_connection_free;
+
+    vm_context_t *vm = vm_get_context_flags(ctx, VM_CONTEXT_FLAGS_ESB);
+    conn->vm = vm;
+    vm->dns++;
+    if (tls)
+    {
+        VM_DUK_REQUIRE_LSTRING(
+            const char *hostname = duk_require_string(ctx, -1),
+            ctx, 0, "hostname", 8)
+
+        conn->ssl_ctx = SSL_CTX_new(TLS_client_method());
+        if (!conn->ssl_ctx)
+        {
+            vm_finalizer_free(ctx, 1, tcp_connection_free);
+            duk_push_lstring(ctx, "SSL_CTX_new fail", 16);
+            duk_throw(ctx);
+        }
+        if (timeout > 0)
+        {
+            SSL_CTX_set_timeout(conn->ssl_ctx, 3000);
+        }
+        SSL_CTX_set_verify(conn->ssl_ctx, SSL_VERIFY_PEER, tls_verify_callback);
+        SSL_CTX_set_default_verify_paths(conn->ssl_ctx);
+        SSL *ssl = SSL_new(conn->ssl_ctx);
+        if (!ssl)
+        {
+            vm_finalizer_free(ctx, 1, tcp_connection_free);
+            duk_push_lstring(ctx, "SSL_new fail", 12);
+            duk_throw(ctx);
+        }
+        // set sni
+        if (SSL_set_tlsext_host_name(ssl, hostname) != SSL_SUCCESS)
+        {
+            SSL_free(ssl);
+            vm_finalizer_free(ctx, 1, tcp_connection_free);
+            duk_push_lstring(ctx, "SSL_set_tlsext_host_name fail", 29);
+            duk_throw(ctx);
+        }
+        conn->bev = bufferevent_openssl_socket_new(vm->eb, -1, ssl, BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+    }
+    else
+    {
+        conn->bev = bufferevent_socket_new(vm->eb, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+    }
+    // 設置回調
+    bufferevent_setcb(conn->bev, tcp_connection_read_cb, NULL, tcp_connection_event_cb, conn);
+    // 設置水印
+    bufferevent_setwatermark(conn->bev, EV_READ, 0, read);
+    bufferevent_setwatermark(conn->bev, EV_WRITE, 0, write);
+
+    // 啓用 讀寫
+    if (bufferevent_enable(conn->bev, EV_READ | EV_WRITE))
+    {
+        vm_finalizer_free(ctx, 1, tcp_connection_free);
+        duk_push_lstring(ctx, "bufferevent_enable fail", 23);
+        duk_throw(ctx);
+    }
+
+    // 連接服務器
+    if (bufferevent_socket_connect_hostname(conn->bev, vm->esb, AF_UNSPEC, addr, port))
+    {
+        vm_finalizer_free(ctx, 1, tcp_connection_free);
+        duk_push_lstring(ctx, "bufferevent_socket_connect_hostname fail", 40);
+        duk_throw(ctx);
+    }
+    // 設置 超時
+    if (timeout > 0)
+    {
+        conn->timeout = event_new(vm->eb, -1, EV_TIMEOUT, tcp_connection_timeout_cb, conn);
+        if (!conn->timeout)
+        {
+            vm_finalizer_free(ctx, 1, tcp_connection_free);
+            duk_push_lstring(ctx, "event_new connect timeout fail", 30);
+            duk_throw(ctx);
+        }
+        struct timeval tv = {
+            .tv_sec = timeout / 1000,
+            .tv_usec = (timeout % 1000) * 1000,
+        };
+        if (event_add(conn->timeout, &tv))
+        {
+            vm_finalizer_free(ctx, 1, tcp_connection_free);
+            duk_push_lstring(ctx, "event_add connect timeout fail", 30);
+            duk_throw(ctx);
+        }
+    }
+
+    // opts, finalizer
+    duk_context *snapshot = vm_new_completer(ctx, VM_SNAPSHOT_TCPCONN, conn, 2);
+    vm_dump_context_stdout(snapshot);
+    return 1;
+}
+static duk_ret_t native_tcp_free(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_finalizer_free(ctx, 0, tcp_connection_free);
+    vm_remove_snapshot(ctx, VM_SNAPSHOT_TCPCONN, finalizer->p);
+    return 0;
 }
 duk_ret_t native_iotjs_net_init(duk_context *ctx)
 {
@@ -15,13 +270,16 @@ duk_ret_t native_iotjs_net_init(duk_context *ctx)
 
     duk_eval_lstring(ctx, (const char *)iotjs_modules_js_tsc_net_min_js, iotjs_modules_js_tsc_net_min_js_len);
     duk_swap_top(ctx, -2);
-
-    // [ func, exports]
     duk_push_heap_stash(ctx);
     duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_PRIVATE);
-    duk_swap_top(ctx, -2);
-    duk_pop(ctx);
-
-    duk_call(ctx, 2);
+    duk_remove(ctx, -2);
+    duk_push_object(ctx);
+    {
+        duk_push_c_lightfunc(ctx, native_tcp_connect, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "tcp_connect", 11);
+        duk_push_c_lightfunc(ctx, native_tcp_free, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "tcp_free", 8);
+    }
+    duk_call(ctx, 3);
     return 0;
 }

@@ -1,4 +1,5 @@
 #include <iotjs/core/js.h>
+#include <iotjs/core/memory.h>
 #include <event2/event.h>
 #include <event2/util.h>
 #include <netinet/in.h>
@@ -36,7 +37,7 @@ duk_ret_t _vm_context_finalizer(duk_context *ctx)
         thpool_destroy(vm->threads);
     }
     pthread_mutex_destroy(&vm->mutex);
-    IOTJS_FREE(vm);
+    vm_free(vm);
     return 0;
 }
 duk_ret_t vm_native_default_finalizer(duk_context *ctx)
@@ -45,7 +46,7 @@ duk_ret_t vm_native_default_finalizer(duk_context *ctx)
     void *p = duk_require_pointer(ctx, -1);
     if (p)
     {
-        IOTJS_FREE(p);
+        vm_free(p);
     }
     return 0;
 }
@@ -67,7 +68,7 @@ void *vm_malloc_with_finalizer(duk_context *ctx, size_t sz, duk_c_function func)
     duk_pop(ctx);
 
     // [..., obj, "ptr"]
-    void *ptr = IOTJS_MALLOC(sz);
+    void *ptr = vm_malloc(sz);
     if (!ptr)
     {
         duk_pop_2(ctx);
@@ -98,7 +99,7 @@ void *vm_malloc_with_finalizer_init(duk_context *ctx, size_t sz, duk_c_function 
     duk_pop(ctx);
 
     // [..., obj, "ptr"]
-    void *ptr = IOTJS_MALLOC(sz);
+    void *ptr = vm_malloc(sz);
     if (!ptr)
     {
         duk_pop_2(ctx);
@@ -234,7 +235,7 @@ duk_ret_t _vm_async_job_finalizer(duk_context *ctx)
     {
         event_del(job->ev);
     }
-    IOTJS_FREE(job);
+    vm_free(job);
     return 0;
 }
 void _vm_async_job_handler(evutil_socket_t fd, short events, void *arg)
@@ -422,7 +423,7 @@ static duk_ret_t native_finalizer(duk_context *ctx)
     {
         finalizer->free(finalizer->p);
     }
-    IOTJS_FREE(finalizer);
+    vm_free(finalizer);
     return 0;
 }
 static duk_ret_t native_finalizer_n(duk_context *ctx)
@@ -437,7 +438,7 @@ static duk_ret_t native_finalizer_n(duk_context *ctx)
     {
         finalizer->free(finalizer->p);
     }
-    IOTJS_FREE(finalizer);
+    vm_free(finalizer);
     return 0;
 }
 static duk_ret_t native_create_finalizer(duk_context *ctx)
@@ -445,7 +446,7 @@ static duk_ret_t native_create_finalizer(duk_context *ctx)
     duk_require_stack_top(ctx, 3);
     finalizer_t **pp = duk_get_pointer(ctx, 0);
     duk_pop(ctx);
-    finalizer_t *finalizer = IOTJS_MALLOC(sizeof(finalizer_t));
+    finalizer_t *finalizer = vm_malloc(sizeof(finalizer_t));
     if (!finalizer)
     {
         duk_error(ctx, DUK_ERR_ERROR, "cannot  malloc finalizer");
@@ -466,7 +467,7 @@ static duk_ret_t native_create_finalizer_n(duk_context *ctx)
     finalizer_t **pp = duk_get_pointer(ctx, 0);
     duk_size_t n = duk_require_number(ctx, 1);
     duk_pop_2(ctx);
-    finalizer_t *finalizer = IOTJS_MALLOC(sizeof(finalizer_t) + n);
+    finalizer_t *finalizer = vm_malloc(sizeof(finalizer_t) + n);
     if (!finalizer)
     {
         duk_error(ctx, DUK_ERR_ERROR, "cannot  malloc finalizer");
@@ -490,7 +491,7 @@ finalizer_t *vm_create_finalizer(duk_context *ctx)
     {
         if (finalizer)
         {
-            IOTJS_FREE(finalizer);
+            vm_free(finalizer);
         }
         duk_throw(ctx);
     }
@@ -509,7 +510,7 @@ finalizer_t *vm_create_finalizer_n(duk_context *ctx, size_t n)
     {
         if (finalizer)
         {
-            IOTJS_FREE(finalizer);
+            vm_free(finalizer);
         }
         duk_throw(ctx);
     }
@@ -549,7 +550,7 @@ finalizer_t *vm_require_finalizer(duk_context *ctx, duk_idx_t idx, void (*freef)
 
     return finalizer;
 }
-void vm_finalizer_free(duk_context *ctx, duk_idx_t idx, void (*freef)(void *p))
+finalizer_t *vm_finalizer_free(duk_context *ctx, duk_idx_t idx, void (*freef)(void *p))
 {
     finalizer_t *finalizer = vm_require_finalizer(ctx, idx, freef);
     duk_del_prop_lstring(ctx, -1, "_p", 2);
@@ -557,6 +558,6 @@ void vm_finalizer_free(duk_context *ctx, duk_idx_t idx, void (*freef)(void *p))
     {
         finalizer->free(finalizer->p);
     }
-    IOTJS_FREE(finalizer);
-    return;
+    vm_free(finalizer);
+    return finalizer;
 }
