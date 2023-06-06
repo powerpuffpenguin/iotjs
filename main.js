@@ -20,14 +20,34 @@
 var net = require("iotjs/net")
 var TCPConn = net.TCPConn
 try {
-    TCPConn.connect("127.0.0.1", 9443, {
+    TCPConn.connect("127.0.0.1", 12233, {
         timeout: 1000,
     }).then(function (c) {
-        console.log(c)
-        c.close()
-        console.log(c)
+        c.debug = true
+        // c.onWritable = function () {
+        //     console.log("onWritable")
+        // }
+        c.onReadable = function () {
+            console.log("onReadable")
+        }
+        // c.onClose = function () {
+        //     console.log("onClose")
+        // }
+        try {
+            console.log("connect success", c)
+            var b = new ArrayBuffer(1024 * 1024)
+            // for (var i = 0; i < 2; i++) {
+            //     if (!c.tryWrite(b)) {
+            //         console.log("no")
+
+            //     }
+            // }
+        } catch (e) {
+            console.log("tcp err:", e.toString())
+            c.close()
+        }
     }).catch(function (e) {
-        console.log("tcp err:", e.toString())
+        console.log("connect err:", e.toString())
     })
 } catch (e) {
     console.log('-------', e)

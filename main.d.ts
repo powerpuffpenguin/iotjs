@@ -455,7 +455,7 @@ declare module "iotjs/net" {
         // 網路地址，例如 "192.0.2.1:25", "[2001:db8::1]:80"
         address: string
     }
-
+    export class NetError extends Error { }
     export interface TCPConnOptions {
         /**
          * 如果爲 true 使用 tls
@@ -470,66 +470,127 @@ declare module "iotjs/net" {
          * 連接超時毫秒數，小於 1 將不設置超時但通常系統 tcp 連接超時是 75s
          */
         timeout?: number
+        /**
+         *  當待讀取的 tcp 數據積壓到此值將停止接收數據
+         */
+        read?: number
+        /**
+         * 當待寫入的 tcp 數據積壓到此值，新的寫入將失敗
+         */
+        write?: number
     }
     /**
      * @alpha
      * 一個 tcp 連接
+     * 
+     * @remarks
+     * 提供了三種方式用於數據讀取，通常你不應該混用它們除非你知道自己在做什麼
+     * (混用可能導致奇怪的 bug，但正確的混用可以在執行效率和編程效率上取得最靈活的平衡)
+     * 
+     * 1. 設置 onMessage 回調，系統會自動讀取數據並回調此函數
+     * 2. onMessage 每次都會創建一個新的 Uint8Array 用於讀取數據，你也可以設置 onWritable，它將在有數據可讀時被回調，
+     *      應該在回調中使用 tryRead 讀取數據
+     * 3. 調用 read 函數來讀取數據，如果沒有數據可讀它將返回一個 Promise 並在數據準備好後讀取數據並喚醒 Promise
+     * 
+     * 如果不設置 onMessage/onWritable 並且沒有調用 read 函數在，則可能無法獲取到 tcp 異常的通知
      */
     export class TCPConn {
         /**
          * 連接 socket 服務器
          * @param url 
          */
-        static connect(address: string, opts?: TCPConnOptions): Promise<Socket>
+        static connect(hostname: string, port: number, opts?: TCPConnOptions): Promise<TCPConn>
         private constructor()
+
+        /** 
+         * 如果爲 true 則打印 調試數據
+        */
+        debug?: boolean
         /**
-         * 數據接收回調，每當收到一個數據幀時調用此函數
+         * 設備關閉後自動回調，這個函數始終會被調用，你可以在此進行一些收尾的資源釋放工作
+         * @remarks
+         * 你不需要調用 this.close ，因爲連接資源已經被釋放之後才會調用此函數
          */
-        onMessage: (data: string | Uint8Array) => void
+        onClose?: () => void
         /**
-         * 出現錯誤時回調此函數，如果是 eof 錯誤則 傳入 undefined
+         * 連接出現錯誤時回調用於通知錯誤原因，如果是讀取到 eof 會傳入 undefined，否則傳入錯誤原因(通常是 NetError)
+         * @remarks
+         * 你不需要調用 this.close，在回調結束後系統會自動調用 this.close 釋放連接資源
          */
-        onClose: (e?: Error) => void
+        onError?: (e?: any) => void
+        /**
+         * 當讀取到數據時回調
+         */
+        onMessage?: (data: Uint8Array) => void
         /**
          * 當寫入緩衝區已滿，客戶端將變得不可寫，並且 write 會失敗，當客戶端再次變得可寫時會回調此函數
          */
-        onWritable: () => void
+        onWritable?: () => void
         /**
-         * 當讀寫超時時回調
+         * 返回設備當前是否可寫
          */
-        onTimeout: (read: boolean) => void
+        readonly readable: boolean
+        /**
+         * 當連接變得可讀時回調
+         */
+        onReadable?: () => void
+        /**
+         * 返回設備當前是否可讀
+         */
+        readonly readable: boolean
+        /**
+         * 爲底層設備設置 讀寫超時，只有在存在讀寫時才會調用此回調
+         * @remarks
+         * 例如當讀取緩衝區已滿，設備會自動停止接收網路數據這時不會調用讀取超時，因爲已經沒有讀取。
+         * 類似如果寫入緩衝區爲空不存在寫入，這樣也不會調用寫入超時
+         */
+        onTimeout?: (read: boolean) => void
         /**
          * 手動關閉客戶端
          */
         close(): void
-
         /**
-         * 發送數據
-         * @param data
-         * @returns 成功返回 true，失敗返回 false 表示寫入緩衝區已滿，應該等到 onWritable 被回調後才能繼續寫入數據
+         * 返回設備是否已經關閉
          */
-        send(data: string | Uint8Array | ArrayBuffer): boolean
+        readonly isClosed: boolean
+
         /**
          * 爲底層設置 讀寫緩衝區大小
-         * @param read 
-         * @param write 
+         * @param read 如果爲 true 設置 讀取緩衝區否則設置 寫入緩衝區
          */
-        setBuffer(read: number, write: number)
+        setBuffer(read: boolean, n: number): void
         /**
-         * 返回底層讀寫緩衝區大小
+         * 返回底層緩衝區大小
          */
-        getBuffer(): [/*read*/number,/*write*/ number]
-
+        getBuffer(read: boolean): number
         /**
-         * 設置讀寫超時毫秒，如果小於 0 則禁用超時回調
+         * 設置讀寫超時毫秒，如果 <= 0 則禁用超時回調
          */
         setTimeout(read: number, write: number): void
         /**
-         * 返回讀取設置的讀寫超時毫秒數，爲 0 表示禁用超時回調
+         * 返回讀取/寫超時毫秒數，爲 0 表示禁用超時回調
          */
-        getTimeout(): [/*read*/number,/*write*/ number]
+        getTimeout(): [number, number]
+
         /**
-         * 讀取一個數據幀，如果沒有數據幀則返回一個 Promise 用於異步讀取
+         * 發送一個數據幀，如果寫入緩衝區已滿則返回一個 Promise 用於異步寫入
+         * @remarks
+         * 這個函數和 read 類似，它比 tryWrite 開銷更大。當不可寫時會創建 Promise 並等待
+         * 設備變得可寫後，進行寫入。它在內部調用底層的 tryWrite 如果失敗則監聽 底層的 onWritable 回調
+         */
+        write(data: string | Uint8Array | ArrayBuffer): number | Promise<number>
+        /**
+         * 嘗試寫入數據，返回實際寫入字節數，如果緩衝區已滿返回 0
+         * @param s 
+         */
+        tryWrite(s: string | Uint8Array | ArrayBuffer): number
+        /**
+         * 嘗試讀取數據，返回實際讀取字節數，如果沒有數據返回 0
+         * @param s 
+         */
+        tryRead(s: string | Uint8Array | ArrayBuffer): number
+        /**
+         * 讀取數據返回實際讀取的字節數，如果沒有數據返回一個 Promise 用於異步讀取
          * 
          * @remarks
          * 如果讀取到 eof 會返回 undefined，使用這個函數效率會比 onMessage 低很低，
@@ -537,14 +598,11 @@ declare module "iotjs/net" {
          * onMessage 回調要大很低，所以如果邏輯簡單應該使用 onMessage。但是 read 比 onMessage 更容易處理複雜
          * 的邏輯，但這不是性能瓶頸時推薦使用 read 函數
          */
-        read(): undefined | Uint8Array | string | Promise<undefined | Uint8Array | string>
+        read(data: Uint8Array | ArrayBuffer): number | Promise<number>
         /**
-         * 發送一個數據幀，如果寫入緩衝區已滿則返回一個 Promise 用於異步寫入
-         * @remarks
-         * 這個函數和 read 類似，它比 send 開銷更大。當不可寫時會創建 Promise 並等待
-         * 設備變得可寫後，進行寫入。它在內部調用底層的 send 如果失敗則監聽 底層的 onWritable 回調
+         * 當收到數據時回調
          */
-        write(data: string | Uint8Array | ArrayBuffer): number | Promise<number>
+        onMessage?: undefined | ((data: Uint8Array) => void)
     }
 }
 declare module "iotjs/net/http" {

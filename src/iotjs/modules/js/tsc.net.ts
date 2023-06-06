@@ -1,5 +1,7 @@
 declare namespace deps {
-    export class TCPConn {
+    export function get_length(s: string | ArrayBuffer | Uint8Array): number
+    export function socket_error(): string
+    export interface TCPConnOptions {
         /**
          * 連接地址
          */
@@ -30,12 +32,70 @@ declare namespace deps {
          */
         write?: number
     }
-    export function tcp_connect(opts: TCPConn): Promise<TCPConn>
+    export class TCPConn {
+        private constructor()
+        onEvent?: (what: number) => void
+        onWrite?: () => void
+        onRead?: () => void
+    }
+    export function tcp_connect(opts: TCPConnOptions, cb: (conn: deps.TCPConn, e: any) => void): void
     /**
      * 手動釋放 conn
      */
     export function tcp_free(conn: TCPConn): void
+    /**
+     * 寫入數據 返回寫入字節數
+     */
+    export function tcp_write(conn: TCPConn, s: string | Uint8Array | ArrayBuffer): number
+    /**
+     * 讀取數據 返回寫入字節數
+     */
+    export function tcp_read(conn: TCPConn, data: Uint8Array | ArrayBuffer): number
+    /**
+     * 啓用讀寫回調
+     */
+    export function tcp_enable(conn: TCPConn, number: number): void
+    /**
+     * 禁用讀寫回調
+     */
+    export function tcp_disable(conn: TCPConn, number: number): void
+    /**
+     * 如果存在數據，儘量讀取可能多的數據
+     */
+    export function tcp_readMore(conn: TCPConn): Uint8Array | undefined
+    /**
+     * 返回是否可讀
+     */
+    export function tcp_readable(conn: TCPConn): boolean
+    /**
+     * 返回是否可寫
+     */
+    export function tcp_writable(conn: TCPConn): boolean
+
+    /**
+    * 爲底層設置 讀寫緩衝區大小
+    * @param read 如果爲 true 設置 讀取緩衝區否則設置 寫入緩衝區
+    */
+    export function tcp_setBuffer(conn: TCPConn, read: boolean, n: number): void
+    /**
+     * 返回底層緩衝區大小
+     */
+    export function tcp_getBuffer(conn: TCPConn, read: boolean): number
+    /**
+     * 設置讀寫超時毫秒，如果 <= 0 則禁用超時回調
+     */
+    export function tcp_setTimeout(conn: TCPConn, read: number, write: number): void
 }
+const BEV_EVENT_READING = 0x01
+// const BEV_EVENT_WRITING = 0x02
+const BEV_EVENT_EOF = 0x10
+const BEV_EVENT_ERROR = 0x20
+const BEV_EVENT_TIMEOUT = 0x40
+// const BEV_EVENT_CONNECTED = 0x80
+
+const EV_READ = 0x2
+const EV_WRITE = 0x4
+
 export const IPv4len = 4
 export const IPv6len = 16
 export class NetError extends _iotjs.IotError {
@@ -44,25 +104,30 @@ export class NetError extends _iotjs.IotError {
         this.name = "NetError"
     }
 }
-
+function netError(e: any): never {
+    if (typeof e === "string") {
+        throw new NetError(e)
+    }
+    throw e
+}
+function getError(e: any): any {
+    if (typeof e === "string") {
+        return new NetError(e)
+    }
+    return e
+}
 function runSync<T>(f: () => T) {
     try {
         return f()
     } catch (e) {
-        if (typeof e === "string") {
-            throw new NetError(e)
-        }
-        throw e
+        netError(e)
     }
 }
 async function runAsync<T>(f: () => Promise<T>) {
     try {
         return await f()
     } catch (e) {
-        if (typeof e === "string") {
-            throw new NetError(e)
-        }
-        throw e
+        netError(e)
     }
 }
 export class IP {
@@ -134,6 +199,9 @@ export function resolveIP(network: 'ip' | 'ip4' | 'ip6', address: string): Promi
         return ip.map((v) => new IP(v))
     })
 }
+const tcpLog = new _iotjs.Logger({
+    prefix: "TCPConn"
+})
 export interface TCPConnOptions {
     /**
      * 如果爲 true 使用 tls
@@ -159,29 +227,478 @@ export interface TCPConnOptions {
 }
 export class TCPConn {
     static connect(addr: string, port: number, opts?: TCPConnOptions): Promise<TCPConn> {
-        return runAsync(async () => {
+        return runSync(() => {
             const tls = opts?.tls ?? false;
-            const conn = await deps.tcp_connect({
-                addr: addr,
-                port: port,
-                tls: tls,
-                hostname: tls ? (opts?.hostname ?? addr) : undefined,
-                timeout: opts?.timeout ?? 0,
-                read: opts?.read ?? 1024 * 1024,
-                write: opts?.write ?? 1024 * 1024,
+            return new Promise<TCPConn>((resolve, reject) => {
+                deps.tcp_connect({
+                    addr: addr,
+                    port: port,
+                    tls: tls,
+                    hostname: tls ? (opts?.hostname ?? addr) : undefined,
+                    timeout: opts?.timeout ?? 0,
+                    read: opts?.read ?? 1024 * 1024,
+                    write: opts?.write ?? 1024 * 1024,
+                }, (conn, e) => {
+                    if (conn) {
+                        let ok: TCPConn
+                        try {
+                            ok = new TCPConn(conn)
+                        } catch (e) {
+                            reject(e)
+                            return
+                        }
+                        resolve(ok)
+                    } else {
+                        reject(getError(e))
+                    }
+                })
             })
-            return new TCPConn(conn)
         })
     }
     private constructor(private readonly conn_: deps.TCPConn) {
-
+        conn_.onEvent = (what) => {
+            if (!this.closed_) {
+                this._onEvent(what)
+            }
+        }
+        conn_.onWrite = () => {
+            if (!this.closed_) {
+                this._onWrite()
+            }
+        }
+        conn_.onRead = () => {
+            if (!this.closed_) {
+                this._onRead()
+            }
+        }
     }
-    private closed_ = 0;
-    close(): void {
-        if (!this.closed_) {
-            deps.tcp_free(this.conn_)
-            this.closed_ = 1
+    debug = false
+    /**
+     * 設備關閉後自動回調，這個函數始終會被調用，你可以在此進行一些收尾的資源釋放工作
+     * @remarks
+     * 你不需要調用 this.close ，因爲連接資源已經被釋放之後才會調用此函數
+     */
+    onClose?: () => void
+    /**
+     * 連接出現錯誤時回調用於通知錯誤原因，如果是讀取到 eof 會傳入 undefined，否則傳入錯誤原因(通常是 NetError)
+     * @remarks
+     * 你不需要調用 this.close，在回調結束後系統會自動調用 this.close 釋放連接資源
+     */
+    onError?: (e?: any) => void
+    /**
+     * 當寫入緩衝區已滿，客戶端將變得不可寫，並且 write 會失敗，當客戶端再次變得可寫時會回調此函數
+     */
+    onWritable?: () => void
+
+    /**
+     * 當連接變得可讀時回調
+     */
+    private r_?: () => void
+    get onReadable(): undefined | (() => void) {
+        return this.r_
+    }
+    set onReadable(f: undefined | (() => void)) {
+        let x = 0
+        if (f) {
+            x++
+        }
+        if (this.r_) {
+            x--
+        }
+        this.r_ = f
+        if (x > 0) {
+            this._readPost()
+        } else if (x < 0) {
+            this._readDone()
+        }
+    }
+    /**
+     * 爲底層設備設置 讀寫超時，只有在存在讀寫時才會調用此回調
+     * @remarks
+     * 例如當讀取緩衝區已滿，設備會自動停止接收網路數據這時不會調用讀取超時，因爲已經沒有讀取。
+     * 類似如果寫入緩衝區爲空不存在寫入，這樣也不會調用寫入超時
+     */
+    onTimeout?: (read: boolean) => void
+    /**
+     * 當收到數據時回調
+     */
+    private m_?: (data: Uint8Array) => void
+    get onMessage(): undefined | ((data: Uint8Array) => void) {
+        return this.m_
+    }
+    set onMessage(f: undefined | ((data: Uint8Array) => void)) {
+        let x = 0
+        if (f) {
+            x++
+        }
+        if (this.m_) {
+            x--
+        }
+        this.m_ = f
+        if (x > 0) {
+            this._readPost()
+        } else if (x < 0) {
+            this._readDone()
         }
     }
 
+    private closed_ = 0;
+    private _onClear(e: any) {
+        let c = this.write_
+        if (c) {
+            this.write_ = undefined
+            this.writeData_ = undefined
+            c.reject(e)
+        }
+        c = this.read_
+        if (c) {
+            this.read_ = undefined
+            this.readData_ = undefined
+            c.reject(e)
+        }
+    }
+    private _onWrite() {
+        // 寫入未完成數據
+        const c = this.write_
+        if (c) {
+            this.write_ = undefined
+            const data = this.writeData_!
+            this.writeData_ = undefined
+            try {
+                const n = deps.tcp_write(this.conn_, data)
+                if (n) {
+                    c.resolve(n)
+                } else {
+                    // 依然沒有足夠緩存，回調前可能有其它寫入
+                    this.write_ = c
+                    this.writeData_ = data
+                }
+            } catch (e) {
+                c.reject(getError(e))
+            }
+        }
+
+        // 通知上層用戶
+        if (this.onWritable) {
+            this.onWritable()
+        }
+    }
+    private _onRead() {
+        // 讀取數據
+        const c = this.read_
+        if (c) {
+            let done = true
+            this.read_ = undefined
+            const data = this.readData_!
+            this.readData_ = undefined
+            try {
+                const n = deps.tcp_read(this.conn_, data)
+                if (n) {
+                    c.resolve(n)
+                } else {
+                    // 依然沒有數據，回調前可能有其它讀取
+                    this.read_ = undefined
+                    this.readData_ = data
+                    done = false
+                }
+            } catch (e) {
+                c.reject(getError(e))
+            }
+            if (done) {
+                this._readDone()
+            }
+        }
+
+        if (!deps.tcp_readable(this.conn_)) {
+            return
+        }
+
+        // 通知上層用戶 有可讀數據
+        const r = this.r_
+        if (r) {
+            r()
+            if (!deps.tcp_readable(this.conn_)) {
+                return
+            }
+        }
+
+        // 通知上傳用戶 有消息需要處理
+        const m = this.m_
+        if (m) {
+            const data = deps.tcp_readMore(this.conn_)
+            if (data) {
+                m(data)
+            }
+            return
+        }
+    }
+    private _onEvent(what: number) {
+        if (this.debug) {
+            tcpLog.log('_onEvent', what)
+        }
+        if (what & BEV_EVENT_EOF) {
+            if (this.debug) {
+                tcpLog.log('eof')
+            }
+
+            this.closed_ = -1
+            deps.tcp_free(this.conn_)
+            this._onClear(new NetError("TCPConn already closed"))
+            if (this.onError) {
+                this.onError()
+            }
+            return
+        }
+        if (what & BEV_EVENT_TIMEOUT) {
+            if (what & BEV_EVENT_READING) {
+                if (this.debug) {
+                    tcpLog.log('reading timeout')
+                }
+                if (this.onTimeout) {
+                    this.onTimeout(true)
+                }
+            } else {
+                if (this.debug) {
+                    tcpLog.log('writing timeout')
+                }
+                if (this.onTimeout) {
+                    this.onTimeout(false)
+                }
+            }
+            return
+        }
+        const emsg = deps.socket_error()
+        if (what & BEV_EVENT_ERROR) {
+            if (what & BEV_EVENT_READING) {
+                if (this.debug) {
+                    tcpLog.log('reading', emsg)
+                }
+            } else {
+                if (this.debug) {
+                    tcpLog.log('writing', emsg)
+                }
+            }
+
+            this.closed_ = -2
+            const err = new NetError(emsg)
+            if (this.onError) {
+                this.onError(err)
+            }
+            deps.tcp_free(this.conn_)
+            this._onClear(err)
+            if (this.onClose) {
+                this.onClose()
+            }
+            return
+        }
+    }
+    close(): void {
+        if (this.closed_) {
+            return
+        }
+        if (this.debug) {
+            tcpLog.log('close')
+        }
+        this.closed_ = 1
+        deps.tcp_free(this.conn_)
+        this._onClear(new NetError("TCPConn already closed"))
+        if (this.onClose) {
+            this.onClose()
+        }
+    }
+    /**
+     * 返回設備是否已經關閉
+     */
+    get isClosed(): boolean {
+        return this.closed_ ? true : false
+    }
+    private _throwClose(e: any): never {
+        const err = getError(e)
+        if (!this.closed_) {
+            this.closed_ = -10
+            if (this.onError) {
+                try {
+                    this.onError(e)
+                } catch (err) {
+                    if (this.debug) {
+                        tcpLog.log(`_throwClose ${err}`)
+                    }
+                }
+            }
+            deps.tcp_free(this.conn_)
+            if (this.onClose) {
+                this.onClose()
+            }
+            this._onClear(err)
+        }
+        throw err
+    }
+    /**
+     * 嘗試寫入數據，返回實際寫入字節數
+     * @param s 
+     */
+    tryWrite(s: string | Uint8Array | ArrayBuffer): number {
+        if (this.closed_) {
+            throw new NetError("TCPConn already closed")
+        }
+        if (!deps.get_length(s)) {
+            return 0
+        }
+        return deps.tcp_write(this.conn_, s)
+    }
+
+    write(s: string | Uint8Array | ArrayBuffer): number | Promise<number> {
+        if (this.closed_) {
+            throw new NetError("TCPConn already closed")
+        }
+        if (!deps.get_length(s)) {
+            return 0
+        }
+        const n = deps.tcp_write(this.conn_, s)
+        if (n) {
+            return n
+        }
+        return this._write(s)
+    }
+    private write_: _iotjs.Completer<number> | undefined
+    private writeData_: string | Uint8Array | ArrayBuffer | undefined
+    private async _write(s: string | Uint8Array | ArrayBuffer): Promise<number> {
+        // 等待未完成寫入
+        let c = this.write_
+        while (c) {
+            await c
+            if (this.closed_) {
+                throw new NetError("TCPConn already closed")
+            }
+            c = this.write_
+        }
+
+        // 鎖定寫入
+        c = new _iotjs.Completer<number>()
+        this.write_ = c
+        this.writeData_ = s
+        return c.promise
+    }
+    /**
+     * 嘗試讀取數據，返回實際讀取的字節數
+     */
+    tryRead(s: Uint8Array | ArrayBuffer): number {
+        if (this.closed_) {
+            throw new NetError("TCPConn already closed")
+        }
+        if (!deps.get_length(s)) {
+            return 0
+        }
+        return deps.tcp_read(this.conn_, s)
+    }
+
+    read(s: Uint8Array | ArrayBuffer): number | Promise<number> {
+        if (this.closed_) {
+            throw new NetError("TCPConn already closed")
+        }
+        if (!deps.get_length(s)) {
+            return 0
+        }
+        const n = this.tryRead(s)
+        if (n) {
+            return n
+        }
+        return this._read(s)
+    }
+    private readCount_ = 0
+    private _readPost() {
+        if (this.readCount_ == 0) {
+            try {
+                deps.tcp_enable(this.conn_, EV_WRITE | EV_READ)
+            } catch (e) {
+                this._throwClose(e)
+            }
+        }
+        this.readCount_++
+    }
+    private _readDone() {
+        if (this.readCount_ == 1) {
+            try {
+                deps.tcp_enable(this.conn_, EV_WRITE)
+            } catch (e) {
+                this._throwClose(e)
+            }
+        }
+        this.readCount_--
+    }
+    private read_: _iotjs.Completer<number> | undefined
+    private readData_: Uint8Array | ArrayBuffer | undefined
+    private async _read(s: Uint8Array | ArrayBuffer): Promise<number> {
+        this._readPost()
+        // 等待未完成寫入
+        let c = this.read_
+        try {
+            while (c) {
+                await c
+                if (this.closed_) {
+                    throw new NetError("TCPConn already closed")
+                }
+                c = this.write_
+            }
+            c = new _iotjs.Completer<number>()
+            this.read_ = c
+            this.readData_ = s
+            return c.promise
+        } catch (e) {
+            this._readDone()
+            throw e;
+        }
+    }
+
+    get readable(): boolean {
+        if (this.closed_) {
+            throw new NetError("TCPConn already closed")
+        }
+        return deps.tcp_readable(this.conn_)
+    }
+    get writable(): boolean {
+        if (this.closed_) {
+            throw new NetError("TCPConn already closed")
+        }
+        return deps.tcp_writable(this.conn_)
+    }
+
+    /**
+ * 爲底層設置 讀寫緩衝區大小
+ * @param read 如果爲 true 設置 讀取緩衝區否則設置 寫入緩衝區
+ */
+    setBuffer(read: boolean, n: number): void {
+        if (this.closed_) {
+            throw new NetError("TCPConn already closed")
+        }
+        deps.tcp_setBuffer(this.conn_, read, n)
+    }
+    /**
+     * 返回底層緩衝區大小
+     */
+    getBuffer(read: boolean): number {
+        if (this.closed_) {
+            throw new NetError("TCPConn already closed")
+        }
+        return deps.tcp_getBuffer(this.conn_, read)
+    }
+    /**
+     * 設置讀寫超時毫秒，如果 <= 0 則禁用超時回調
+     */
+    setTimeout(read: number, write: number): void {
+        if (this.closed_) {
+            throw new NetError("TCPConn already closed")
+        }
+        deps.tcp_setTimeout(this.conn_, read, write)
+        this.tr_ = read
+        this.tw_ = write
+    }
+    private tr_ = 0
+    private tw_ = 0
+    /**
+     * 返回讀取/寫超時毫秒數，爲 0 表示禁用超時回調
+     */
+    getTimeout(): [number, number] {
+        return [this.tr_, this.tw_]
+    }
 }

@@ -1,5 +1,6 @@
 #include <iotjs/core/async.h>
 #include <iotjs/core/defines.h>
+#include <iotjs/core/js.h>
 #include <stdio.h>
 duk_context *vm_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_size_t n)
 {
@@ -53,7 +54,6 @@ duk_context *vm_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_buc
 }
 duk_context *vm_restore(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_bool_t del_snapshot)
 {
-
     // ...
     duk_push_heap_stash(ctx);
     duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_SNAPSHOTS);
@@ -110,6 +110,40 @@ duk_context *vm_restore(duk_context *ctx, const char *bucket, duk_size_t sz_buck
         duk_remove(ctx, -n - 1);
         return snapshot;
     }
+}
+duk_context *vm_require_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key)
+{
+    // ...
+    duk_push_heap_stash(ctx);
+    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_SNAPSHOTS);
+    if (duk_is_undefined(ctx, -1))
+    {
+        duk_pop_2(ctx);
+        duk_error(ctx, DUK_ERR_ERROR, "snapshot not exists");
+    }
+    duk_remove(ctx, -2);
+
+    // ... snapshots
+    duk_get_prop_lstring(ctx, -1, bucket, sz_bucket);
+    if (duk_is_undefined(ctx, -1))
+    {
+        duk_pop_2(ctx);
+        duk_error(ctx, DUK_ERR_ERROR, "snapshot not exists");
+    }
+    duk_remove(ctx, -2);
+
+    // ... bucket
+    duk_push_pointer(ctx, key);
+    duk_get_prop(ctx, -2);
+    // ... bucket, snapshot
+    if (duk_is_undefined(ctx, -1))
+    {
+        duk_pop_2(ctx);
+        duk_error(ctx, DUK_ERR_ERROR, "snapshot not exists");
+    }
+    duk_context *snapshot = duk_require_context(ctx, -1);
+    duk_pop_2(ctx);
+    return snapshot;
 }
 void vm_remove_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key)
 {

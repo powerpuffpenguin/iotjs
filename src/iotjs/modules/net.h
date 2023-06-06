@@ -25,5 +25,14 @@ typedef struct
     struct bufferevent *bev;
     SSL_CTX *ssl_ctx;
     duk_uint32_t step;
+    // 最大寫入緩存
+    duk_size_t write;
 } tcp_connection_t;
+// ... string or buffer => ... length
+// 返回字符串或buffer 長度
+duk_ret_t native_get_binary_length(duk_context *ctx);
+
+// 返回最近的 socket 錯誤描述字符串
+// ... => ... err_str
+duk_ret_t native_socket_error(duk_context *ctx);
 #endif

@@ -86,6 +86,8 @@ var __values=_iotjs.__values;
 var __extends=_iotjs.__extends;
 var __awaiter=_iotjs.__awaiter;
 var __generator=_iotjs.__generator;
+var __read=_iotjs.__read;
+var __spreadArray=_iotjs.__spreadArray;
 " > "$cut"
                 fi
                 echo "$line" >> "$cut"

@@ -47,4 +47,54 @@ declare namespace _iotjs {
         export function parseIP4(s: string): Uint8Array
         export function parseIP6(s: string): Uint8Array
     }
+
+    export interface OutputOptions {
+        /**
+         * prefix label
+         */
+        prefix: string
+        /**
+         * println current datetime
+         */
+        time: boolean
+    }
+    export interface Output {
+        log(opts: OutputOptions, vals: Array<any>): void
+    }
+    const defaultOutput: Output
+    export interface LoggerOptionsInit {
+        /**
+         * Log output target
+         */
+        output?: Output,
+
+        /**
+         * Whether to enable logging
+         */
+        enable?: boolean
+        /**
+         * prefix label
+         */
+        prefix?: string
+        /**
+         * println current datetime
+         */
+        time?: boolean
+    }
+    export interface LoggerOptions extends OutputOptions {
+        /**
+         * Log output target
+         */
+        output: Output
+        /**
+         * Whether to enable logging
+         */
+        enable: boolean
+    }
+    export class Logger {
+        public readonly opts: LoggerOptions
+        constructor(opts?: LoggerOptionsInit)
+        log(...vals: Array<any>): void
+    }
+    export const defaultLogger: Logger
 }
