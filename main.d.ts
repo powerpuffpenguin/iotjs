@@ -455,7 +455,9 @@ declare module "iotjs/net" {
         // 網路地址，例如 "192.0.2.1:25", "[2001:db8::1]:80"
         address: string
     }
-    export class NetError extends Error { }
+    export class NetError extends Error {
+        eof?: boolean
+    }
     export interface TCPConnOptions {
         /**
          * 如果爲 true 使用 tls
@@ -466,6 +468,10 @@ declare module "iotjs/net" {
          * sni hostname
          */
         hostname?: string
+        /**
+         * 在使用 tls 連接時不驗證證書合法性
+         */
+        insecure?: boolean
         /**
          * 連接超時毫秒數，小於 1 將不設置超時但通常系統 tcp 連接超時是 75s
          */

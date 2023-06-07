@@ -16,26 +16,38 @@
 // } catch (e) {
 //     console.log('-------', e)
 // }
-
+if (iotjs.arch === "csky") {
+    iotjs.nameserver("192.168.251.1:53")
+}
 var net = require("iotjs/net")
 var TCPConn = net.TCPConn
 try {
-    TCPConn.connect("127.0.0.1", 12233, {
+    TCPConn.connect("192.168.251.50", 12233, {
         timeout: 1000,
+        tls: true,
+        insecure: true,
     }).then(function (c) {
         c.debug = true
         // c.onWritable = function () {
         //     console.log("onWritable")
         // }
-        c.onReadable = function () {
-            console.log("onReadable")
-        }
+        // c.onReadable = function () {
+        //     console.log("onReadable")
+        // }
         // c.onClose = function () {
         //     console.log("onClose")
         // }
+        var x = 0
+        c.onMessage = function (data) {
+            x++
+        }
+        setInterval(function () {
+            console.log(x)
+            x = 0
+        }, 1000);
         try {
             console.log("connect success", c)
-            var b = new ArrayBuffer(1024 * 1024)
+            // var b = new ArrayBuffer(1024 * 1024)
             // for (var i = 0; i < 2; i++) {
             //     if (!c.tryWrite(b)) {
             //         console.log("no")

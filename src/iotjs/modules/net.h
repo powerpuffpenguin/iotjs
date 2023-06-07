@@ -5,6 +5,10 @@
 #include <wolfssl/ssl.h>
 #include <wolfssl/sniffer.h>
 
+#ifndef wolfSSL_ERR_reason_error_string
+#define ERR_reason_error_string wolfSSL_ERR_reason_error_string
+#endif
+
 #ifndef EVENT__HAVE_OPENSSL
 #define EVENT__HAVE_OPENSSL 1
 #endif

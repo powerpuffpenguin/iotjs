@@ -55,6 +55,25 @@ static void tcp_connection_free(void *p)
         vm_free_dns(conn->vm);
     }
 }
+static void push_tcp_connect_error(duk_context *ctx, tcp_connection_t *conn)
+{
+    if (conn->ssl_ctx)
+    {
+        unsigned long err = bufferevent_get_openssl_error(conn->bev);
+        if (err)
+        {
+            duk_push_string(ctx, ERR_reason_error_string(err));
+            return;
+        }
+    }
+    int e = bufferevent_socket_get_dns_error(conn->bev);
+    if (e)
+    {
+        duk_push_string(ctx, evutil_gai_strerror(e));
+        return;
+    }
+    duk_push_string(ctx, evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+}
 static duk_ret_t native_tcp_connect_cb(duk_context *ctx)
 {
     tcp_connection_t *conn = duk_require_pointer(ctx, 0);
@@ -73,7 +92,6 @@ static duk_ret_t native_tcp_connect_cb(duk_context *ctx)
     {
     case IOTJS_NET_TCPCONN_CONNECT_SUCCESS:
         duk_call(ctx, 1);
-
         duk_swap_top(snapshot, 0);
         duk_pop_2(snapshot);
         return 0;
@@ -88,28 +106,10 @@ static duk_ret_t native_tcp_connect_cb(duk_context *ctx)
         duk_push_lstring(ctx, "connect timeout", 15);
         break;
     case IOTJS_NET_TCPCONN_CONNECT_ERROR:
-    {
         duk_swap_top(ctx, -2);
         duk_push_undefined(ctx);
-        int e = bufferevent_socket_get_dns_error(conn->bev);
-        if (e)
-        {
-            duk_push_string(ctx, evutil_gai_strerror(e));
-        }
-        else
-        {
-            e = EVUTIL_SOCKET_ERROR();
-            if (e)
-            {
-                duk_push_string(ctx, evutil_socket_error_to_string(e));
-            }
-            else
-            {
-                duk_push_lstring(ctx, "unknow error", 12);
-            }
-        }
-    }
-    break;
+        push_tcp_connect_error(ctx, conn);
+        break;
     default:
         duk_swap_top(ctx, -2);
         duk_push_undefined(ctx);
@@ -215,6 +215,9 @@ static duk_ret_t native_tcp_connect(duk_context *ctx)
         VM_DUK_REQUIRE_LSTRING(
             const char *hostname = duk_require_string(ctx, -1),
             ctx, 0, "hostname", 8)
+        VM_DUK_REQUIRE_LSTRING(
+            duk_bool_t insecure = duk_require_boolean(ctx, -1),
+            ctx, 0, "insecure", 8)
 
         conn->ssl_ctx = SSL_CTX_new(TLS_client_method());
         if (!conn->ssl_ctx)
@@ -227,7 +230,10 @@ static duk_ret_t native_tcp_connect(duk_context *ctx)
         {
             SSL_CTX_set_timeout(conn->ssl_ctx, 3000);
         }
-        SSL_CTX_set_verify(conn->ssl_ctx, SSL_VERIFY_PEER, tls_verify_callback);
+        if (insecure)
+        {
+            SSL_CTX_set_verify(conn->ssl_ctx, SSL_VERIFY_PEER, tls_verify_callback);
+        }
         SSL_CTX_set_default_verify_paths(conn->ssl_ctx);
         SSL *ssl = SSL_new(conn->ssl_ctx);
         if (!ssl)
@@ -292,7 +298,6 @@ static duk_ret_t native_tcp_connect(duk_context *ctx)
             duk_throw(ctx);
         }
     }
-
     // opts, cb, finalizer
     duk_context *snapshot = vm_snapshot(ctx, VM_SNAPSHOT_TCPCONN, conn, 3);
     return 1;
@@ -554,6 +559,8 @@ duk_ret_t native_iotjs_net_init(duk_context *ctx)
     {
         duk_push_c_lightfunc(ctx, native_get_binary_length, 1, 1, 0);
         duk_put_prop_lstring(ctx, -2, "get_length", 10);
+        duk_push_c_lightfunc(ctx, native_socket_error, 0, 0, 0);
+        duk_put_prop_lstring(ctx, -2, "socket_error", 12);
 
         duk_push_c_lightfunc(ctx, native_tcp_connect, 2, 2, 0);
         duk_put_prop_lstring(ctx, -2, "tcp_connect", 11);

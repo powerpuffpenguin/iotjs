@@ -20,6 +20,10 @@ declare namespace deps {
          */
         hostname?: string
         /**
+         * 在使用 tls 連接時不驗證證書合法性
+         */
+        insecure?: boolean
+        /**
          * 連接超時毫秒數
          */
         timeout: number
@@ -103,6 +107,7 @@ export class NetError extends _iotjs.IotError {
         super(message, options)
         this.name = "NetError"
     }
+    eof?: boolean
 }
 function netError(e: any): never {
     if (typeof e === "string") {
@@ -213,6 +218,10 @@ export interface TCPConnOptions {
      */
     hostname?: string
     /**
+     * 在使用 tls 連接時不驗證證書合法性
+     */
+    insecure?: boolean
+    /**
      * 連接超時毫秒數，小於 1 將不設置超時但通常系統 tcp 連接超時是 75s
      */
     timeout?: number
@@ -235,6 +244,7 @@ export class TCPConn {
                     port: port,
                     tls: tls,
                     hostname: tls ? (opts?.hostname ?? addr) : undefined,
+                    insecure: tls ? (opts?.insecure ?? false) : undefined,
                     timeout: opts?.timeout ?? 0,
                     read: opts?.read ?? 1024 * 1024,
                     write: opts?.write ?? 1024 * 1024,
@@ -443,7 +453,9 @@ export class TCPConn {
 
             this.closed_ = -1
             deps.tcp_free(this.conn_)
-            this._onClear(new NetError("TCPConn already closed"))
+            const err = new NetError("TCPConn already closed")
+            err.eof = true
+            this._onClear(err)
             if (this.onError) {
                 this.onError()
             }
