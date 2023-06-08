@@ -24,7 +24,7 @@ declare namespace deps {
      * 爲 websocket 連接生成隨機密鑰
      */
     export function ws_key(): string
-    export function http_expand_ws(conn: TCPConn, key: string, cb: (resp: any, e: any) => void): void
+    export function http_expand_ws(conn: TCPConn, key: string, readlimit: number, cb: (resp: any, e: any) => void): void
 
     export function get_length(s: string | ArrayBuffer | Uint8Array): number
     export function socket_error(): string
@@ -68,6 +68,7 @@ declare namespace deps {
         onEvent?: (what: number) => void
         onWrite?: () => void
         onRead?: () => void
+        onError?: (e: any) => void
     }
     export function tcp_connect(opts: TCPConnOptions, cb: (conn: deps.TCPConn, e: any) => void): void
     /**
@@ -308,8 +309,28 @@ export class TCPConn {
                 this._onRead()
             }
         }
+        conn_.onError = (e) => {
+            if (!this.closed_) {
+                this._onError(e)
+            }
+        }
     }
     debug = false
+    private _onError(e: any) {
+        if (this.debug) {
+            tcpLog.log('_onError ${e}')
+        }
+        this.closed_ = -3
+        const err = getError(e)
+        if (this.onError) {
+            this.onError(err)
+        }
+        deps.tcp_free(this.conn_)
+        this._onClear(err)
+        if (this.onClose) {
+            this.onClose()
+        }
+    }
     /**
      * 設備關閉後自動回調，這個函數始終會被調用，你可以在此進行一些收尾的資源釋放工作
      * @remarks
@@ -472,12 +493,15 @@ export class TCPConn {
             }
 
             this.closed_ = -1
-            deps.tcp_free(this.conn_)
             const err = new NetError("TCPConn already closed")
             err.eof = true
-            this._onClear(err)
             if (this.onError) {
-                this.onError()
+                this.onError(err)
+            }
+            deps.tcp_free(this.conn_)
+            this._onClear(err)
+            if (this.onClose) {
+                this.onClose()
             }
             return
         }
@@ -728,9 +752,10 @@ class WebsocketConnect {
         key: string,
         handshake: string,
     }, readonly ws?: WebsocketConnOptions) { }
-    private c_ = new _iotjs.Completer<TCPConn>()
     private t_: any
-    begin() {
+    private cb: undefined | ((conn?: TCPConn, e?: any) => void)
+    begin(cb: (conn?: TCPConn, e?: any) => void) {
+        this.cb = cb
         const opts = this.opts
         const wss = opts.wss
         const ws = this.ws
@@ -750,7 +775,7 @@ class WebsocketConnect {
             this.conn_ = conn
             try {
                 await conn.write(opts.handshake)
-                deps.http_expand_ws(conn.conn_, opts.key, (e) => {
+                deps.http_expand_ws(conn.conn_, opts.key, ws?.readlimit ?? 1024 * 1024, (e) => {
                     if (e) {
                         this._reject(e)
                     } else {
@@ -764,9 +789,6 @@ class WebsocketConnect {
             this._reject(e)
         })
     }
-    promise(): Promise<TCPConn> {
-        return this.c_.promise
-    }
     private _reject(e: any, timeout?: boolean) {
         let x: any = this.t_
         if (x && !timeout) {
@@ -778,7 +800,7 @@ class WebsocketConnect {
             this.conn_ = undefined
             x.close()
         }
-        this.c_.reject(getError(e))
+        this.cb!(undefined, getError(e))
     }
     private conn_?: TCPConn
     private _resolve(conn: TCPConn) {
@@ -786,7 +808,7 @@ class WebsocketConnect {
         if (t) {
             clearTimeout(t)
         }
-        this.c_.resolve(conn)
+        this.cb!(conn)
     }
 }
 export class WebsocketConn {
@@ -843,13 +865,24 @@ Sec-WebSocket-Key: ${key}
             key: key,
             handshake: handshake,
         }, opts)
-        connect.begin()
-        return connect.promise().then((conn) => {
-            return new WebsocketConn(conn)
+        return new Promise((resolve, reject) => {
+            connect.begin((conn, e) => {
+                if (conn) {
+                    let cc: WebsocketConn
+                    try {
+                        cc = new WebsocketConn(conn)
+                    } catch (e) {
+                        reject(getError(e))
+                        return
+                    }
+                    resolve(cc)
+                } else {
+                    reject(e)
+                }
+            })
         })
     }
-    private constructor(private readonly conn_: TCPConn) {
-    }
+    private constructor(private readonly conn_: TCPConn) { }
     set onClose(f: any) {
         this.conn_.onClose = f
     }

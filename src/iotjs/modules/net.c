@@ -381,32 +381,7 @@ static duk_ret_t native_tcp_read(duk_context *ctx)
     duk_push_number(ctx, sz);
     return 1;
 }
-static duk_ret_t native_tcp_enable(duk_context *ctx)
-{
-    // finalizer_t *finalizer = vm_require_finalizer(ctx, 0, tcp_connection_free);
-    // tcp_connection_t *p = finalizer->p;
-    // duk_size_t flags = duk_require_number(ctx, 1);
-    // if (bufferevent_enable(p->bev, flags))
-    // {
-    //     duk_pop_2(ctx);
-    //     duk_push_lstring(ctx, "bufferevent_enable fail", 23);
-    //     duk_throw(ctx);
-    // }
-    return 0;
-}
-static duk_ret_t native_tcp_disable(duk_context *ctx)
-{
-    // finalizer_t *finalizer = vm_require_finalizer(ctx, 0, tcp_connection_free);
-    // tcp_connection_t *p = finalizer->p;
-    // duk_size_t flags = duk_require_number(ctx, 1);
-    // if (bufferevent_disable(p->bev, flags))
-    // {
-    //     duk_pop_2(ctx);
-    //     duk_push_lstring(ctx, "bufferevent_disable fail", 24);
-    //     duk_throw(ctx);
-    // }
-    return 0;
-}
+
 static duk_ret_t native_tcp_read_more(duk_context *ctx)
 {
     finalizer_t *finalizer = vm_require_finalizer(ctx, 0, tcp_connection_free);
@@ -576,10 +551,6 @@ duk_ret_t native_iotjs_net_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "tcp_write", 9);
         duk_push_c_lightfunc(ctx, native_tcp_read, 2, 2, 0);
         duk_put_prop_lstring(ctx, -2, "tcp_read", 8);
-        duk_push_c_lightfunc(ctx, native_tcp_enable, 2, 2, 0);
-        duk_put_prop_lstring(ctx, -2, "tcp_enable", 10);
-        duk_push_c_lightfunc(ctx, native_tcp_disable, 2, 2, 0);
-        duk_put_prop_lstring(ctx, -2, "tcp_disable", 11);
         duk_push_c_lightfunc(ctx, native_tcp_readable, 1, 1, 0);
         duk_put_prop_lstring(ctx, -2, "tcp_readable", 12);
         duk_push_c_lightfunc(ctx, native_tcp_writable, 1, 1, 0);
@@ -597,7 +568,7 @@ duk_ret_t native_iotjs_net_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "http_parse_url", 14);
         duk_push_c_lightfunc(ctx, native_ws_key, 0, 0, 0);
         duk_put_prop_lstring(ctx, -2, "ws_key", 6);
-        duk_push_c_lightfunc(ctx, native_http_expand_ws, 3, 3, 0);
+        duk_push_c_lightfunc(ctx, native_http_expand_ws, 4, 4, 0);
         duk_put_prop_lstring(ctx, -2, "http_expand_ws", 14);
     }
     duk_call(ctx, 3);

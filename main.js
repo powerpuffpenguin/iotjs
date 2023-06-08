@@ -29,6 +29,13 @@ try {
             insecure: true,
         }).then(function (c) {
             c.debug = true
+            c.onError = function (e) {
+                if (e instanceof Error) {
+                    console.log("js onError", e.toString())
+                } else {
+                    console.log("js onError", e)
+                }
+            }
             c.onClose = function () {
                 console.log("js onClose")
             }
