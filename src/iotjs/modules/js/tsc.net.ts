@@ -1,4 +1,31 @@
+
+declare namespace iotjs {
+    // 編譯目標 os
+    export const os: string
+    // 編譯目標 arch
+    export const arch: string
+}
 declare namespace deps {
+    export interface URL {
+        scheme: string
+        userinfo?: string
+        host: string
+        port?: number
+        path: string
+        query?: string
+        fragment?: string
+    }
+    /**
+     * 解析 url
+     * @param url 
+     */
+    export function http_parse_url(url: string): URL
+    /**
+     * 爲 websocket 連接生成隨機密鑰
+     */
+    export function ws_key(): string
+    export function http_expand_ws(conn: TCPConn, key: string, cb: (resp: any, e: any) => void): void
+
     export function get_length(s: string | ArrayBuffer | Uint8Array): number
     export function socket_error(): string
     export interface TCPConnOptions {
@@ -56,21 +83,13 @@ declare namespace deps {
      */
     export function tcp_read(conn: TCPConn, data: Uint8Array | ArrayBuffer): number
     /**
-     * 啓用讀寫回調
-     */
-    export function tcp_enable(conn: TCPConn, number: number): void
-    /**
-     * 禁用讀寫回調
-     */
-    export function tcp_disable(conn: TCPConn, number: number): void
-    /**
      * 如果存在數據，儘量讀取可能多的數據
      */
     export function tcp_readMore(conn: TCPConn): Uint8Array | undefined
     /**
      * 返回是否可讀
      */
-    export function tcp_readable(conn: TCPConn): boolean
+    export function tcp_readable(conn: TCPConn): number
     /**
      * 返回是否可寫
      */
@@ -89,6 +108,16 @@ declare namespace deps {
      * 設置讀寫超時毫秒，如果 <= 0 則禁用超時回調
      */
     export function tcp_setTimeout(conn: TCPConn, read: number, write: number): void
+    export interface HTTPResponse {
+        code: number
+        status: string
+        header: Record<string, string>
+        body?: string | Uint8Array
+    }
+    /**
+     * 發送一個 http 請求並且等待響應
+     */
+    export function http_method(conn: TCPConn, request: string | Uint8Array | ArrayBuffer, cb: (resp: HTTPResponse, e?: any) => void): void
 }
 const BEV_EVENT_READING = 0x01
 // const BEV_EVENT_WRITING = 0x02
@@ -100,8 +129,6 @@ const BEV_EVENT_TIMEOUT = 0x40
 const EV_READ = 0x2
 const EV_WRITE = 0x4
 
-export const IPv4len = 4
-export const IPv6len = 16
 export class NetError extends _iotjs.IotError {
     constructor(message?: string | undefined, options?: ErrorOptions | undefined) {
         super(message, options)
@@ -265,7 +292,7 @@ export class TCPConn {
             })
         })
     }
-    private constructor(private readonly conn_: deps.TCPConn) {
+    protected constructor(readonly conn_: deps.TCPConn) {
         conn_.onEvent = (what) => {
             if (!this.closed_) {
                 this._onEvent(what)
@@ -298,7 +325,16 @@ export class TCPConn {
     /**
      * 當寫入緩衝區已滿，客戶端將變得不可寫，並且 write 會失敗，當客戶端再次變得可寫時會回調此函數
      */
-    onWritable?: () => void
+    private w_?: () => void
+    get onWritable(): undefined | (() => void) {
+        return this.w_
+    }
+    set onWritable(f: undefined | (() => void)) {
+        this.w_ = f
+        if (!this.closed_ && deps.tcp_writable(this.conn_)) {
+            this._onWrite()
+        }
+    }
 
     /**
      * 當連接變得可讀時回調
@@ -308,18 +344,9 @@ export class TCPConn {
         return this.r_
     }
     set onReadable(f: undefined | (() => void)) {
-        let x = 0
-        if (f) {
-            x++
-        }
-        if (this.r_) {
-            x--
-        }
         this.r_ = f
-        if (x > 0) {
-            this._readPost()
-        } else if (x < 0) {
-            this._readDone()
+        if (!this.closed_ && deps.tcp_readable(this.conn_)) {
+            this._onRead()
         }
     }
     /**
@@ -337,18 +364,9 @@ export class TCPConn {
         return this.m_
     }
     set onMessage(f: undefined | ((data: Uint8Array) => void)) {
-        let x = 0
-        if (f) {
-            x++
-        }
-        if (this.m_) {
-            x--
-        }
         this.m_ = f
-        if (x > 0) {
-            this._readPost()
-        } else if (x < 0) {
-            this._readDone()
+        if (!this.closed_ && deps.tcp_readable(this.conn_)) {
+            this._onRead()
         }
     }
 
@@ -368,9 +386,11 @@ export class TCPConn {
         }
     }
     private _onWrite() {
+        let writable = true
         // 寫入未完成數據
         const c = this.write_
         if (c) {
+            writable = false
             this.write_ = undefined
             const data = this.writeData_!
             this.writeData_ = undefined
@@ -390,14 +410,18 @@ export class TCPConn {
 
         // 通知上層用戶
         if (this.onWritable) {
+            if (!writable && !deps.tcp_writable(this.conn_)) {
+                return
+            }
             this.onWritable()
         }
     }
     private _onRead() {
+        let readable = true
         // 讀取數據
         const c = this.read_
         if (c) {
-            let done = true
+            readable = false
             this.read_ = undefined
             const data = this.readData_!
             this.readData_ = undefined
@@ -409,32 +433,28 @@ export class TCPConn {
                     // 依然沒有數據，回調前可能有其它讀取
                     this.read_ = undefined
                     this.readData_ = data
-                    done = false
                 }
             } catch (e) {
                 c.reject(getError(e))
             }
-            if (done) {
-                this._readDone()
-            }
-        }
-
-        if (!deps.tcp_readable(this.conn_)) {
-            return
         }
 
         // 通知上層用戶 有可讀數據
         const r = this.r_
         if (r) {
-            r()
-            if (!deps.tcp_readable(this.conn_)) {
-                return
+            if (!readable && !deps.tcp_readable(this.conn_)) {
+                return;
             }
+            readable = false;
+            r()
         }
 
         // 通知上傳用戶 有消息需要處理
         const m = this.m_
         if (m) {
+            if (!readable && !deps.tcp_readable(this.conn_)) {
+                return;
+            }
             const data = deps.tcp_readMore(this.conn_)
             if (data) {
                 m(data)
@@ -524,27 +544,6 @@ export class TCPConn {
     get isClosed(): boolean {
         return this.closed_ ? true : false
     }
-    private _throwClose(e: any): never {
-        const err = getError(e)
-        if (!this.closed_) {
-            this.closed_ = -10
-            if (this.onError) {
-                try {
-                    this.onError(e)
-                } catch (err) {
-                    if (this.debug) {
-                        tcpLog.log(`_throwClose ${err}`)
-                    }
-                }
-            }
-            deps.tcp_free(this.conn_)
-            if (this.onClose) {
-                this.onClose()
-            }
-            this._onClear(err)
-        }
-        throw err
-    }
     /**
      * 嘗試寫入數據，返回實際寫入字節數
      * @param s 
@@ -617,68 +616,41 @@ export class TCPConn {
         }
         return this._read(s)
     }
-    private readCount_ = 0
-    private _readPost() {
-        if (this.readCount_ == 0) {
-            try {
-                deps.tcp_enable(this.conn_, EV_WRITE | EV_READ)
-            } catch (e) {
-                this._throwClose(e)
-            }
-        }
-        this.readCount_++
-    }
-    private _readDone() {
-        if (this.readCount_ == 1) {
-            try {
-                deps.tcp_enable(this.conn_, EV_WRITE)
-            } catch (e) {
-                this._throwClose(e)
-            }
-        }
-        this.readCount_--
-    }
     private read_: _iotjs.Completer<number> | undefined
     private readData_: Uint8Array | ArrayBuffer | undefined
     private async _read(s: Uint8Array | ArrayBuffer): Promise<number> {
-        this._readPost()
         // 等待未完成寫入
         let c = this.read_
-        try {
-            while (c) {
-                await c
-                if (this.closed_) {
-                    throw new NetError("TCPConn already closed")
-                }
-                c = this.write_
+        while (c) {
+            await c
+            if (this.closed_) {
+                throw new NetError("TCPConn already closed")
             }
-            c = new _iotjs.Completer<number>()
-            this.read_ = c
-            this.readData_ = s
-            return c.promise
-        } catch (e) {
-            this._readDone()
-            throw e;
+            c = this.write_
         }
+        c = new _iotjs.Completer<number>()
+        this.read_ = c
+        this.readData_ = s
+        return c.promise
     }
 
     get readable(): boolean {
         if (this.closed_) {
-            throw new NetError("TCPConn already closed")
+            return false
         }
-        return deps.tcp_readable(this.conn_)
+        return deps.tcp_readable(this.conn_) ? true : false
     }
     get writable(): boolean {
         if (this.closed_) {
-            throw new NetError("TCPConn already closed")
+            return false
         }
         return deps.tcp_writable(this.conn_)
     }
 
     /**
- * 爲底層設置 讀寫緩衝區大小
- * @param read 如果爲 true 設置 讀取緩衝區否則設置 寫入緩衝區
- */
+    * 爲底層設置 讀寫緩衝區大小
+    * @param read 如果爲 true 設置 讀取緩衝區否則設置 寫入緩衝區
+    */
     setBuffer(read: boolean, n: number): void {
         if (this.closed_) {
             throw new NetError("TCPConn already closed")
@@ -713,4 +685,237 @@ export class TCPConn {
     getTimeout(): [number, number] {
         return [this.tr_, this.tw_]
     }
+}
+export interface WebsocketConnOptions {
+    /**
+     * 可設置此屬性覆蓋連接的 header Origin
+     */
+    origin?: string
+    /**
+     * 可設置此屬性覆蓋連接的 header Host
+     */
+    host?: string
+    /**
+     * 在使用 tls 連接時不驗證證書合法性
+     */
+    insecure?: boolean
+    /**
+     * 連接超時毫秒數，小於 1 將不設置超時但通常系統 tcp 連接超時是 75s
+     */
+    timeout?: number
+    /**
+     * 當待讀取的 tcp 數據積壓到此值將停止接收數據
+     * 默認爲 1024*1024
+     */
+    read?: number
+    /**
+     * 當待寫入的 tcp 數據積壓到此值，新的寫入將失敗
+     * 默認爲 1024*1024
+     */
+    write?: number
+    /**
+     * 讀取到的單個消息最大長度
+     * 默認爲 1024*1024
+     */
+    readlimit?: number
+}
+class WebsocketConnect {
+    constructor(readonly opts: {
+        wss: boolean,
+        addr: string,
+        sni: string,
+        port: number,
+        key: string,
+        handshake: string,
+    }, readonly ws?: WebsocketConnOptions) { }
+    private c_ = new _iotjs.Completer<TCPConn>()
+    private t_: any
+    begin() {
+        const opts = this.opts
+        const wss = opts.wss
+        const ws = this.ws
+        const timeout = ws?.timeout ?? 0
+        if (timeout > 0) {
+            this.t_ = setTimeout(() => {
+                this._reject(wss ? new NetError("wss connect timeout") : new NetError("ws connect timeout"), true)
+            }, timeout)
+        }
+        TCPConn.connect(opts.addr, opts.port, {
+            tls: opts.wss,
+            insecure: opts?.wss ? ws?.insecure ?? false : undefined,
+            hostname: opts?.wss ? opts.sni : undefined,
+            read: ws?.read,
+            write: ws?.write,
+        }).then(async (conn) => {
+            this.conn_ = conn
+            try {
+                await conn.write(opts.handshake)
+                deps.http_expand_ws(conn.conn_, opts.key, (e) => {
+                    if (e) {
+                        this._reject(e)
+                    } else {
+                        this._resolve(conn)
+                    }
+                })
+            } catch (e) {
+                this._reject(e)
+            }
+        }).catch((e) => {
+            this._reject(e)
+        })
+    }
+    promise(): Promise<TCPConn> {
+        return this.c_.promise
+    }
+    private _reject(e: any, timeout?: boolean) {
+        let x: any = this.t_
+        if (x && !timeout) {
+            this.t_ = undefined
+            clearTimeout(x)
+        }
+        x = this.conn_
+        if (x) {
+            this.conn_ = undefined
+            x.close()
+        }
+        this.c_.reject(getError(e))
+    }
+    private conn_?: TCPConn
+    private _resolve(conn: TCPConn) {
+        const t = this.t_
+        if (t) {
+            clearTimeout(t)
+        }
+        this.c_.resolve(conn)
+    }
+}
+export class WebsocketConn {
+    /**
+    * 連接 socket 服務器
+    * @param hostname 連接ip或域名
+    * @param port 連接端口
+    * @param opts 
+    */
+    static connect(url: string, opts?: WebsocketConnOptions): Promise<WebsocketConn> {
+        const u = deps.http_parse_url(url)
+        let port = u.port
+        let host: string
+        let origin: string
+        let wss: boolean
+        if (u.scheme == "ws") {
+            wss = false
+            if (port) {
+                host = opts?.host ?? `${u.host}:${port}`
+            } else {
+                host = opts?.host ?? u.host
+                port = 80
+            }
+            origin = opts?.origin ?? `http://${host}`
+        } else if (u.scheme == "wss") {
+            wss = true
+            if (port) {
+                host = opts?.host ?? `${u.host}:${port}`
+            } else {
+                host = opts?.host ?? u.host
+                port = 443
+            }
+            origin = opts?.origin ?? `https://${host}`
+        } else {
+            throw new Error(`scheme not supported: ${u.scheme}`);
+        }
+
+        const key = deps.ws_key()
+        const handshake = `GET ${u.path} HTTP/1.1
+Host: ${host}
+User-Agent: iotjs-${iotjs.os}-${iotjs.arch}-client/1.1
+Origin: ${origin}
+Connection: Upgrade
+Upgrade: websocket
+Sec-WebSocket-Version: 13
+Sec-WebSocket-Key: ${key}
+
+`
+        const connect = new WebsocketConnect({
+            wss: wss,
+            addr: u.host,
+            port: port,
+            sni: opts?.host ?? u.host,
+            key: key,
+            handshake: handshake,
+        }, opts)
+        connect.begin()
+        return connect.promise().then((conn) => {
+            return new WebsocketConn(conn)
+        })
+    }
+    private constructor(private readonly conn_: TCPConn) {
+    }
+    set onClose(f: any) {
+        this.conn_.onClose = f
+    }
+    get onClose() {
+        return this.conn_.onClose
+    }
+    set onError(f: any) {
+        this.conn_.onError = f
+    }
+    get onError() {
+        return this.conn_.onError
+    }
+    set onWritable(f: any) {
+        this.conn_.onWritable = f
+    }
+    get onWritable() {
+        return this.conn_.onWritable
+    }
+    get writable() {
+        return this.conn_.writable
+    }
+    set onReadable(f: any) {
+        this.conn_.onReadable = f
+    }
+    get onReadable() {
+        return this.conn_.onReadable
+    }
+    get readable() {
+        return this.conn_.readable
+    }
+    set onTimeout(f: any) {
+        this.conn_.onTimeout = f
+    }
+    get onTimeout() {
+        return this.conn_.onTimeout
+    }
+    close(): void {
+        this.conn_.close()
+    }
+    isClosed(): boolean {
+        return this.conn_.isClosed
+    }
+    setBuffer(read: boolean, n: number): void {
+        this.conn_.setBuffer(read, n)
+    }
+    getBuffer(read: boolean): number {
+        return this.conn_.getBuffer(read)
+    }
+    setTimeout(read: number, write: number): void {
+        this.conn_.setTimeout(read, write)
+    }
+    getTimeout(): [number, number] {
+        return this.conn_.getTimeout()
+    }
+    set onMessage(f: any) {
+        this.conn_.onTimeout = f
+    }
+    get onMessage() {
+        return this.conn_.onTimeout
+    }
+
+    // write(data: string | Uint8Array | ArrayBuffer): number | Promise<number>{}
+    // tryWrite(s: string | Uint8Array | ArrayBuffer): number {
+    // }
+    // tryRead(s: string | Uint8Array | ArrayBuffer): number {
+    // }
+    // read(data: Uint8Array | ArrayBuffer): number | Promise<number>{
+    // }
 }

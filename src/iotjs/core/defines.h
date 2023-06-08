@@ -40,7 +40,7 @@
 // 爲異步方法存儲 js 棧快照
 #define VM_STASH_KEY_SNAPSHOTS "snapshots", 9
 #define VM_SNAPSHOT_WEBSOCKET "websocket", 9
-#define VM_SNAPSHOT_TCPCONN "tcpconn", 9
+#define VM_SNAPSHOT_TCPCONN "tcpconn",7
 
 #define VM_IOTJS_KEY_COMPLETER "Completer", 9
 #define VM_IOTJS_KEY_ERROR "IotError", 8

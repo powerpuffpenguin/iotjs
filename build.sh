@@ -56,6 +56,29 @@ build_min_xdd(){
         echo "#endif // IOTJS_${once}_XXD_H" >> "$output"
     done
 }
+google_closure_compiler(){
+    local src=$1
+    local dst=$2
+    local sum
+    if [[ -f "$dst" ]];then
+        local sumfile="$src.sum"
+        if [[ -f "$sumfile" ]];then
+            sum=(`md5sum "$src"`)
+            if [[ "$sum" == `cat "$sumfile"` ]];then
+                return
+            fi
+        fi
+    fi
+    google-closure-compiler --language_in ECMASCRIPT5 --language_out ECMASCRIPT5 --js "$src" --js_output_file "$dst"
+
+    if [[ "$sum" == "" ]];then
+        sum=(`md5sum "$src"`)
+    fi
+    echo "$sum" > "$src.sum"
+}
+tsc_to_js(){
+    tsc
+}
 build_min_js(){
     local ifs=$IFS
     IFS=$'\n'
@@ -95,9 +118,9 @@ var __spreadArray=_iotjs.__spreadArray;
             if [[ $ok == 1 ]];then
                 echo "return exports;});})();" >> "$cut"
             fi
-            google-closure-compiler --language_in ECMASCRIPT5 --language_out ECMASCRIPT5 --js "$cut" --js_output_file "$dst"
+            google_closure_compiler "$cut" "$dst"
         else
-            google-closure-compiler --language_in ECMASCRIPT5 --language_out ECMASCRIPT5 --js "$src" --js_output_file "$dst"
+            google_closure_compiler "$src" "$dst"
         fi
     done
 }
@@ -107,7 +130,7 @@ build_js(){
     fi
     cd "$rootDir/src"
     log_info "build js"
-    tsc
+    tsc_to_js
 
     local nodes=(
         'iotjs/core'

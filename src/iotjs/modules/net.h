@@ -31,7 +31,12 @@ typedef struct
     duk_uint32_t step;
     // 最大寫入緩存
     duk_size_t write;
+    void *expand;
+    void (*expand_free)(void *expand);
 } tcp_connection_t;
+void tcp_connection_free(void *p);
+void tcp_connection_write_cb(struct bufferevent *bev, void *args);
+ void tcp_connection_event_cb(struct bufferevent *bev, short what, void *args);
 // ... string or buffer => ... length
 // 返回字符串或buffer 長度
 duk_ret_t native_get_binary_length(duk_context *ctx);

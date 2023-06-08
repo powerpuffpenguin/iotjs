@@ -1,9 +1,11 @@
 
 #include <iotjs/modules/module.h>
+#include <iotjs/modules/native_http.h>
 #include <iotjs/modules/net.h>
 #include <iotjs/modules/js/tsc.net.h>
 #include <iotjs/core/configure.h>
 #include <iotjs/core/memory.h>
+
 duk_ret_t native_get_binary_length(duk_context *ctx)
 {
     duk_size_t sz;
@@ -32,7 +34,7 @@ static int tls_verify_callback(int preverify_ok, X509_STORE_CTX *ctx)
 {
     return 1;
 }
-static void tcp_connection_free(void *p)
+void tcp_connection_free(void *p)
 {
     tcp_connection_t *conn = p;
 #ifdef VM_TRACE_FINALIZER
@@ -41,6 +43,10 @@ static void tcp_connection_free(void *p)
     if (conn->timeout)
     {
         event_free(conn->timeout);
+    }
+    if (conn->expand_free)
+    {
+        conn->expand_free(conn->expand);
     }
     if (conn->bev)
     {
@@ -143,7 +149,7 @@ static void tcp_connection_read_cb(struct bufferevent *bev, void *args)
     duk_call_prop(snapshot, 0, 0);
     duk_pop(snapshot);
 }
-static void tcp_connection_write_cb(struct bufferevent *bev, void *args)
+void tcp_connection_write_cb(struct bufferevent *bev, void *args)
 {
     tcp_connection_t *conn = args;
     duk_context *ctx = conn->vm->ctx;
@@ -153,7 +159,7 @@ static void tcp_connection_write_cb(struct bufferevent *bev, void *args)
     duk_pop(snapshot);
 }
 
-static void tcp_connection_event_cb(struct bufferevent *bev, short what, void *args)
+void tcp_connection_event_cb(struct bufferevent *bev, short what, void *args)
 {
     tcp_connection_t *conn = args;
     if (!conn->step)
@@ -263,7 +269,7 @@ static duk_ret_t native_tcp_connect(duk_context *ctx)
     conn->write = write;
 
     // 啓用 寫 回調
-    if (bufferevent_enable(conn->bev, EV_WRITE))
+    if (bufferevent_enable(conn->bev, EV_WRITE | EV_READ))
     {
         vm_finalizer_free(ctx, 1, tcp_connection_free);
         duk_push_lstring(ctx, "bufferevent_enable fail", 23);
@@ -377,28 +383,28 @@ static duk_ret_t native_tcp_read(duk_context *ctx)
 }
 static duk_ret_t native_tcp_enable(duk_context *ctx)
 {
-    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, tcp_connection_free);
-    tcp_connection_t *p = finalizer->p;
-    duk_size_t flags = duk_require_number(ctx, 1);
-    if (bufferevent_enable(p->bev, flags))
-    {
-        duk_pop_2(ctx);
-        duk_push_lstring(ctx, "bufferevent_enable fail", 23);
-        duk_throw(ctx);
-    }
+    // finalizer_t *finalizer = vm_require_finalizer(ctx, 0, tcp_connection_free);
+    // tcp_connection_t *p = finalizer->p;
+    // duk_size_t flags = duk_require_number(ctx, 1);
+    // if (bufferevent_enable(p->bev, flags))
+    // {
+    //     duk_pop_2(ctx);
+    //     duk_push_lstring(ctx, "bufferevent_enable fail", 23);
+    //     duk_throw(ctx);
+    // }
     return 0;
 }
 static duk_ret_t native_tcp_disable(duk_context *ctx)
 {
-    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, tcp_connection_free);
-    tcp_connection_t *p = finalizer->p;
-    duk_size_t flags = duk_require_number(ctx, 1);
-    if (bufferevent_disable(p->bev, flags))
-    {
-        duk_pop_2(ctx);
-        duk_push_lstring(ctx, "bufferevent_disable fail", 24);
-        duk_throw(ctx);
-    }
+    // finalizer_t *finalizer = vm_require_finalizer(ctx, 0, tcp_connection_free);
+    // tcp_connection_t *p = finalizer->p;
+    // duk_size_t flags = duk_require_number(ctx, 1);
+    // if (bufferevent_disable(p->bev, flags))
+    // {
+    //     duk_pop_2(ctx);
+    //     duk_push_lstring(ctx, "bufferevent_disable fail", 24);
+    //     duk_throw(ctx);
+    // }
     return 0;
 }
 static duk_ret_t native_tcp_read_more(duk_context *ctx)
@@ -561,7 +567,7 @@ duk_ret_t native_iotjs_net_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "get_length", 10);
         duk_push_c_lightfunc(ctx, native_socket_error, 0, 0, 0);
         duk_put_prop_lstring(ctx, -2, "socket_error", 12);
-
+        // tcp conn
         duk_push_c_lightfunc(ctx, native_tcp_connect, 2, 2, 0);
         duk_put_prop_lstring(ctx, -2, "tcp_connect", 11);
         duk_push_c_lightfunc(ctx, native_tcp_free, 1, 1, 0);
@@ -586,6 +592,13 @@ duk_ret_t native_iotjs_net_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "tcp_getBuffer", 13);
         duk_push_c_lightfunc(ctx, native_tcp_set_timeout, 3, 3, 0);
         duk_put_prop_lstring(ctx, -2, "tcp_setTimeout", 14);
+        // http
+        duk_push_c_lightfunc(ctx, native_http_parse_url, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "http_parse_url", 14);
+        duk_push_c_lightfunc(ctx, native_ws_key, 0, 0, 0);
+        duk_put_prop_lstring(ctx, -2, "ws_key", 6);
+        duk_push_c_lightfunc(ctx, native_http_expand_ws, 3, 3, 0);
+        duk_put_prop_lstring(ctx, -2, "http_expand_ws", 14);
     }
     duk_call(ctx, 3);
     return 0;

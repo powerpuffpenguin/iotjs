@@ -20,48 +20,28 @@ if (iotjs.arch === "csky") {
     iotjs.nameserver("192.168.251.1:53")
 }
 var net = require("iotjs/net")
-var TCPConn = net.TCPConn
+var WebsocketConn = net.WebsocketConn
 try {
-    TCPConn.connect("192.168.251.50", 12233, {
-        timeout: 1000,
-        tls: true,
-        insecure: true,
-    }).then(function (c) {
-        c.debug = true
-        // c.onWritable = function () {
-        //     console.log("onWritable")
-        // }
-        // c.onReadable = function () {
-        //     console.log("onReadable")
-        // }
-        // c.onClose = function () {
-        //     console.log("onClose")
-        // }
-        var x = 0
-        c.onMessage = function (data) {
-            x++
-        }
-        setInterval(function () {
-            console.log(x)
-            x = 0
-        }, 1000);
-        try {
-            console.log("connect success", c)
-            // var b = new ArrayBuffer(1024 * 1024)
-            // for (var i = 0; i < 2; i++) {
-            //     if (!c.tryWrite(b)) {
-            //         console.log("no")
-
-            //     }
-            // }
-        } catch (e) {
-            console.log("tcp err:", e.toString())
-            c.close()
-        }
-    }).catch(function (e) {
-        console.log("connect err:", e.toString())
-    })
+    WebsocketConn.connect(
+        "wss://192.168.251.50:9443/abc",
+        {
+            timeout: 1000,
+            insecure: true,
+        }).then(function (c) {
+            c.debug = true
+            c.onClose = function () {
+                console.log("js onClose")
+            }
+            try {
+                console.log("connect success", c)
+            } catch (e) {
+                console.log("ws err:", e.toString())
+                c.close()
+            }
+        }).catch(function (e) {
+            console.log("connect err:", e.toString())
+        })
 } catch (e) {
-    console.log('-------', e)
+    console.log('-------', e.toString())
 }
 

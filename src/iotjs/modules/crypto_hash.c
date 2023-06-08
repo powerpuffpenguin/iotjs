@@ -155,3 +155,29 @@ VM_MODULE_HASH(sha384)
 VM_MODULE_HASH(sha512)
 VM_MODULE_HASH(sha512_224)
 VM_MODULE_HASH(sha512_256)
+
+int iotjs_module_crypto_sha1(const unsigned char *in, unsigned long inlen, unsigned char *hash)
+{
+    int err;
+    hash_state md;
+    err = sha1_init(&md);
+    if (err)
+    {
+        return err;
+    }
+    err = sha1_process(&md, in, inlen);
+    if (err)
+    {
+        return err;
+    }
+    err = sha1_done(&md, hash);
+    if (err)
+    {
+        return err;
+    }
+    return 0;
+}
+int iotjs_module_crypto_base64_encode(const unsigned char *in, unsigned long len, unsigned char *out, unsigned long *outlen)
+{
+    return base64_encode(in, len, out, outlen);
+}

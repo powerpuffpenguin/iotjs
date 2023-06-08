@@ -104,6 +104,8 @@
     "tsc.net_http.h": "c",
     "async.h": "c",
     "configure.h": "c",
-    "http.h": "c"
+    "http.h": "c",
+    "net.h": "c",
+    "native_http.h": "c"
   }
 }

@@ -169,3 +169,4 @@ dkms.conf
 /bin/bundle.js
 
 *.cut.js
+*.js.sum
