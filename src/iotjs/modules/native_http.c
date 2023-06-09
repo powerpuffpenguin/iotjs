@@ -5,6 +5,7 @@
 #include <iotjs/core/memory.h>
 #include <http_parser.h>
 #include <stdarg.h>
+#include <iotjs/core/binary.h>
 
 #define IOTJS_NET_EXPAND_WS_SUCCESS 0
 #define IOTJS_NET_EXPAND_WS_TIMEOUT 10
@@ -18,17 +19,31 @@
 #define IOTJS_NET_EXPAND_WS_STATE_SEC_WEBSOCKET_ACCEPT 0x10
 #define IOTJS_NET_EXPAND_WS_STATE_READY 0x20
 
-#define IOTJS_NET_EXPAND_WS_FRAME 0
-#define IOTJS_NET_EXPAND_WS_FRAME_LENGTH 1
-// #define IOTJS_NET_EXPAND_WS_FRAME_MASK 2
-#define IOTJS_NET_EXPAND_WS_FRAME_DATA 3
-#define IOTJS_NET_EXPAND_WS_FRAME_FIN(expand) (expand->ws.header[0] & 0x80)
-#define IOTJS_NET_EXPAND_WS_FRAME_RSV1(expand) (expand->ws.header[0] & 0x40)
-#define IOTJS_NET_EXPAND_WS_FRAME_RSV2(expand) (expand->ws.header[0] & 0x20)
-#define IOTJS_NET_EXPAND_WS_FRAME_RSV3(expand) (expand->ws.header[0] & 0x10)
-#define IOTJS_NET_EXPAND_WS_FRAME_OPCODE(expand) (expand->ws.header[0] & 0xf)
-#define IOTJS_NET_EXPAND_WS_FRAME_MASK(expand) (expand->ws.header[1] & 0x80)
-#define IOTJS_NET_EXPAND_WS_FRAME_MASK_EXTENDED_LENGTH(expand) (expand->ws.header[1] & 0x7f)
+// 解幀的各種狀態
+#define IOTJS_NET_EXPAND_WS_FRAME 0        // 開始等待接收最前2字節
+#define IOTJS_NET_EXPAND_WS_FRAME_LENGTH 1 // 等待接收 擴展長度 2 or 8 字節
+// #define IOTJS_NET_EXPAND_WS_FRAME_MASK 2 // 接收掩碼，僅服務器
+#define IOTJS_NET_EXPAND_WS_FRAME_DATA 3 // 接收數據長度
+// 將解幀狀態移動到下一步
+#define IOTJS_NET_EXPAND_WS_FRAME_NEXT(expand, buf, n, to_step) \
+    expand->ws.step = to_step;                                  \
+    evbuffer_ptr_set(buf, &expand->pos, n, EVBUFFER_PTR_ADD);
+
+#define IOTJS_WS_GET_FRAME_FIN(header) (header[0] & 0x80)
+#define IOTJS_WS_GET_FRAME_RSV1(header) (header[0] & 0x40)
+#define IOTJS_WS_GET_FRAME_RSV2(header) (header[0] & 0x20)
+#define IOTJS_WS_GET_FRAME_RSV3(header) (header[0] & 0x10)
+#define IOTJS_WS_GET_FRAME_OPCODE(header) (header[0] & 0xf)
+#define IOTJS_WS_GET_FRAME_MASK(header) (header[1] & 0x80)
+#define IOTJS_WS_GET_FRAME_MASK_EXTENDED_LENGTH(header) (header[1] & 0x7f)
+
+#define IOTJS_NET_EXPAND_WS_FRAME_FIN(expand) IOTJS_WS_GET_FRAME_FIN(expand->ws.header)
+#define IOTJS_NET_EXPAND_WS_FRAME_RSV1(expand) IOTJS_WS_GET_FRAME_RSV1(expand->ws.header)
+#define IOTJS_NET_EXPAND_WS_FRAME_RSV2(expand) IOTJS_WS_GET_FRAME_RSV2(expand->ws.header)
+#define IOTJS_NET_EXPAND_WS_FRAME_RSV3(expand) IOTJS_WS_GET_FRAME_RSV3(expand->ws.header)
+#define IOTJS_NET_EXPAND_WS_FRAME_OPCODE(expand) IOTJS_WS_GET_FRAME_OPCODE(expand->ws.header)
+#define IOTJS_NET_EXPAND_WS_FRAME_MASK(expand) IOTJS_WS_GET_FRAME_MASK(expand->ws.header)
+#define IOTJS_NET_EXPAND_WS_FRAME_MASK_EXTENDED_LENGTH(expand) IOTJS_WS_GET_FRAME_MASK_EXTENDED_LENGTH(expand->ws.header)
 
 #define WEBSOCKET_TEXT_MESSAGE 0x1
 #define WEBSOCKET_BINARY_MESSAGE 0x2
@@ -54,7 +69,7 @@ static void native_http_parse_url_field(duk_context *ctx, const char *url, struc
     }
     duk_put_prop_lstring(ctx, -2, field, field_len);
 }
-duk_ret_t native_http_parse_url(duk_context *ctx)
+static duk_ret_t native_http_parse_url(duk_context *ctx)
 {
     duk_size_t sz;
     const char *s = duk_require_lstring(ctx, 0, &sz);
@@ -77,7 +92,7 @@ duk_ret_t native_http_parse_url(duk_context *ctx)
     native_http_parse_url_field(ctx, s, &u, "fragement", 9, UF_FRAGMENT);
     return 1;
 }
-duk_ret_t native_ws_key(duk_context *ctx)
+static duk_ret_t native_ws_key(duk_context *ctx)
 {
     duk_uint8_t *key = duk_push_buffer(ctx, 16, 0);
     srand((unsigned)time(NULL));
@@ -91,15 +106,15 @@ duk_ret_t native_ws_key(duk_context *ctx)
 typedef struct
 {
     // 消息解析進度
-    duk_uint8_t step;
+    uint8_t step;
     // 幀頭
-    duk_uint8_t header[2 + 8];
+    uint8_t header[2 + 8];
     // 當前消息類型
-    duk_uint8_t opcode;
+    uint8_t opcode;
     // 幀數據大小
-    duk_uint64_t length;
+    uint64_t length;
     // 幀長度記錄
-    duk_uint8_t extened_length;
+    uint8_t extened_length;
 } http_expand_ws_frame_t;
 typedef struct
 {
@@ -388,11 +403,155 @@ static void ws_expand_read_ws_cb_print_header(http_expand_ws_t *expand)
         puts("Extended payload length: 0");
         break;
     }
+    printf("payload length: %ld\n", expand->ws.length);
 }
-#define IOTJS_NET_EXPAND_WS_FRAME_NEXT(expand, buf, n, to_step) \
-    expand->ws.step = to_step;                                  \
-    evbuffer_ptr_set(buf, &expand->pos, n, EVBUFFER_PTR_ADD);
 
+static uint8_t ws_expand_read_ws_cb_frame(tcp_connection_t *conn, http_expand_ws_t *expand, struct evbuffer *buf)
+{
+
+    evbuffer_copyout_from(buf, &expand->pos, expand->ws.header, 2);
+    // ws_expand_read_ws_cb_print_header(expand);
+    if (IOTJS_NET_EXPAND_WS_FRAME_RSV1(expand))
+    {
+        ws_expand_notify_lerror(conn, "RSV1 set", 8);
+        return 1;
+    }
+    if (IOTJS_NET_EXPAND_WS_FRAME_RSV2(expand))
+    {
+        ws_expand_notify_lerror(conn, "RSV2 set", 8);
+        return 1;
+    }
+    if (IOTJS_NET_EXPAND_WS_FRAME_RSV3(expand))
+    {
+        ws_expand_notify_lerror(conn, "RSV3 set", 8);
+        return 1;
+    }
+    // 服務器發送的數據不能設置 mask
+    if (IOTJS_NET_EXPAND_WS_FRAME_MASK(expand))
+    {
+        ws_expand_notify_lerror(conn, "bad MASK", 8);
+        return 1;
+    }
+    duk_uint8_t opcode = IOTJS_NET_EXPAND_WS_FRAME_OPCODE(expand);
+    duk_uint8_t extened_length = IOTJS_NET_EXPAND_WS_FRAME_MASK_EXTENDED_LENGTH(expand);
+    switch (opcode)
+    {
+    case 0: // 延續上一幀
+    case WEBSOCKET_TEXT_MESSAGE:
+    case WEBSOCKET_BINARY_MESSAGE:
+        expand->ws.opcode = opcode;
+        // 進入下一步驟
+        if (extened_length < 126)
+        {
+            expand->ws.extened_length = 0;
+            expand->ws.length = extened_length;
+
+            expand->length += expand->ws.length;
+            if (expand->limit > 0 && expand->length > expand->limit)
+            {
+                ws_expand_notify_lerror(conn, "message too large", 17);
+                return 1;
+            }
+            IOTJS_NET_EXPAND_WS_FRAME_NEXT(expand, buf, 2, IOTJS_NET_EXPAND_WS_FRAME_DATA)
+        }
+        else
+        {
+            expand->ws.extened_length = extened_length == 126 ? 2 : 8;
+            IOTJS_NET_EXPAND_WS_FRAME_NEXT(expand, buf, 2, IOTJS_NET_EXPAND_WS_FRAME_LENGTH)
+        }
+        break;
+    case WEBSOCKET_CLOSE_MESSAGE:
+    case WEBSOCKET_PING_MESSAGE:
+    case WEBSOCKET_PONG_MESSAGE:
+        expand->ws.opcode = opcode;
+        // 控制幀 數據最大只能是 125
+        if (extened_length > 125)
+        {
+            ws_expand_notify_lerror(conn, "len > 125 for control", 21);
+            return 1;
+        }
+        // 控制幀只能是單幀
+        if (!IOTJS_NET_EXPAND_WS_FRAME_FIN(expand))
+        {
+            ws_expand_notify_lerror(conn, "FIN not set on control", 22);
+            return 1;
+        }
+        // 進入下一步驟
+        expand->ws.extened_length = 0;
+        expand->ws.length = extened_length;
+        IOTJS_NET_EXPAND_WS_FRAME_NEXT(expand, buf, 2, IOTJS_NET_EXPAND_WS_FRAME_DATA)
+        break;
+    default:
+        ws_expand_notify_errorf(conn, "bad opcode %d", opcode);
+        return 1;
+    }
+    return 0;
+}
+static uint8_t ws_expand_read_ws_cb_length(tcp_connection_t *conn, http_expand_ws_t *expand, struct evbuffer *buf)
+{
+    uint8_t *b = expand->ws.header + 2;
+    evbuffer_copyout_from(buf, &expand->pos, b, expand->ws.extened_length);
+    if (expand->ws.extened_length == 2)
+    {
+        expand->ws.length = iotjs_big_endian.uint16(b);
+    }
+    else
+    {
+        expand->ws.length = iotjs_big_endian.uint64(b);
+    }
+
+    expand->length += expand->ws.length;
+    if (expand->limit > 0 && expand->length > expand->limit)
+    {
+        ws_expand_notify_lerror(conn, "message too large", 17);
+        return 1;
+    }
+    IOTJS_NET_EXPAND_WS_FRAME_NEXT(expand, buf, expand->ws.extened_length, IOTJS_NET_EXPAND_WS_FRAME_DATA)
+    return 0;
+}
+
+static uint8_t ws_expand_read_ws_cb_data(tcp_connection_t *conn, http_expand_ws_t *expand, struct evbuffer *buf)
+{
+    // ws_expand_read_ws_cb_print_header(expand);
+    if (!IOTJS_NET_EXPAND_WS_FRAME_FIN(expand))
+    {
+        // 還有後續幀，繼續接收
+        IOTJS_NET_EXPAND_WS_FRAME_NEXT(expand, buf, expand->ws.length, IOTJS_NET_EXPAND_WS_FRAME)
+        return 0;
+    }
+    switch (IOTJS_NET_EXPAND_WS_FRAME_OPCODE(expand))
+    {
+    case WEBSOCKET_CLOSE_MESSAGE:
+    case WEBSOCKET_PING_MESSAGE:
+    case WEBSOCKET_PONG_MESSAGE:
+        // 通知收到控制幀
+
+        // 處理完成後繼續接收下一幀
+        if (expand->readable || expand->length)
+        {
+            IOTJS_NET_EXPAND_WS_FRAME_NEXT(expand, buf, expand->ws.length, IOTJS_NET_EXPAND_WS_FRAME)
+        }
+        else
+        {
+            // 沒有積壓的數據直接刪除控制幀
+            evbuffer_drain(buf, expand->pos.pos + expand->ws.length);
+            evbuffer_ptr_set(buf, &expand->pos, 0, EVBUFFER_PTR_SET);
+            expand->ws.step = IOTJS_NET_EXPAND_WS_FRAME;
+        }
+        return 0;
+    }
+
+    // 設置設備可讀
+    expand->readable = 1;
+
+    // 通知設備可讀
+    duk_context *ctx = conn->vm->ctx;
+    duk_context *snapshot = vm_require_snapshot(ctx, VM_SNAPSHOT_TCPCONN, conn);
+    duk_push_lstring(snapshot, "onRead", 6);
+    duk_call_prop(snapshot, 0, 0);
+    duk_pop(snapshot);
+    return 1;
+}
 static void ws_expand_read_ws_cb(tcp_connection_t *conn, http_expand_ws_t *expand, struct evbuffer *buf)
 {
     while (1)
@@ -402,98 +561,22 @@ static void ws_expand_read_ws_cb(tcp_connection_t *conn, http_expand_ws_t *expan
         switch (expand->ws.step)
         {
         case IOTJS_NET_EXPAND_WS_FRAME:
-        {
-            if (length < 2)
+            if (length < 2 || ws_expand_read_ws_cb_frame(conn, expand, buf))
             {
                 return;
             }
-            evbuffer_copyout_from(buf, &expand->pos, expand->ws.header, 2);
-            // ws_expand_read_ws_cb_print_header(expand);
-            if (IOTJS_NET_EXPAND_WS_FRAME_RSV1(expand))
-            {
-                ws_expand_notify_lerror(conn, "RSV1 set", 8);
-                return;
-            }
-            if (IOTJS_NET_EXPAND_WS_FRAME_RSV2(expand))
-            {
-                ws_expand_notify_lerror(conn, "RSV2 set", 8);
-                return;
-            }
-            if (IOTJS_NET_EXPAND_WS_FRAME_RSV3(expand))
-            {
-                ws_expand_notify_lerror(conn, "RSV3 set", 8);
-                return;
-            }
-            // 服務器發送的數據不能設置 mask
-            if (IOTJS_NET_EXPAND_WS_FRAME_MASK(expand))
-            {
-                ws_expand_notify_lerror(conn, "bad MASK", 8);
-                return;
-            }
-            duk_uint8_t opcode = IOTJS_NET_EXPAND_WS_FRAME_OPCODE(expand);
-            duk_uint8_t extened_length = IOTJS_NET_EXPAND_WS_FRAME_MASK_EXTENDED_LENGTH(expand);
-            switch (opcode)
-            {
-            case WEBSOCKET_TEXT_MESSAGE:
-            case WEBSOCKET_BINARY_MESSAGE:
-                expand->ws.opcode = opcode;
-                // 進入下一步驟
-                if (extened_length < 126)
-                {
-                    expand->ws.length = extened_length;
-                    IOTJS_NET_EXPAND_WS_FRAME_NEXT(expand, buf, 2, IOTJS_NET_EXPAND_WS_FRAME_DATA)
-                }
-                else
-                {
-                    expand->ws.extened_length = extened_length;
-                    IOTJS_NET_EXPAND_WS_FRAME_NEXT(expand, buf, 2, IOTJS_NET_EXPAND_WS_FRAME_LENGTH)
-                }
-                break;
-            case WEBSOCKET_CLOSE_MESSAGE:
-            case WEBSOCKET_PING_MESSAGE:
-            case WEBSOCKET_PONG_MESSAGE:
-                expand->ws.opcode = opcode;
-                // 控制幀 數據最大只能是 125
-                if (extened_length > 125)
-                {
-                    ws_expand_notify_lerror(conn, "len > 125 for control", 21);
-                    return;
-                }
-                // 控制幀只能是單幀
-                if (!IOTJS_NET_EXPAND_WS_FRAME_RSV1(expand))
-                {
-                    ws_expand_notify_lerror(conn, "FIN not set on control", 22);
-                    return;
-                }
-                // 進入下一步驟
-                if (extened_length < 126)
-                {
-                    expand->ws.length = extened_length;
-                    IOTJS_NET_EXPAND_WS_FRAME_NEXT(expand, buf, 2, IOTJS_NET_EXPAND_WS_FRAME_DATA)
-                }
-                else
-                {
-                    expand->ws.extened_length = extened_length;
-                    IOTJS_NET_EXPAND_WS_FRAME_NEXT(expand, buf, 2, IOTJS_NET_EXPAND_WS_FRAME_LENGTH)
-                }
-                break;
-            default:
-                ws_expand_notify_errorf(conn, "bad opcode %d", opcode);
-                return;
-            }
-        }
-        break;
+            break;
         case IOTJS_NET_EXPAND_WS_FRAME_LENGTH:
-            if (length < expand->ws.extened_length)
+            if (length < expand->ws.extened_length || ws_expand_read_ws_cb_length(conn, expand, buf))
             {
                 return;
             }
-            puts("IOTJS_NET_EXPAND_WS_FRAME_LENGTH");
-            exit(1);
             break;
         case IOTJS_NET_EXPAND_WS_FRAME_DATA:
-            puts("IOTJS_NET_EXPAND_WS_FRAME_DATA");
-            exit(1);
+            if (length < expand->ws.length || ws_expand_read_ws_cb_data(conn, expand, buf))
+            {
+                return;
+            }
             break;
         }
     }
@@ -507,8 +590,12 @@ static void ws_expand_read_cb(struct bufferevent *bev, void *args)
     {
         if (expand->readable)
         {
-            // 有未讀取的完整消息，回調通知
-            puts("------------ readable");
+            // 有未讀取的完整消息，通知設備可讀
+            duk_context *ctx = conn->vm->ctx;
+            duk_context *snapshot = vm_require_snapshot(ctx, VM_SNAPSHOT_TCPCONN, conn);
+            duk_push_lstring(snapshot, "onRead", 6);
+            duk_call_prop(snapshot, 0, 0);
+            duk_pop(snapshot);
         }
         else
         {
@@ -592,8 +679,11 @@ static void ws_expand_read_cb(struct bufferevent *bev, void *args)
             return;
         }
         expand_ws_ec(conn, 0);
+        // 初始化 解幀狀態
         expand->state = IOTJS_NET_EXPAND_WS_STATE_READY;
-        memset(&expand->ws, 0, sizeof(http_expand_ws_frame_t));
+        expand->ws.length = 0;
+        expand->ws.step = IOTJS_NET_EXPAND_WS_FRAME;
+
         evbuffer_ptr_set(buf, &expand->pos, 0, EVBUFFER_PTR_SET);
         expand->length = 0;
         expand->readable = 0;
@@ -618,7 +708,7 @@ static void ws_expand_event_cb(struct bufferevent *bev, short what, void *args)
         expand_ws_ec(args, IOTJS_NET_EXPAND_WS_ERROR);
     }
 }
-duk_ret_t native_http_expand_ws(duk_context *ctx)
+static duk_ret_t native_http_expand_ws(duk_context *ctx)
 {
     finalizer_t *finalizer = vm_require_finalizer(ctx, 0, tcp_connection_free);
     tcp_connection_t *conn = finalizer->p;
@@ -659,4 +749,223 @@ duk_ret_t native_http_expand_ws(duk_context *ctx)
 
     bufferevent_setcb(conn->bev, ws_expand_read_cb, NULL, ws_expand_event_cb, conn);
     return 0;
+}
+static duk_ret_t native_ws_readable(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, tcp_connection_free);
+    duk_pop(ctx);
+    tcp_connection_t *conn = finalizer->p;
+    http_expand_ws_t *expand = conn->expand;
+    if (expand->readable)
+    {
+        duk_push_true(ctx);
+    }
+    else
+    {
+        duk_push_false(ctx);
+    }
+    return 1;
+}
+static duk_ret_t native_ws_read(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, tcp_connection_free);
+    duk_pop(ctx);
+    tcp_connection_t *conn = finalizer->p;
+    http_expand_ws_t *expand = conn->expand;
+    if (!expand->readable)
+    {
+        // 沒有可讀數據字節返回
+        return 0;
+    }
+    // 讀取數據
+    uint8_t *dst = duk_push_buffer(ctx, expand->length, 0);
+    struct evbuffer *buf = bufferevent_get_input(conn->bev);
+    size_t length;
+    uint8_t opcode;
+    uint8_t control;
+    uint8_t header[10];
+    uint8_t mask[4];
+    uint8_t masked;
+    size_t i;
+    while (1)
+    {
+        evbuffer_remove(buf, header, 2);
+        length = IOTJS_WS_GET_FRAME_MASK_EXTENDED_LENGTH(header);
+        control = 0;
+        switch (IOTJS_WS_GET_FRAME_OPCODE(header))
+        {
+        case 0:
+            break;
+        case WEBSOCKET_BINARY_MESSAGE:
+            opcode = WEBSOCKET_BINARY_MESSAGE;
+            break;
+        case WEBSOCKET_TEXT_MESSAGE:
+            opcode = WEBSOCKET_TEXT_MESSAGE;
+            break;
+        default:
+            control = 1;
+            break;
+        }
+        // 是否存在掩碼
+        masked = IOTJS_WS_GET_FRAME_MASK(header);
+        if (control)
+        {
+            // 控制幀字直接刪除
+            if (masked)
+            {
+                length += 4;
+            }
+            if (length)
+            {
+                evbuffer_drain(buf, length);
+            }
+            continue;
+        }
+        switch (length)
+        {
+        case 126:
+            evbuffer_remove(buf, header + 2, 2);
+            length = iotjs_big_endian.uint16(header + 2);
+            break;
+        case 127:
+            evbuffer_remove(buf, header + 2, 8);
+            length = iotjs_big_endian.uint64(header + 2);
+            break;
+        }
+        if (masked)
+        {
+            evbuffer_remove(buf, mask, 4);
+        }
+        if (length)
+        {
+            evbuffer_remove(buf, dst, length);
+            if (masked)
+            {
+                for (i = 0; i < length; i++)
+                {
+                    dst[i] ^= mask[i % 4];
+                }
+            }
+            dst += length;
+        }
+        if (IOTJS_WS_GET_FRAME_FIN(header))
+        {
+            break;
+        }
+    }
+    if (opcode == WEBSOCKET_TEXT_MESSAGE)
+    {
+        duk_buffer_to_string(ctx, -1);
+    }
+    return 1;
+}
+
+static duk_ret_t native_ws_send(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, tcp_connection_free);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
+    duk_size_t sz;
+    const char *src;
+    uint8_t s[2 + 8];
+    if (duk_is_string(ctx, -1))
+    {
+        s[0] = 0x80 | WEBSOCKET_TEXT_MESSAGE;
+        src = duk_require_lstring(ctx, -1, &sz);
+    }
+    else
+    {
+        s[0] = 0x80 | WEBSOCKET_BINARY_MESSAGE;
+        src = duk_require_buffer_data(ctx, -1, &sz);
+    }
+    char *tmp = NULL;
+    if (sz)
+    {
+        tmp = duk_push_buffer(ctx, sz, 0);
+    }
+    tcp_connection_t *conn = finalizer->p;
+    http_expand_ws_t *expand = conn->expand;
+    struct evbuffer *buf = bufferevent_get_output(conn->bev);
+    uint64_t write = 2 + 4;
+    uint8_t extend_length;
+    if (sz > IOTJS_MAX_UINT16)
+    {
+        extend_length = 8;
+        write += 8;
+        s[1] = 0x80 | 127;
+        iotjs_big_endian.put_uint64(s + 2, sz);
+    }
+    else if (sz > 125)
+    {
+        extend_length = 2;
+        write += 2;
+        s[1] = 0x80 | 126;
+        iotjs_big_endian.put_uint16(s + 2, sz);
+    }
+    else
+    {
+        extend_length = 0;
+        s[1] = 0x80 | sz;
+    }
+    size_t len = evbuffer_get_length(buf);
+
+    // 驗證寫入限制
+    if (conn->write)
+    {
+        if (write > conn->write)
+        {
+            duk_pop_2(ctx);
+            duk_push_lstring(ctx, "data too large", 14);
+            duk_throw(ctx);
+        }
+        else if (conn->write - len < write)
+        {
+            duk_pop_2(ctx);
+            duk_push_false(ctx);
+            return 1;
+        }
+    }
+    // 擴展緩衝區以便確定寫入不會失敗
+    if (evbuffer_expand(buf, write))
+    {
+        duk_pop_2(ctx);
+        duk_push_lstring(ctx, "evbuffer_expand fail", 20);
+        duk_throw(ctx);
+    }
+
+    // 寫幀
+    evbuffer_add(buf, s, 2 + extend_length);
+    srand((unsigned)time(NULL));
+    for (size_t i = 0; i < 4; i++)
+    {
+        s[i] = rand() % 255;
+    }
+    evbuffer_add(buf, s, 4);
+    if (tmp)
+    {
+        for (size_t i = 0; i < sz; i++)
+        {
+            tmp[i] = src[i] ^ s[i % 4];
+        }
+        evbuffer_add(buf, tmp, sz);
+    }
+    duk_pop(ctx);
+    duk_push_true(ctx);
+    return 1;
+}
+void native_iotjs_net_deps_http(duk_context *ctx)
+{
+    duk_push_c_lightfunc(ctx, native_http_parse_url, 1, 1, 0);
+    duk_put_prop_lstring(ctx, -2, "http_parse_url", 14);
+    duk_push_c_lightfunc(ctx, native_ws_key, 0, 0, 0);
+    duk_put_prop_lstring(ctx, -2, "ws_key", 6);
+    duk_push_c_lightfunc(ctx, native_http_expand_ws, 4, 4, 0);
+    duk_put_prop_lstring(ctx, -2, "http_expand_ws", 14);
+
+    duk_push_c_lightfunc(ctx, native_ws_readable, 1, 1, 0);
+    duk_put_prop_lstring(ctx, -2, "ws_readable", 11);
+    duk_push_c_lightfunc(ctx, native_ws_read, 1, 1, 0);
+    duk_put_prop_lstring(ctx, -2, "ws_read", 7);
+    duk_push_c_lightfunc(ctx, native_ws_send, 2, 2, 0);
+    duk_put_prop_lstring(ctx, -2, "ws_send", 7);
 }

@@ -8,7 +8,6 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
-
 // ... name => return
 void _native_iotjs_fs_stat_push(duk_context *ctx, struct stat *info)
 {

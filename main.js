@@ -36,6 +36,25 @@ try {
                     console.log("js onError", e)
                 }
             }
+            // c.onReadable = function () {
+            //     console.log("js onReadable")
+            // }
+            var i = 0
+            c.onMessage = function (data) {
+                if (typeof data == "string") {
+                    console.log("js onMessage string", data.length)
+                    console.log(data)
+                } else {
+                    console.log("js onMessage Uint8Array", data.length)
+                    console.log(data)
+                }
+                if (i < 1) {
+                    c.trySend("this is message " + i)
+                    i++
+                } else {
+                    c.close()
+                }
+            }
             c.onClose = function () {
                 console.log("js onClose")
             }

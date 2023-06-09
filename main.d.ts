@@ -683,7 +683,7 @@ declare module "iotjs/net" {
          */
         trySend(s: string | Uint8Array | ArrayBuffer): boolean
         /**
-         * 嘗試一個完整的 消息
+         * 嘗試讀取一個完整的 消息
          */
         tryRecv(): string | Uint8Array
         /**
@@ -720,23 +720,4 @@ declare module "iotjs/net/http" {
      * 關閉所有空閒的連接
      */
     export function close_idle(): void
-    export interface WebsocketOptions {
-        /**
-         * 可設置此屬性覆蓋連接的 header Origin
-         */
-        origin?: string
-        /**
-         * 可設置此屬性覆蓋連接的 header Host
-         */
-        host?: string
-        /**
-         * 讀取到的單個消息最大長度
-         * 默認爲 1024*1024
-         */
-        readlimit?: number
-        /**
-         * 連接超時毫秒數，小於 1 將不設置超時但通常系統 tcp 連接超時是 75s
-         */
-        timeout?: number
-    }
 }

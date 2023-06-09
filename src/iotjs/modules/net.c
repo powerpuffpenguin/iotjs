@@ -564,12 +564,7 @@ duk_ret_t native_iotjs_net_init(duk_context *ctx)
         duk_push_c_lightfunc(ctx, native_tcp_set_timeout, 3, 3, 0);
         duk_put_prop_lstring(ctx, -2, "tcp_setTimeout", 14);
         // http
-        duk_push_c_lightfunc(ctx, native_http_parse_url, 1, 1, 0);
-        duk_put_prop_lstring(ctx, -2, "http_parse_url", 14);
-        duk_push_c_lightfunc(ctx, native_ws_key, 0, 0, 0);
-        duk_put_prop_lstring(ctx, -2, "ws_key", 6);
-        duk_push_c_lightfunc(ctx, native_http_expand_ws, 4, 4, 0);
-        duk_put_prop_lstring(ctx, -2, "http_expand_ws", 14);
+        native_iotjs_net_deps_http(ctx);
     }
     duk_call(ctx, 3);
     return 0;

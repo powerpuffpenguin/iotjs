@@ -106,6 +106,7 @@
     "configure.h": "c",
     "http.h": "c",
     "net.h": "c",
-    "native_http.h": "c"
+    "native_http.h": "c",
+    "binary.h": "c"
   }
 }
