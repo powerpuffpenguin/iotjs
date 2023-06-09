@@ -289,11 +289,7 @@ static BOOL ws_Sec_WebSocket_Accept(tcp_connection_t *conn, const char *s)
     {
         return FALSE;
     }
-    unsigned long outlen;
-    if (iotjs_module_crypto_base64_encode(key, 20, key + 20, &outlen))
-    {
-        return FALSE;
-    }
+    iotjs_base64.std.encode(key + 20, key, 20);
     if (memcmp(s, key + 20, 28))
     {
         return FALSE;
