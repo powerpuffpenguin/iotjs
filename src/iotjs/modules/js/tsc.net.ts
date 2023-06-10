@@ -281,7 +281,9 @@ export interface TCPConnOptions {
     write?: number
 }
 export interface TCPConnHook {
+    onWrite?: () => boolean
     onRead?: () => boolean
+    onClear?: (e: any) => boolean
 }
 export class TCPConn {
     static connect(addr: string, port: number, opts?: TCPConnOptions, hook?: TCPConnHook): Promise<TCPConn> {
@@ -414,29 +416,41 @@ export class TCPConn {
 
     private closed_ = 0;
     private _onClear(e: any) {
-        let c = this.write_
-        if (c) {
-            this.write_ = undefined
-            this.writeData_ = undefined
-            c.reject(e)
-        }
-        c = this.read_
-        if (c) {
-            this.read_ = undefined
-            this.readData_ = undefined
-            c.reject(e)
-        }
+        runSync(() => {
+            const hook = this.hook_?.onClear
+            if (hook && hook(e)) {
+                return
+            }
+            let c = this.write_
+            if (c) {
+                this.write_ = undefined
+                this.writeData_ = undefined
+                c.reject(e)
+            }
+            c = this.read_
+            if (c) {
+                this.read_ = undefined
+                this.readData_ = undefined
+                c.reject(e)
+            }
+        }, true)
     }
     private _onWrite() {
-        let writable = true
-        // 寫入未完成數據
-        const c = this.write_
-        if (c) {
-            writable = false
-            this.write_ = undefined
-            const data = this.writeData_!
-            this.writeData_ = undefined
-            try {
+        runSync(() => {
+            const onWrite = this.hook_?.onWrite
+            if (onWrite) {
+                if (onWrite()) {
+                    return
+                }
+            }
+
+            // 寫入未完成數據
+            const c = this.write_
+            if (c) {
+                const data = this.writeData_!
+                this.write_ = undefined
+                this.writeData_ = undefined
+
                 const n = deps.tcp_write(this.conn_, data)
                 if (n) {
                     c.resolve(n)
@@ -444,34 +458,28 @@ export class TCPConn {
                     // 依然沒有足夠緩存，回調前可能有其它寫入
                     this.write_ = c
                     this.writeData_ = data
+                    return
                 }
-            } catch (e) {
-                c.reject(getError(e))
             }
-        }
 
-        // 通知上層用戶
-        if (this.onWritable) {
-            if (!writable && !deps.tcp_writable(this.conn_)) {
-                return
+            // 通知上層用戶
+            const w = this.onWritable
+            if (w && deps.tcp_writable(this.conn_)) {
+                w()
             }
-            this.onWritable()
-        }
+        })
     }
     private _onRead() {
         runSync(() => {
             const onRead = this.hook_?.onRead
-            let readable = true
             if (onRead) {
                 if (onRead()) {
                     return
                 }
-                readable = false
             }
             // 讀取數據
             const c = this.read_
             if (c) {
-                readable = false
                 this.read_ = undefined
                 const data = this.readData_!
                 this.readData_ = undefined
@@ -480,18 +488,18 @@ export class TCPConn {
                     c.resolve(n)
                 } else {
                     // 依然沒有數據，回調前可能有其它讀取
-                    this.read_ = undefined
+                    this.read_ = c
                     this.readData_ = data
+                    return
                 }
             }
 
             // 通知上層用戶 有可讀數據
             const r = this.r_
             if (r) {
-                if (!readable && !deps.tcp_readable(this.conn_)) {
+                if (!deps.tcp_readable(this.conn_)) {
                     return;
                 }
-                readable = false;
                 r()
             }
 
@@ -507,69 +515,71 @@ export class TCPConn {
         }, true)
     }
     private _onEvent(what: number) {
-        if (this.debug) {
-            tcpLog.log('_onEvent', what)
-        }
-        if (what & BEV_EVENT_EOF) {
+        runSync(() => {
             if (this.debug) {
-                tcpLog.log('eof')
+                tcpLog.log('_onEvent', what)
             }
+            if (what & BEV_EVENT_EOF) {
+                if (this.debug) {
+                    tcpLog.log('eof')
+                }
 
-            this.closed_ = -1
-            const err = new NetError("TCPConn already closed")
-            err.eof = true
-            if (this.onError) {
-                this.onError(err)
+                this.closed_ = -1
+                const err = new NetError("TCPConn already closed")
+                err.eof = true
+                if (this.onError) {
+                    this.onError(err)
+                }
+                deps.tcp_free(this.conn_)
+                this._onClear(err)
+                if (this.onClose) {
+                    this.onClose()
+                }
+                return
             }
-            deps.tcp_free(this.conn_)
-            this._onClear(err)
-            if (this.onClose) {
-                this.onClose()
+            if (what & BEV_EVENT_TIMEOUT) {
+                if (what & BEV_EVENT_READING) {
+                    if (this.debug) {
+                        tcpLog.log('reading timeout')
+                    }
+                    if (this.onTimeout) {
+                        this.onTimeout(true)
+                    }
+                } else {
+                    if (this.debug) {
+                        tcpLog.log('writing timeout')
+                    }
+                    if (this.onTimeout) {
+                        this.onTimeout(false)
+                    }
+                }
+                return
             }
-            return
-        }
-        if (what & BEV_EVENT_TIMEOUT) {
-            if (what & BEV_EVENT_READING) {
-                if (this.debug) {
-                    tcpLog.log('reading timeout')
+            const emsg = deps.socket_error()
+            if (what & BEV_EVENT_ERROR) {
+                if (what & BEV_EVENT_READING) {
+                    if (this.debug) {
+                        tcpLog.log('reading', emsg)
+                    }
+                } else {
+                    if (this.debug) {
+                        tcpLog.log('writing', emsg)
+                    }
                 }
-                if (this.onTimeout) {
-                    this.onTimeout(true)
-                }
-            } else {
-                if (this.debug) {
-                    tcpLog.log('writing timeout')
-                }
-                if (this.onTimeout) {
-                    this.onTimeout(false)
-                }
-            }
-            return
-        }
-        const emsg = deps.socket_error()
-        if (what & BEV_EVENT_ERROR) {
-            if (what & BEV_EVENT_READING) {
-                if (this.debug) {
-                    tcpLog.log('reading', emsg)
-                }
-            } else {
-                if (this.debug) {
-                    tcpLog.log('writing', emsg)
-                }
-            }
 
-            this.closed_ = -2
-            const err = new NetError(emsg)
-            if (this.onError) {
-                this.onError(err)
+                this.closed_ = -2
+                const err = new NetError(emsg)
+                if (this.onError) {
+                    this.onError(err)
+                }
+                deps.tcp_free(this.conn_)
+                this._onClear(err)
+                if (this.onClose) {
+                    this.onClose()
+                }
+                return
             }
-            deps.tcp_free(this.conn_)
-            this._onClear(err)
-            if (this.onClose) {
-                this.onClose()
-            }
-            return
-        }
+        })
     }
     close(): void {
         if (this.closed_) {
@@ -610,13 +620,7 @@ export class TCPConn {
     }
 
     write(s: string | Uint8Array | ArrayBuffer): number | Promise<number> {
-        if (this.closed_) {
-            throw new NetError("TCPConn already closed")
-        }
-        if (!deps.get_length(s)) {
-            return 0
-        }
-        const n = deps.tcp_write(this.conn_, s)
+        const n = this.tryWrite(s)
         if (n) {
             return n
         }
@@ -907,8 +911,73 @@ Sec-WebSocket-Key: ${key}
         })
     }
     private constructor(private readonly conn_: TCPConn, hook: TCPConnHook) {
+        hook.onWrite = () => {
+            // 讀取數據
+            const c = this.send_
+            if (c) {
+                const data = this.sendData_!
+                this.send_ = undefined
+                if (deps.ws_send(this.conn_.conn_, data)) {
+                    c.resolve(true)
+                } else {
+                    this.sendData_ = data
+                    this.send_ = c
+                    return true
+                }
+            }
+
+            const w = this.conn_.onWritable
+            if (w && deps.tcp_writable(this.conn_.conn_)) {
+                w()
+            }
+            return true
+        }
         hook.onRead = () => {
-            this._onRead()
+            // 讀取數據
+            const c = this.recv_
+            if (c) {
+                this.recv_ = undefined
+                const data = deps.ws_read(this.conn_.conn_)
+                if (data) {
+                    c.resolve(data)
+                } else {
+                    // 依然沒有數據，回調前可能有其它讀取
+                    this.recv_ = c
+                    return true
+                }
+            }
+
+            // 通知上層用戶 有可讀數據
+            const r = this.onReadable
+            if (r) {
+                if (!deps.ws_readable(this.conn_.conn_)) {
+                    return true
+                }
+                r()
+            }
+
+            // 通知上層用戶 有消息需要處理
+            const m = this.onMessage
+            if (m) {
+                const data = deps.ws_read(this.conn_.conn_)
+                if (data) {
+                    m(data)
+                }
+                return true
+            }
+            return true
+        }
+        hook.onClear = (e) => {
+            let c: any = this.send_
+            if (c) {
+                this.send_ = undefined
+                c.reject(e)
+            }
+            c = this.recv_
+            if (c) {
+                this.recv_ = undefined
+                c.reject(e)
+            }
             return true
         }
     }
@@ -940,7 +1009,10 @@ Sec-WebSocket-Key: ${key}
         return this.conn_.onReadable
     }
     get readable() {
-        return this.conn_.readable
+        if (this.conn_.isClosed) {
+            return false
+        }
+        return deps.ws_readable(this.conn_.conn_) ? true : false
     }
     set onTimeout(f: any) {
         this.conn_.onTimeout = f
@@ -972,56 +1044,38 @@ Sec-WebSocket-Key: ${key}
     get onMessage() {
         return this.conn_.onTimeout
     }
-    private _onRead() {
-        const conn = this.conn_.conn_
-        let readable = true
-        // 讀取數據
-        const c = this.recv_
-        if (c) {
-            readable = false
-            this.recv_ = undefined
-            const data = deps.ws_read(this.conn_.conn_)
-            if (data) {
-                c.resolve(data)
-            } else {
-                // 依然沒有數據，回調前可能有其它讀取
-                this.recv_ = undefined
-            }
-        }
-
-        // 通知上層用戶 有可讀數據
-        const r = this.onReadable
-        if (r) {
-            if (!readable && !deps.ws_readable(conn)) {
-                return;
-            }
-            readable = false;
-            r()
-        }
-
-        // 通知上層用戶 有消息需要處理
-        const m = this.onMessage
-        if (m) {
-            if (!readable && !deps.ws_readable(conn)) {
-                return;
-            }
-            const data = deps.ws_read(this.conn_.conn_)
-            if (data) {
-                m(data)
-            }
-            return
-        }
-    }
-    // write(data: string | Uint8Array | ArrayBuffer): number | Promise<number>{}
-    trySend(s: string | Uint8Array | ArrayBuffer): boolean {
+    trySend(data: string | Uint8Array | ArrayBuffer): boolean {
         if (this.conn_.isClosed) {
             throw new NetError("TCPConn already closed")
         }
         try {
-            return deps.ws_send(this.conn_.conn_, s)
+            return deps.ws_send(this.conn_.conn_, data)
         } catch (e) {
             netError(e)
         }
+    }
+    send(data: string | Uint8Array | ArrayBuffer): boolean | Promise<boolean> {
+        if (this.trySend(data)) {
+            return true
+        }
+        return this._send(data)
+    }
+    private send_?: _iotjs.Completer<boolean>
+    private sendData_?: string | Uint8Array | ArrayBuffer
+    private async _send(data: string | Uint8Array | ArrayBuffer): Promise<boolean> {
+        // 等待未完成寫入
+        let c = this.send_
+        while (c) {
+            await c
+            if (this.conn_.isClosed) {
+                throw new NetError("TCPConn already closed")
+            }
+            c = this.send_
+        }
+        c = new _iotjs.Completer()
+        this.sendData_ = data
+        this.send_ = c
+        return c.promise
     }
     tryRecv(): undefined | string | Uint8Array {
         if (this.conn_.isClosed) {
@@ -1051,5 +1105,4 @@ Sec-WebSocket-Key: ${key}
         return c.promise
     }
     private recv_: _iotjs.Completer<string | Uint8Array> | undefined
-
 }
