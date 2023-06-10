@@ -26,7 +26,7 @@ declare namespace _iotjs {
     /**
      * 調用 c 的 exit(code) 退出程式
      */
-    export function exit(code: number): void
+    export function exit(code: number): never
     /**
      * 錯誤基類
      */

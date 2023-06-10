@@ -146,20 +146,41 @@ function getError(e: any): any {
     }
     return e
 }
-function runSync<T>(f: () => T) {
+function runSync<T>(f: () => T, exit?: boolean) {
     try {
         return f()
     } catch (e) {
-        netError(e)
+        if (exit) {
+            e = getError(e)
+            if (e instanceof Error) {
+                console.error(e.toString())
+            } else {
+                console.error(e)
+            }
+            _iotjs.exit(1)
+        } else {
+            netError(e)
+        }
     }
 }
-async function runAsync<T>(f: () => Promise<T>) {
+async function runAsync<T>(f: () => Promise<T>, exit?: boolean) {
     try {
         return await f()
     } catch (e) {
-        netError(e)
+        if (exit) {
+            e = getError(e)
+            if (e instanceof Error) {
+                console.error(e.toString())
+            } else {
+                console.error(e)
+            }
+            _iotjs.exit(1)
+        } else {
+            netError(e)
+        }
     }
 }
+
 export class IP {
     static fromIP4(s: string): IP {
         return runSync(() => new IP(_iotjs.dns.parseIP4(s)));
@@ -438,21 +459,22 @@ export class TCPConn {
         }
     }
     private _onRead() {
-        const onRead = this.hook_?.onRead
-        if (onRead) {
-            if (onRead()) {
-                return
+        runSync(() => {
+            const onRead = this.hook_?.onRead
+            let readable = true
+            if (onRead) {
+                if (onRead()) {
+                    return
+                }
+                readable = false
             }
-        }
-        let readable = true
-        // 讀取數據
-        const c = this.read_
-        if (c) {
-            readable = false
-            this.read_ = undefined
-            const data = this.readData_!
-            this.readData_ = undefined
-            try {
+            // 讀取數據
+            const c = this.read_
+            if (c) {
+                readable = false
+                this.read_ = undefined
+                const data = this.readData_!
+                this.readData_ = undefined
                 const n = deps.tcp_read(this.conn_, data)
                 if (n) {
                     c.resolve(n)
@@ -461,33 +483,28 @@ export class TCPConn {
                     this.read_ = undefined
                     this.readData_ = data
                 }
-            } catch (e) {
-                c.reject(getError(e))
             }
-        }
 
-        // 通知上層用戶 有可讀數據
-        const r = this.r_
-        if (r) {
-            if (!readable && !deps.tcp_readable(this.conn_)) {
-                return;
+            // 通知上層用戶 有可讀數據
+            const r = this.r_
+            if (r) {
+                if (!readable && !deps.tcp_readable(this.conn_)) {
+                    return;
+                }
+                readable = false;
+                r()
             }
-            readable = false;
-            r()
-        }
 
-        // 通知上層用戶 有消息需要處理
-        const m = this.m_
-        if (m) {
-            if (!readable && !deps.tcp_readable(this.conn_)) {
-                return;
+            // 通知上層用戶 有消息需要處理
+            const m = this.m_
+            if (m) {
+                const data = deps.tcp_readMore(this.conn_)
+                if (data) {
+                    m(data)
+                }
+                return
             }
-            const data = deps.tcp_readMore(this.conn_)
-            if (data) {
-                m(data)
-            }
-            return
-        }
+        }, true)
     }
     private _onEvent(what: number) {
         if (this.debug) {
@@ -634,16 +651,10 @@ export class TCPConn {
         if (!deps.get_length(s)) {
             return 0
         }
-        return deps.tcp_read(this.conn_, s)
+        return runSync(() => deps.tcp_read(this.conn_, s), true)
     }
 
     read(s: Uint8Array | ArrayBuffer): number | Promise<number> {
-        if (this.closed_) {
-            throw new NetError("TCPConn already closed")
-        }
-        if (!deps.get_length(s)) {
-            return 0
-        }
         const n = this.tryRead(s)
         if (n) {
             return n
@@ -653,14 +664,14 @@ export class TCPConn {
     private read_: _iotjs.Completer<number> | undefined
     private readData_: Uint8Array | ArrayBuffer | undefined
     private async _read(s: Uint8Array | ArrayBuffer): Promise<number> {
-        // 等待未完成寫入
+        // 等待未完成讀取
         let c = this.read_
         while (c) {
             await c
             if (this.closed_) {
                 throw new NetError("TCPConn already closed")
             }
-            c = this.write_
+            c = this.read_
         }
         c = new _iotjs.Completer<number>()
         this.read_ = c
@@ -965,25 +976,18 @@ Sec-WebSocket-Key: ${key}
         const conn = this.conn_.conn_
         let readable = true
         // 讀取數據
-        // const c = this.read_
-        // if (c) {
-        //     readable = false
-        //     this.read_ = undefined
-        //     const data = this.readData_!
-        //     this.readData_ = undefined
-        //     try {
-        //         const n = deps.tcp_read(this.conn_, data)
-        //         if (n) {
-        //             c.resolve(n)
-        //         } else {
-        //             // 依然沒有數據，回調前可能有其它讀取
-        //             this.read_ = undefined
-        //             this.readData_ = data
-        //         }
-        //     } catch (e) {
-        //         c.reject(getError(e))
-        //     }
-        // }
+        const c = this.recv_
+        if (c) {
+            readable = false
+            this.recv_ = undefined
+            const data = deps.ws_read(this.conn_.conn_)
+            if (data) {
+                c.resolve(data)
+            } else {
+                // 依然沒有數據，回調前可能有其它讀取
+                this.recv_ = undefined
+            }
+        }
 
         // 通知上層用戶 有可讀數據
         const r = this.onReadable
@@ -1001,7 +1005,7 @@ Sec-WebSocket-Key: ${key}
             if (!readable && !deps.ws_readable(conn)) {
                 return;
             }
-            const data = deps.ws_read(conn)
+            const data = deps.ws_read(this.conn_.conn_)
             if (data) {
                 m(data)
             }
@@ -1010,14 +1014,42 @@ Sec-WebSocket-Key: ${key}
     }
     // write(data: string | Uint8Array | ArrayBuffer): number | Promise<number>{}
     trySend(s: string | Uint8Array | ArrayBuffer): boolean {
+        if (this.conn_.isClosed) {
+            throw new NetError("TCPConn already closed")
+        }
         try {
             return deps.ws_send(this.conn_.conn_, s)
         } catch (e) {
             netError(e)
         }
     }
-    // tryRead(s: string | Uint8Array | ArrayBuffer): number {
-    // }
-    // read(data: Uint8Array | ArrayBuffer): number | Promise<number>{
-    // }
+    tryRecv(): undefined | string | Uint8Array {
+        if (this.conn_.isClosed) {
+            throw new NetError("TCPConn already closed")
+        }
+        return runSync(() => deps.ws_read(this.conn_.conn_), true)
+    }
+    recv(): string | Uint8Array | Promise<string | Uint8Array> {
+        const data = this.tryRecv()
+        if (data) {
+            return data
+        }
+        return this._recv()
+    }
+    private async _recv(): Promise<string | Uint8Array> {
+        // 等待未完成讀取
+        let c = this.recv_
+        while (c) {
+            await c
+            if (this.conn_.isClosed) {
+                throw new NetError("TCPConn already closed")
+            }
+            c = this.recv_
+        }
+        c = new _iotjs.Completer<string | Uint8Array>()
+        this.recv_ = c
+        return c.promise
+    }
+    private recv_: _iotjs.Completer<string | Uint8Array> | undefined
+
 }

@@ -404,7 +404,6 @@ static void ws_expand_read_ws_cb_print_header(http_expand_ws_t *expand)
 
 static uint8_t ws_expand_read_ws_cb_frame(tcp_connection_t *conn, http_expand_ws_t *expand, struct evbuffer *buf)
 {
-
     evbuffer_copyout_from(buf, &expand->pos, expand->ws.header, 2);
     // ws_expand_read_ws_cb_print_header(expand);
     if (IOTJS_NET_EXPAND_WS_FRAME_RSV1(expand))
@@ -550,6 +549,7 @@ static uint8_t ws_expand_read_ws_cb_data(tcp_connection_t *conn, http_expand_ws_
 }
 static void ws_expand_read_ws_cb(tcp_connection_t *conn, http_expand_ws_t *expand, struct evbuffer *buf)
 {
+    evbuffer_ptr_set(buf, &expand->pos, expand->pos.pos, EVBUFFER_PTR_SET);
     while (1)
     {
         // 未處理數據長度
@@ -582,7 +582,7 @@ static void ws_expand_read_cb(struct bufferevent *bev, void *args)
     tcp_connection_t *conn = args;
     http_expand_ws_t *expand = conn->expand;
     struct evbuffer *buf = bufferevent_get_input(conn->bev);
-    if (expand->state == IOTJS_NET_EXPAND_WS_STATE_READY)
+    if (expand->state & IOTJS_NET_EXPAND_WS_STATE_READY)
     {
         if (expand->readable)
         {
@@ -680,7 +680,7 @@ static void ws_expand_read_cb(struct bufferevent *bev, void *args)
         expand->ws.length = 0;
         expand->ws.step = IOTJS_NET_EXPAND_WS_FRAME;
 
-        evbuffer_ptr_set(buf, &expand->pos, 0, EVBUFFER_PTR_SET);
+        expand->pos.pos = 0;
         expand->length = 0;
         expand->readable = 0;
 
@@ -773,6 +773,7 @@ static duk_ret_t native_ws_read(duk_context *ctx)
         // 沒有可讀數據字節返回
         return 0;
     }
+
     // 讀取數據
     uint8_t *dst = duk_push_buffer(ctx, expand->length, 0);
     struct evbuffer *buf = bufferevent_get_input(conn->bev);
@@ -852,6 +853,19 @@ static duk_ret_t native_ws_read(duk_context *ctx)
     if (opcode == WEBSOCKET_TEXT_MESSAGE)
     {
         duk_buffer_to_string(ctx, -1);
+    }
+
+    //  重置解幀狀態
+    expand->ws.length = 0;
+    expand->ws.step = IOTJS_NET_EXPAND_WS_FRAME;
+    expand->length = 0;
+    expand->readable = 0;
+    evbuffer_ptr_set(buf, &expand->pos, 0, EVBUFFER_PTR_SET);
+
+    if (evbuffer_get_contiguous_space(buf))
+    {
+        // 存在未處理數據，觸發可讀回調
+        bufferevent_trigger(conn->bev, EV_READ, BEV_OPT_DEFER_CALLBACKS);
     }
     return 1;
 }

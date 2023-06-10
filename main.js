@@ -48,7 +48,7 @@ try {
                     console.log("js onMessage Uint8Array", data.length)
                     console.log(data)
                 }
-                if (i < 1000) {
+                if (i < 1) {
                     c.trySend("this is message " + i)
                     i++
                 } else {

@@ -39,7 +39,7 @@ declare module "iotjs" {
     /**
      * 調用 c 的 exit(code) 退出程式
      */
-    export function exit(code: number): void
+    export function exit(code: number): never
 
     export type BufferData = string | ArrayBuffer | DataView | Uint8Array | Uint8ClampedArray | Uint16Array | Uint32Array | Int8Array | Int16Array | Int32Array | Float32Array | Float64Array
 }
