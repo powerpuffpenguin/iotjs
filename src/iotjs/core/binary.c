@@ -98,7 +98,10 @@ void little_put_uint64(uint8_t *b, uint64_t v)
     b[1] = (uint8_t)(v >> 8);
     b[0] = (uint8_t)(v);
 }
-
+const char *encodeStd = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const char *encodeURL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+char decodeStd[256];
+char decodeURL[256];
 static __attribute((constructor)) void __iotjs_byte_order_init()
 {
     byte_order_t *little, *big;
@@ -131,10 +134,17 @@ static __attribute((constructor)) void __iotjs_byte_order_init()
     little->put_uint32 = little_put_uint32;
     little->uint64 = little_uint64;
     little->put_uint64 = little_put_uint64;
+
+    // base64
+    memset(decodeStd, 0xff, 256);
+    memset(decodeURL, 0xff, 256);
+    for (uint8_t i = 0; i < 64; i++)
+    {
+        decodeStd[encodeStd[i]] = i;
+        decodeURL[encodeURL[i]] = i;
+    }
 }
 
-const char *encodeStd = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-const char *encodeURL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 static unsigned int base64_encoded_len(unsigned int n)
 {
     return (n + 2) / 3 * 4; // minimum # 4-char quanta, 3 bytes each
@@ -149,202 +159,192 @@ static unsigned int base64_decoded_len(unsigned int n)
 }
 static unsigned int base64_decoded_len_no_padding(unsigned int n)
 {
-    return n * 6 / 8; // Unpadded data may end with partial block of 2-3 characters.
+    return n % 4 == 1 ? 0 : n * 6 / 8; // Unpadded data may end with partial block of 2-3 characters.
 }
 
-static void base64_encode_impl(uint8_t *dst, const uint8_t *src, unsigned int src_len, const uint8_t pading, const uint8_t *encode)
+unsigned int iotjs_base64_encode(uint8_t *dst, const uint8_t *src, unsigned int src_len, const uint8_t pading, const uint8_t *encode)
 {
-    unsigned int di = 0, si = 0;
-    unsigned int n = (src_len / 3) * 3;
-    uint32_t val;
-    while (si < n)
+    unsigned int ret = pading ? ((src_len + 2) / 3 * 4) : (src_len * 8 + 5) / 6;
+    if (ret && dst)
     {
-        // Convert 3x 8bit source bytes into 4 bytes
-        val = (uint32_t)(src[si + 0]) << 16 | (uint32_t)(src[si + 1]) << 8 | (uint32_t)(src[si + 2]);
-
-        dst[di + 0] = encode[val >> 18 & 0x3F];
-        dst[di + 1] = encode[val >> 12 & 0x3F];
-        dst[di + 2] = encode[val >> 6 & 0x3F];
-        dst[di + 3] = encode[val & 0x3F];
-
-        si += 3;
-        di += 4;
-    }
-
-    unsigned int remain = src_len - si;
-    if (remain == 0)
-    {
-        return;
-    }
-    // Add the remaining small block
-    val = (uint32_t)(src[si + 0]) << 16;
-    if (remain == 2)
-    {
-        val |= (uint32_t)(src[si + 1]) << 8;
-    }
-
-    dst[di + 0] = encode[val >> 18 & 0x3F];
-    dst[di + 1] = encode[val >> 12 & 0x3F];
-
-    switch (remain)
-    {
-    case 2:
-        dst[di + 2] = encode[val >> 6 & 0x3F];
-        if (pading)
+        unsigned int di = 0, si = 0;
+        unsigned int n = (src_len / 3) * 3;
+        uint32_t val;
+        while (src_len > 3)
         {
-            dst[di + 3] = pading;
+            dst[0] = encode[src[0] >> 2];
+            dst[1] = encode[((src[0] & 0x3) << 4) | (src[1] >> 4)];
+            dst[2] = encode[((src[1] & 0xF) << 2) | (src[2] >> 6)];
+            dst[3] = encode[src[2] & 0x3F];
+
+            src_len -= 3;
+            src += 3;
+            dst += 4;
         }
-        break;
-    case 1:
-        if (pading)
+        switch (src_len)
         {
-            dst[di + 2] = pading;
-            dst[di + 3] = pading;
+        case 1:
+            dst[0] = encode[src[0] >> 2];
+            dst[1] = encode[((src[0] & 0x3) << 4)];
+            if (pading)
+            {
+                dst[2] = pading;
+                dst[3] = pading;
+            }
+            break;
+        case 2:
+            dst[0] = encode[src[0] >> 2];
+            dst[1] = encode[((src[0] & 0x3) << 4) | (src[1] >> 4)];
+            dst[2] = encode[((src[1] & 0xF) << 2)];
+            if (pading)
+            {
+                dst[3] = pading;
+            }
+            break;
         }
-        break;
     }
+    return ret;
 }
-static void base64_encode(uint8_t *dst, const uint8_t *src, unsigned int src_len)
+static unsigned int base64_encode(uint8_t *dst, const uint8_t *src, unsigned int src_len)
 {
-    if (src_len)
-    {
-        base64_encode_impl(dst, src, src_len, '=', encodeStd);
-    }
+    return iotjs_base64_encode(dst, src, src_len, '=', encodeStd);
 }
-static void base64_encode_no_padding(uint8_t *dst, const uint8_t *src, unsigned int src_len)
+static unsigned int base64_encode_no_padding(uint8_t *dst, const uint8_t *src, unsigned int src_len)
 {
-    if (src_len)
-    {
-        base64_encode_impl(dst, src, src_len, 0, encodeStd);
-    }
+    return iotjs_base64_encode(dst, src, src_len, 0, encodeStd);
 }
-static void base64_url_encode(uint8_t *dst, const uint8_t *src, unsigned int src_len)
+static unsigned int base64_url_encode(uint8_t *dst, const uint8_t *src, unsigned int src_len)
 {
-    if (src_len)
-    {
-        base64_encode_impl(dst, src, src_len, '=', encodeURL);
-    }
+    return iotjs_base64_encode(dst, src, src_len, '=', encodeURL);
 }
-static void base64_url_encode_no_padding(uint8_t *dst, const uint8_t *src, unsigned int src_len)
+static unsigned int base64_url_encode_no_padding(uint8_t *dst, const uint8_t *src, unsigned int src_len)
 {
-    if (src_len)
-    {
-        base64_encode_impl(dst, src, src_len, 0, encodeURL);
-    }
+    return iotjs_base64_encode(dst, src, src_len, 0, encodeURL);
 }
-// assemble64 assembles 8 base64 digits into 6 bytes.
-// Each digit comes from the decode map, and will be 0xff
-// if it came from an invalid character.
-static uint8_t assemble64(uint8_t n1, uint8_t n2, uint8_t n3, uint8_t n4, uint8_t n5, uint8_t n6, uint8_t n7, uint8_t n8, uint64_t *dn)
+unsigned int iotjs_base64_decode(uint8_t *dst, const uint8_t *src, unsigned int src_len, const uint8_t pading, const uint8_t *decode)
 {
-    // Check that all the digits are valid. If any of them was 0xff, their
-    // bitwise OR will be 0xff.
-    if (n1 | n2 | n3 | n4 | n5 | n6 | n7 | n8 == 0xff)
+    if (!src_len)
     {
         return 0;
     }
-    *dn = (uint64_t)(n1) << 58 |
-          (uint64_t)(n2) << 52 |
-          (uint64_t)(n3) << 46 |
-          (uint64_t)(n4) << 40 |
-          (uint64_t)(n5) << 34 |
-          (uint64_t)(n6) << 28 |
-          (uint64_t)(n7) << 22 |
-          (uint64_t)(n8) << 16;
-    return 1;
-}
-static int base64_decode_impl(uint8_t *dst, const uint8_t *src, unsigned int src_len, const uint8_t pading, const uint8_t *encode)
-{
-    puts("not impl: base64_decode_impl");
-    exit(1);
-    uint8_t decodeMap[256];
-    memset(decodeMap, 0xFF, 256);
-    size_t i;
-    for (i = 0; i < 64; i++)
+    if (pading)
     {
-        decodeMap[encode[i]] = i;
-    }
-
-    unsigned int si = 0;
-    const uint8_t *src2;
-    uint64_t dn;
-    int n;
-    while (src_len - si >= 8)
-    {
-        src2 = src + si;
-        if (assemble64(
-                decodeMap[src2[0]],
-                decodeMap[src2[1]],
-                decodeMap[src2[2]],
-                decodeMap[src2[3]],
-                decodeMap[src2[4]],
-                decodeMap[src2[5]],
-                decodeMap[src2[6]],
-                decodeMap[src2[7]],
-                &dn))
+        if ((src_len % 4))
         {
-            iotjs_big_endian.put_uint64(dst + dn, dn);
-            n += 6;
-            si += 8;
+            return 0; // 填充時 src_len 顯然必須4的整數倍才合法
+        }
+    }
+    else
+    {
+        if (src_len % 4 == 1)
+        {
+            return 0; // 非填充時，只會剩餘 2 or 3 個字節，剩餘 1 字節顯然不是 合法 編碼值
+        }
+    }
+    int ret = pading ? (src_len / 4 * 3) : (src_len * 6 / 8);
+    if (ret && dst)
+    {
+        uint8_t s[4];
+        uint8_t j;
+        // 執行 n-1 次解碼
+        unsigned int count = (pading ? src_len : src_len + 3) / 4;
+        for (unsigned int i = 1; i < count; i++)
+        {
+            for (j = 0; j < 4; j++)
+            {
+                s[j] = j < decode[src[j]];
+                if (s[j] == 0xff)
+                {
+                    // 中途遇到填充 顯然不合法
+                    return 0;
+                }
+            }
+            dst[0] = (s[0] << 2) | (s[1] >> 4);
+            dst[1] = (s[1] << 4) | (s[2] >> 2);
+            dst[2] = (s[2] << 6) | (s[3]);
+
+            dst += 3;
+            src += 4;
+            src_len -= 4;
+        }
+        // 執行最後一次解碼，要考慮 填充字符或非填充情況下 src 長度不足 4
+        if (pading)
+        {
+            for (j = 0; j < 4; j++)
+            {
+                s[j] = decode[src[j]];
+                if (s[j] == 0xff)
+                {
+                    if (src[j] != pading || j < 2) // 不是填充符或在最後兩字節填充
+                    {
+                        return 0;
+                    }
+                }
+            }
+            if (s[2] == 0xff) // 填充了兩個字符
+            {
+                dst[0] = (s[0] << 2) | (s[1] >> 4);
+                if (s[3] != 0xff) // 必須連續兩個相同填充
+                {
+                    return 0;
+                }
+            }
+            else if (s[3] = 0xff) // 填充了一個字符
+            {
+                dst[0] = (s[0] << 2) | (s[1] >> 4);
+                dst[1] = (s[1] << 4) | (s[2] >> 2);
+            }
+            else // 沒有填充字符
+            {
+                dst[0] = (s[0] << 2) | (s[1] >> 4);
+                dst[1] = (s[1] << 4) | (s[2] >> 2);
+                dst[2] = (s[2] << 6) | (s[3]);
+            }
         }
         else
         {
-            // 		var ninc int
-            // 		si, ninc, err = enc.decodeQuantum(dst[n:], src, si)
-            // 		n += ninc
-            // 		if err != nil {
-            // 			return n, err
-            // 		}
+            for (j = 0; j < src_len; j++)
+            {
+                s[j] = decode[src[j]];
+                if (s[j] == 0xff)
+                {
+                    return 0;
+                }
+            }
+            switch (src_len)
+            {
+            case 2: // 需要填充兩個字符
+                dst[0] = (s[0] << 2) | (s[1] >> 4);
+                break;
+            case 3: // 需要填充一個字符
+                dst[0] = (s[0] << 2) | (s[1] >> 4);
+                dst[1] = (s[1] << 4) | (s[2] >> 2);
+                break;
+            case 4: // 不需要填充
+                dst[0] = (s[0] << 2) | (s[1] >> 4);
+                dst[1] = (s[1] << 4) | (s[2] >> 2);
+                dst[2] = (s[2] << 6) | (s[3]);
+                break;
+            }
         }
     }
-
-    // for len(src)-si >= 4 && len(dst)-n >= 4 {
-    // 	src2 := src[si : si+4]
-    // 	if dn, ok := assemble32(
-    // 		enc.decodeMap[src2[0]],
-    // 		enc.decodeMap[src2[1]],
-    // 		enc.decodeMap[src2[2]],
-    // 		enc.decodeMap[src2[3]],
-    // 	); ok {
-    // 		binary.BigEndian.PutUint32(dst[n:], dn)
-    // 		n += 3
-    // 		si += 4
-    // 	} else {
-    // 		var ninc int
-    // 		si, ninc, err = enc.decodeQuantum(dst[n:], src, si)
-    // 		n += ninc
-    // 		if err != nil {
-    // 			return n, err
-    // 		}
-    // 	}
-    // }
-
-    // for si < len(src) {
-    // 	var ninc int
-    // 	si, ninc, err = enc.decodeQuantum(dst[n:], src, si)
-    // 	n += ninc
-    // 	if err != nil {
-    // 		return n, err
-    // 	}
-    // }
-    // return n, err
-    return 0;
+    return ret;
 }
-static int base64_decode(uint8_t *dst, const uint8_t *src, unsigned int src_len)
+static unsigned int base64_decode(uint8_t *dst, const uint8_t *src, unsigned int src_len)
 {
-    return src_len ? base64_decode_impl(dst, src, src_len, '=', encodeStd) : 0;
+    return src_len ? iotjs_base64_decode(dst, src, src_len, '=', decodeStd) : 0;
 }
-static int base64_decode_no_padding(uint8_t *dst, const uint8_t *src, unsigned int src_len)
+static unsigned int base64_decode_no_padding(uint8_t *dst, const uint8_t *src, unsigned int src_len)
 {
-    return src_len ? base64_decode_impl(dst, src, src_len, 0, encodeStd) : 0;
+    return src_len ? iotjs_base64_decode(dst, src, src_len, 0, decodeStd) : 0;
 }
-static int base64_url_decode(uint8_t *dst, const uint8_t *src, unsigned int src_len)
+static unsigned int base64_url_decode(uint8_t *dst, const uint8_t *src, unsigned int src_len)
 {
-    return src_len ? base64_decode_impl(dst, src, src_len, '=', encodeURL) : 0;
+    return src_len ? iotjs_base64_decode(dst, src, src_len, '=', decodeURL) : 0;
 }
-static int base64_url_decode_no_padding(uint8_t *dst, const uint8_t *src, unsigned int src_len)
+static unsigned int base64_url_decode_no_padding(uint8_t *dst, const uint8_t *src, unsigned int src_len)
 {
-    return src_len ? base64_decode_impl(dst, src, src_len, 0, encodeURL) : 0;
+    return src_len ? iotjs_base64_decode(dst, src, src_len, 0, decodeURL) : 0;
 }
 base64_encodes_t iotjs_base64 = {
     .std = {
