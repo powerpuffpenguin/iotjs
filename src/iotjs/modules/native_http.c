@@ -427,6 +427,7 @@ static uint8_t ws_expand_read_ws_cb_frame(tcp_connection_t *conn, http_expand_ws
         ws_expand_notify_lerror(conn, "bad MASK", 8);
         return 1;
     }
+
     duk_uint8_t opcode = IOTJS_NET_EXPAND_WS_FRAME_OPCODE(expand);
     duk_uint8_t extened_length = IOTJS_NET_EXPAND_WS_FRAME_MASK_EXTENDED_LENGTH(expand);
     switch (opcode)
@@ -672,6 +673,11 @@ static void ws_expand_read_cb(struct bufferevent *bev, void *args)
         else if (!(expand->state & IOTJS_NET_EXPAND_WS_STATE_CONNECTION))
         {
             expand_ws_lerror(conn, "http parse header not found Connection", 38);
+            return;
+        }
+        else if (expand->parser.content_length)
+        {
+            expand_ws_lerror(conn, "upgrade websocket not support content", 37);
             return;
         }
         expand_ws_ec(conn, 0);
