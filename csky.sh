@@ -3,7 +3,7 @@ set -e
 
 cd `dirname "$BASH_SOURCE"`
 
-./build.sh --arch csky --os linux \
+./build.sh c --arch csky --os linux \
     --toolchain /home/king/c/csky-linux \
-    --build-type Release -cm \
+    --build-type Release -cmd \
     "$@"

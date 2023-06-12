@@ -566,6 +566,14 @@ declare module "iotjs/net" {
     }
     export interface WebsocketConnOptions {
         /**
+         * 如果設置了此值，將直接連接此地址，而非從 url 解析 服務器地址
+         */
+        addr?: string
+        /**
+         * 如果設置了此值，將直接連接此端口，而非從 url 解析 服務器端口
+         */
+        port?: number
+        /**
          * 可設置此屬性覆蓋連接的 header Origin
          */
         origin?: string
@@ -697,7 +705,61 @@ declare module "iotjs/net" {
     }
 }
 declare module "iotjs/net/http" {
+    export interface URL {
+        scheme: string
+        host: string
+        port?: number
+        userinfo?: string
+        path: string
+        query?: string
+        fragment?: string
+    }
+    /**
+     * 解析 url 字符串
+     */
+    export function parseURL(url: string): URL
+
+    export interface ClientOptions {
+        /**
+         * 如果爲 true 使用 tls
+         */
+        tls?: boolean
+        /**
+         * tls 時使用的 
+         * sni hostname
+         */
+        hostname?: string
+        /**
+         * 在使用 tls 連接時不驗證證書合法性
+         */
+        insecure?: boolean
+    }
+    /**
+     * 一個 http 客戶端
+     */
+    export class Client {
+        constructor(addr: string, port: number, readonly opts?: ClientOptions)
+        /**
+         * 返回連接是否關閉
+         */
+        readonly isClosed: boolean
+        /**
+         * 關閉連接
+         */
+        close(): void
+        /**
+         * 連接關閉後回調，你可以在此釋放相關資源
+         */
+        onClosed?: () => boolean
+        do(req: RequestOptions): Promise<Response>
+
+    }
     export interface RequestOptions {
+        /**
+         * 讀取到的單個消息最大長度
+         * 默認爲 5*1024*1024
+         */
+        limit?: number
         method?: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
         header?: Record<string, string>
         body?: string | Uint8Array | ArrayBuffer
@@ -705,9 +767,6 @@ declare module "iotjs/net/http" {
     export class Response {
         code: number
         header?: Record<string, string>
-        /**
-         * 最大 5M，超過將 拋出異常
-         */
         body?: Uint8Array
     }
     /**

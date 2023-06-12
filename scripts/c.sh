@@ -170,9 +170,9 @@ c_iotjs(){
         cp "$rootDir/third_party/${duktape_version}/duk_config.h" include/
         cp "$rootDir/third_party/${duktape_version}/duktape.h" include/
     fi
-    if [[ ! -f include/iotjs/core/defines.h ]];then
-        mkdir -p include/iotjs/core
-        cp ../../src/iotjs/core/*.h include/iotjs/core/
+    if [[ ! -f iotjs/include/iotjs/core/defines.h ]];then
+        mkdir -p iotjs/include/iotjs/core
+        cp ../../src/iotjs/core/*.h iotjs/include/iotjs/core/
     fi
 
     if [[ $test == true ]];then

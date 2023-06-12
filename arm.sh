@@ -3,6 +3,6 @@ set -e
 
 cd `dirname "$BASH_SOURCE"`
 
-./build.sh --arch arm --os linux \
-    --build-type Release -cdm \
+./build.sh c --arch arm --os linux \
+    --build-type Release -cmd \
     "$@"

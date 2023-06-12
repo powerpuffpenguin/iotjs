@@ -970,19 +970,28 @@ static duk_ret_t native_ws_send(duk_context *ctx)
     duk_push_true(ctx);
     return 1;
 }
-void native_iotjs_net_deps_http(duk_context *ctx)
-{
-    duk_push_c_lightfunc(ctx, native_http_parse_url, 1, 1, 0);
-    duk_put_prop_lstring(ctx, -2, "http_parse_url", 14);
-    duk_push_c_lightfunc(ctx, native_ws_key, 0, 0, 0);
-    duk_put_prop_lstring(ctx, -2, "ws_key", 6);
-    duk_push_c_lightfunc(ctx, native_http_expand_ws, 4, 4, 0);
-    duk_put_prop_lstring(ctx, -2, "http_expand_ws", 14);
 
-    duk_push_c_lightfunc(ctx, native_ws_readable, 1, 1, 0);
-    duk_put_prop_lstring(ctx, -2, "ws_readable", 11);
-    duk_push_c_lightfunc(ctx, native_ws_read, 1, 1, 0);
-    duk_put_prop_lstring(ctx, -2, "ws_read", 7);
-    duk_push_c_lightfunc(ctx, native_ws_send, 2, 2, 0);
-    duk_put_prop_lstring(ctx, -2, "ws_send", 7);
+void native_iotjs_net_deps_http(duk_context *ctx, duk_bool_t http)
+{
+    if (http)
+    {
+        duk_push_c_lightfunc(ctx, native_http_parse_url, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "parse_url", 9);
+    }
+    else
+    {
+        duk_push_c_lightfunc(ctx, native_http_parse_url, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "http_parse_url", 14);
+        duk_push_c_lightfunc(ctx, native_ws_key, 0, 0, 0);
+        duk_put_prop_lstring(ctx, -2, "ws_key", 6);
+        duk_push_c_lightfunc(ctx, native_http_expand_ws, 4, 4, 0);
+        duk_put_prop_lstring(ctx, -2, "http_expand_ws", 14);
+
+        duk_push_c_lightfunc(ctx, native_ws_readable, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "ws_readable", 11);
+        duk_push_c_lightfunc(ctx, native_ws_read, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "ws_read", 7);
+        duk_push_c_lightfunc(ctx, native_ws_send, 2, 2, 0);
+        duk_put_prop_lstring(ctx, -2, "ws_send", 7);
+    }
 }

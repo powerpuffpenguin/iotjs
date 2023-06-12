@@ -2,18 +2,31 @@
 #include <iotjs/core/defines.h>
 #include <iotjs/core/js.h>
 #include <stdio.h>
-duk_context *vm_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_size_t n)
+static duk_context *vm_snapshot_impl(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_size_t n, duk_uint8_t copy)
 {
     // duk_idx_t id = duk_push_thread(ctx);
     duk_push_thread(ctx);
     duk_context *snapshot = duk_require_context(ctx, -1);
     if (n)
     {
-        duk_swap_top(ctx, -n - 1);
-        duk_xmove_top(snapshot, ctx, 1);
-        if (n > 1)
+        if (copy)
         {
-            duk_xmove_top(snapshot, ctx, n - 1);
+            duk_swap_top(ctx, -n - 1);
+            duk_xcopy_top(snapshot, ctx, n);
+            if (n > 1)
+            {
+                duk_insert(snapshot, 0);
+            }
+            duk_swap_top(ctx, -n - 1);
+        }
+        else
+        {
+            duk_swap_top(ctx, -n - 1);
+            duk_xmove_top(snapshot, ctx, 1);
+            if (n > 1)
+            {
+                duk_xmove_top(snapshot, ctx, n - 1);
+            }
         }
     }
     // duk_push_number(ctx, id);
@@ -52,6 +65,16 @@ duk_context *vm_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_buc
 
     return snapshot;
 }
+
+duk_context *vm_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_size_t n)
+{
+    return vm_snapshot_impl(ctx, bucket, sz_bucket, key, n, 0);
+}
+duk_context *vm_snapshot_copy(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_size_t n)
+{
+    return vm_snapshot_impl(ctx, bucket, sz_bucket, key, n, 1);
+}
+
 duk_context *vm_restore(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_bool_t del_snapshot)
 {
     // ...

@@ -737,6 +737,14 @@ export class TCPConn {
 }
 export interface WebsocketConnOptions {
     /**
+     * 如果設置了此值，將直接連接此地址，而非從 url 解析 服務器地址
+     */
+    addr?: string
+    /**
+     * 如果設置了此值，將直接連接此端口，而非從 url 解析 服務器端口
+     */
+    port?: number
+    /**
      * 可設置此屬性覆蓋連接的 header Origin
      */
     origin?: string
@@ -791,7 +799,7 @@ class WebsocketConnect {
                 this._reject(wss ? new NetError("wss connect timeout") : new NetError("ws connect timeout"), true)
             }, timeout)
         }
-        TCPConn.connect(opts.addr, opts.port, {
+        TCPConn.connect(ws?.addr ?? opts.addr, ws?.port ?? opts.port, {
             tls: opts.wss,
             insecure: opts?.wss ? ws?.insecure ?? false : undefined,
             hostname: opts?.wss ? opts.sni : undefined,

@@ -563,8 +563,8 @@ duk_ret_t native_iotjs_net_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "tcp_getBuffer", 13);
         duk_push_c_lightfunc(ctx, native_tcp_set_timeout, 3, 3, 0);
         duk_put_prop_lstring(ctx, -2, "tcp_setTimeout", 14);
-        // http
-        native_iotjs_net_deps_http(ctx);
+        // websocket
+        native_iotjs_net_deps_http(ctx, 0);
     }
     duk_call(ctx, 3);
     return 0;
