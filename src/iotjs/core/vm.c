@@ -3,9 +3,9 @@
 #include <iotjs/core/module.h>
 #include <iotjs/core/timer.h>
 #include <iotjs/core/c.h>
-#include <iotjs/core/js/tsc_hook.h>
-#include <iotjs/core/js/tsc.path.h>
-#include <iotjs/core/ts/tsc.module.h>
+#include <iotjs/core/js/hook.h>
+#include <iotjs/core/js/path.h>
+#include <iotjs/core/js/module.h>
 #include <iotjs/core/es6-shim.h>
 
 #include <duk_module_node.h>
@@ -381,14 +381,14 @@ void _native_vm_init_stash(duk_context *ctx, duk_context *main)
     duk_require_stack(ctx, 10);
     // private
     {
-        duk_eval_lstring(ctx, (char *)iotjs_core_js_tsc_hook_min_js, iotjs_core_js_tsc_hook_min_js_len);
+        duk_eval_lstring(ctx, (char *)js_iotjs_core_js_hook_min_js, js_iotjs_core_js_hook_min_js_len);
         duk_dup_top(ctx);
         duk_dup_top(ctx);
         duk_put_prop_lstring(ctx, -4, VM_STASH_KEY_PRIVATE);
 
         // 導入 path 用於解析路徑
         duk_push_object(ctx);
-        duk_eval_lstring(ctx, (const char *)iotjs_core_js_tsc_path_min_js, iotjs_core_js_tsc_path_min_js_len);
+        duk_eval_lstring(ctx, (const char *)js_iotjs_core_js_path_min_js, js_iotjs_core_js_path_min_js_len);
         duk_swap_top(ctx, -3);
         duk_call(ctx, 2);
         duk_put_prop_lstring(ctx, -2, "path", 4);
@@ -403,7 +403,7 @@ void _native_vm_init_stash(duk_context *ctx, duk_context *main)
         duk_push_c_function(ctx, _vm_native_exit, 1);
         duk_put_prop_lstring(ctx, -2, "exit", 4);
 
-        duk_eval_lstring(ctx, (const char *)iotjs_core_ts_tsc_module_min_js, iotjs_core_ts_tsc_module_min_js_len);
+        duk_eval_lstring(ctx, (const char *)js_iotjs_core_js_module_min_js, js_iotjs_core_js_module_min_js_len);
         duk_dup(ctx, -2);
         duk_dup_top(ctx);
         duk_call(ctx, 2);
@@ -456,7 +456,7 @@ void _native_vm_init_global(duk_context *ctx)
     _vm_init_timer(ctx);
 
     // es6 shim
-    duk_eval_lstring(ctx, (const char *)iotjs_core_es6_shim_min_js, iotjs_core_es6_shim_min_js_len);
+    duk_eval_lstring(ctx, (const char *)js_iotjs_core_es6_shim_min_js, js_iotjs_core_es6_shim_min_js_len);
     duk_push_global_object(ctx);
     duk_call(ctx, 1);
     duk_pop(ctx);

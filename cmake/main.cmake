@@ -18,7 +18,9 @@ include(${CMAKE_SOURCE_DIR}/cmake/source.cmake)
 
 
 add_definitions(${target_definitions})
-if(build_test)
+if(build_lib)
+        add_library(${target_name} STATIC ${target_sources})
+elseif(build_test)
     add_executable(${target_name} ${target_sources})
 else()
     set(sources)

@@ -170,3 +170,4 @@ dkms.conf
 
 *.cut.js
 *.js.sum
+src/js

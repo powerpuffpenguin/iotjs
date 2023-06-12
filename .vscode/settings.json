@@ -107,6 +107,8 @@
     "http.h": "c",
     "net.h": "c",
     "native_http.h": "c",
-    "binary.h": "c"
+    "binary.h": "c",
+    "path.h": "c",
+    "es6-shim.h": "c"
   }
 }

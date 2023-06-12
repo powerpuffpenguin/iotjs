@@ -1,7 +1,7 @@
 #include <iotjs/core/js.h>
 #include <iotjs/core/module.h>
 #include <iotjs/core/number.h>
-#include <iotjs/modules/js/tsc.fs.h>
+#include <iotjs/modules/js/fs.h>
 #include <sys/stat.h>
 #include <errno.h>
 #include <sys/types.h>
@@ -291,7 +291,7 @@ duk_ret_t native_iotjs_fs_init(duk_context *ctx)
     duk_put_prop_lstring(ctx, -2, "FileMode", 8);
 
     // [exports]
-    duk_eval_lstring(ctx, iotjs_modules_js_tsc_fs_min_js, iotjs_modules_js_tsc_fs_min_js_len);
+    duk_eval_lstring(ctx, (const char *)js_iotjs_modules_js_fs_min_js, js_iotjs_modules_js_fs_min_js_len);
     duk_swap_top(ctx, 0);
 
     // [func, exports, _iotjs]

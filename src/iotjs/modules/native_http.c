@@ -640,6 +640,7 @@ static void ws_expand_read_cb(struct bufferevent *bev, void *args)
             return;
         }
         size_t readed = http_parser_execute(&expand->parser, &expand->settings, s, n);
+        http_parser_execute(&expand->parser, &expand->settings, s, 0);
         if (expand->state & IOTJS_NET_EXPAND_WS_STATE_ERR)
         {
             expand_ws_error_pushed(conn);
@@ -675,7 +676,7 @@ static void ws_expand_read_cb(struct bufferevent *bev, void *args)
             expand_ws_lerror(conn, "http parse header not found Connection", 38);
             return;
         }
-        else if (expand->parser.content_length)
+        else if (expand->parser.content_length && expand->parser.content_length != (uint64_t)-1)
         {
             expand_ws_lerror(conn, "upgrade websocket not support content", 37);
             return;
