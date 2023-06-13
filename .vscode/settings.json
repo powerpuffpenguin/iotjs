@@ -110,6 +110,7 @@
     "binary.h": "c",
     "path.h": "c",
     "es6-shim.h": "c",
-    "memory.h": "c"
+    "memory.h": "c",
+    "core.h": "c"
   }
 }

@@ -46,4 +46,6 @@ unsigned int iotjs_base64_encode(uint8_t *dst, const uint8_t *src, unsigned int 
 // 成功返回 dst 被寫入字節數，你可以將 dst 設置爲 NULL 來計算 dst 需要被寫入的字節
 // 如果 src 不是合法的編碼值，將返回 0
 unsigned int iotjs_base64_decode(uint8_t *dst, const uint8_t *src, unsigned int src_len, const uint8_t pading, const uint8_t *decode);
+
+void __iotjs_binary_init();
 #endif

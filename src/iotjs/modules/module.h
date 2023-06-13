@@ -1,7 +1,7 @@
 #ifndef IOTJS_MODULES_H
 #define IOTJS_MODULES_H
 #include <duktape.h>
-
+void __iotjs_modules_init();
 duk_ret_t native_iotjs_init(duk_context *ctx);
 duk_ret_t native_iotjs_encoding_hex_init(duk_context *ctx);
 

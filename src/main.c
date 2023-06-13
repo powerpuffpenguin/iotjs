@@ -1,4 +1,5 @@
 #include <iotjs/core/vm.h>
+#include <iotjs/core/core.h>
 #include <iotjs/core/memory.h>
 #include <event2/thread.h>
 #include <event2/event.h>
@@ -38,6 +39,7 @@ int main(int argc, char *argv[])
         puts("duk_create_heap error");
         return ret;
     }
+    vm_init_core();
     if (vm_init(ctx, argc, argv))
     {
         printf("iotjs_init: %s\n", duk_safe_to_string(ctx, -1));

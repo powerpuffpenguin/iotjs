@@ -102,7 +102,7 @@ const char *encodeStd = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz012
 const char *encodeURL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 char decodeStd[256];
 char decodeURL[256];
-static __attribute((constructor)) void __iotjs_byte_order_init()
+void __iotjs_binary_init()
 {
     byte_order_t *little, *big;
 

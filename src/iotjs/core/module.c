@@ -1,5 +1,6 @@
 #include <iotjs/core/module.h>
 #include <iotjs/core/defines.h>
+
 typedef struct
 {
     const char *name;
