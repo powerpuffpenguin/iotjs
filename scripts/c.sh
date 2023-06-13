@@ -3,6 +3,7 @@ wolfssl_version=wolfssl-5.6.0-stable
 libevent_version=libevent-2.1.12-stable
 libtomcrypt_version=libtomcrypt-1.18.2
 duktape_version=duktape-2.7.0
+thpool_version=C-Thread-Pool
 define_command(){
     command_begin --name c \
     --short 'build *.c' \
@@ -166,6 +167,9 @@ c_iotjs(){
     fi
     cd ..
 
+    if [[ ! -f /include/thpool.h ]];then
+        cp "$rootDir/third_party/${thpool_version}/thpool.h" include/
+    fi
     if [[ ! -f /include/duktape.h ]];then
         cp "$rootDir/third_party/${duktape_version}/duk_config.h" include/
         cp "$rootDir/third_party/${duktape_version}/duktape.h" include/
