@@ -436,11 +436,12 @@ export class TCPConn {
                     c[i].cb(undefined, e)
                 }
             }
-            let c1 = this.read_
-            if (c1) {
+            c = this.read_
+            if (c && c.length) {
                 this.read_ = undefined
-                this.readData_ = undefined
-                c1.reject(e)
+                for (let i = 0; i < c.length; i++) {
+                    c[i].cb(undefined, e)
+                }
             }
         }, true)
     }
@@ -500,18 +501,31 @@ export class TCPConn {
             }
             // 讀取數據
             const c = this.read_
-            if (c) {
-                this.read_ = undefined
-                const data = this.readData_!
-                this.readData_ = undefined
-                const n = deps.tcp_read(this.conn_, data)
-                if (n) {
-                    c.resolve(n)
-                } else {
-                    // 依然沒有數據，回調前可能有其它讀取
-                    this.read_ = c
-                    this.readData_ = data
-                    return
+            if (c && c.length) {
+                const length = c.length
+                let i = 0;
+                let node: TCPCancel
+                let n: number
+                for (; i < length; i++) {
+                    node = c[i]
+                    if (node.state_) {
+                        continue
+                    }
+
+                    n = deps.tcp_read(this.conn_, node.data as Uint8Array)
+                    if (n) {
+                        // 通知讀取成功
+                        node.cb(n)
+                    } else {
+                        // 依然沒有可寫，回調前可能有其它讀取
+                        if (i) {
+                            c.splice(0, i)
+                        }
+                        return
+                    }
+                }
+                if (i) {
+                    c.splice(0, i)
                 }
             }
 
@@ -663,40 +677,40 @@ export class TCPConn {
     /**
      * 嘗試讀取數據，返回實際讀取的字節數
      */
-    tryRead(s: Uint8Array | ArrayBuffer): number {
+    tryRead(s: Uint8Array | ArrayBuffer): number | undefined {
         if (this.closed_) {
             throw new NetError("TCPConn already closed")
         }
         if (!deps.get_length(s)) {
             return 0
         }
-        return runSync(() => deps.tcp_read(this.conn_, s), true)
+        try {
+            const n = deps.tcp_read(this.conn_, s)
+            return n == 0 ? undefined : n
+        } catch (e) {
+            netError(e)
+        }
     }
 
-    read(s: Uint8Array | ArrayBuffer): number | Promise<number> {
+    read(s: Uint8Array | ArrayBuffer, cb?: (n?: number, e?: any) => void): number | TCPCancel {
         const n = this.tryRead(s)
-        if (n) {
+        if (n !== undefined) {
             return n
         }
-        return this._read(s)
-    }
-    private read_: _iotjs.Completer<number> | undefined
-    private readData_: Uint8Array | ArrayBuffer | undefined
-    private async _read(s: Uint8Array | ArrayBuffer): Promise<number> {
-        // 等待未完成讀取
-        let c = this.read_
-        while (c) {
-            await c
-            if (this.closed_) {
-                throw new NetError("TCPConn already closed")
+        try {
+            const node = new TCPCancel(s, cb)
+            let r = this.read_
+            if (r) {
+                r.push(node)
+            } else {
+                this.read_ = [node]
             }
-            c = this.read_
+            return node
+        } catch (e) {
+            netError(e)
         }
-        c = new _iotjs.Completer<number>()
-        this.read_ = c
-        this.readData_ = s
-        return c.promise
     }
+    private read_?: Array<TCPCancel>
 
     get readable(): boolean {
         if (this.closed_) {

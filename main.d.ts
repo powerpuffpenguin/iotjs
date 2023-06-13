@@ -484,8 +484,9 @@ declare module "iotjs/net" {
         /**
          * 發送數據
          * @remarks
-         * 如果寫入成功返回寫入的字節數並且不會調用回調函數，
-         * 如果緩存區已滿會等待設備可寫後進行寫入，在寫入成功會發生錯誤後調用回調
+         * 如果寫入成功返回寫入的字節數並且不會調用回調函數。
+         * 如果緩存區已滿會等待設備可寫後進行寫入，在寫入成功或發生錯誤後調用回調，
+         * 此時會返回一個 Cancel，你可以在回調前調用 Cancel.cancel() 取消寫入
          */
         write(data: string | Uint8Array | ArrayBuffer, cb?: (n?: number, e?: any) => void): number | Cancel
         /**
@@ -494,20 +495,19 @@ declare module "iotjs/net" {
          */
         tryWrite(s: string | Uint8Array | ArrayBuffer): number | undefined
         /**
-         * 嘗試讀取數據，返回實際讀取字節數，如果沒有數據返回 0
+         * 嘗試讀取數據，返回實際讀取字節數，如果沒有數據返回 undefined
          * @param s 
          */
-        tryRead(s: string | Uint8Array | ArrayBuffer): number
+        tryRead(s: Uint8Array | ArrayBuffer): number | undefined
         /**
-         * 讀取數據返回實際讀取的字節數，如果沒有數據返回一個 Promise 用於異步讀取
+         * 讀取數據
          * 
          * @remarks
-         * 如果讀取到 eof 會返回 undefined，使用這個函數效率會比 onMessage 低很低，
-         * 實際上它在內部使用了底層的 onMessage 回調，但是它每次都需要創建一個 Promise 這個開銷比單純的
-         * onMessage 回調要大很低，所以如果邏輯簡單應該使用 onMessage。但是 read 比 onMessage 更容易處理複雜
-         * 的邏輯，但這不是性能瓶頸時推薦使用 read 函數
+         * 如果讀取到了數據返回讀取的字節數並且不會調用回調函數，
+         * 如果沒有數據可讀會等待設備變得可讀後進行讀取，在讀取成功或發生錯誤後調用回調，
+         * 此時會返回一個 Cancel，你可以在回調前調用 Cancel.cancel() 取消讀取
          */
-        read(data: Uint8Array | ArrayBuffer): number | Promise<number>
+        read(data: Uint8Array | ArrayBuffer): number | Cancel
         /**
          * 當收到數據時回調
          */
