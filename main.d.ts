@@ -43,60 +43,6 @@ declare module "iotjs" {
 
     export type BufferData = string | ArrayBuffer | DataView | Uint8Array | Uint8ClampedArray | Uint16Array | Uint32Array | Int8Array | Int16Array | Int32Array | Float32Array | Float64Array
 }
-declare module "iotjs/io" {
-    /**
-     * Seek whence values.
-     */
-    export enum Seek {
-        start = 0, // seek relative to the origin of the file
-        current = 1, // seek relative to the current offset
-        end = 2, // seek relative to the end
-    }
-    export class IoError extends Error {
-        /**
-         * 返回已經讀取或寫入的字節長度
-         */
-        n: number = 0
-    }
-    export class EofError extends IoError { }
-    export interface Writer {
-        write(p: Uint8Array): number | Promise<number>
-    }
-    export interface Reader {
-        /**
-         * 讀取數據到 p, 如果讀取到 eof 將 throw EofError
-         * @param p 
-         * @returns 返回隨機讀取到數據的長度
-         */
-        read(p: Uint8Array): number | Promise<number>
-    }
-    export interface Closer {
-        close(): void | Promise<void>
-    }
-    export interface Seeker {
-        seek(offset: number, whence: Seek): number | Promise<number>
-    }
-    export interface ReadWriter extends Reader, Writer { }
-    export interface ReadCloser extends Reader, Closer { }
-    export interface WriteCloser extends Writer, Closer { }
-    export interface ReadWriteCloser extends Reader, Writer, Closer { }
-    export interface ReadSeeker extends Reader, Seeker { }
-    export interface ReadSeekCloser extends Reader, Seeker, Closer { }
-    export interface WriteSeeker extends Writer, Seeker { }
-    export interface ReadWriteSeeker extends Reader, Writer, Seeker { }
-    export interface ReaderFrom {
-        ReadFrom(r: Reader): number | Promise<number>
-    }
-    export interface WriterTo {
-        WriteTo(w: Writer): number | Promise<number>
-    }
-    export interface ReaderAt {
-        ReadAt(p: Uint8Array, off: number): number | Promise<number>
-    }
-    export interface WriterAt {
-        WriteAt(p: Uint8Array, off: number): number | Promise<number>
-    }
-}
 declare module "iotjs/encoding/hex" {
     export function encodeLen(n: number): number
     export function encodeToString(src: BufferData | string): string
@@ -310,17 +256,6 @@ declare module "iotjs/crypto/sha512_256" {
      */
     export function hash(params: type): Hash
 }
-declare module "iotjs/crypto/tls" {
-    /**
-     * 用於配置 tls 客戶端或服務器，在被傳遞給 tls 函數後就不能再對它進行修改
-     */
-    export interface ConfigOptions {
-        /**
-         * 如果被設置爲 true 則客戶端不會驗證 tls 證書
-         */
-        insecureSkipVerify: boolean
-    }
-}
 declare module "iotjs/fs" {
     export enum FileMode {
         dir = 0x80000000,// d: 是一個目錄
@@ -412,6 +347,7 @@ declare module "iotjs/net" {
          * 如果爲 true 表示讀取到了 eof
          */
         eof?: boolean
+        cancel?: boolean
     }
     export interface TCPConnOptions {
         /**
@@ -442,6 +378,12 @@ declare module "iotjs/net" {
          */
         write?: number
     }
+    export interface Cancel {
+        /**
+         * 取消操作
+         */
+        cancel(): void
+    }
     /**
      * 一個 tcp 連接
      * 
@@ -463,7 +405,14 @@ declare module "iotjs/net" {
          * @param port 連接端口
          * @param opts 
          */
-        static connect(hostname: string, port: number, opts?: TCPConnOptions): Promise<TCPConn>
+        static connect(hostname: string, port: number, opts: TCPConnOptions, cb: (conn?: TCPConn, e?: any) => void): void
+        /**
+         * 連接 socket 服務器
+         * @param hostname 連接ip或域名
+         * @param port 連接端口
+         */
+        static connect(hostname: string, port: number, cb: (conn?: TCPConn, e?: any) => void): void
+
         private constructor()
 
         /** 
@@ -533,17 +482,17 @@ declare module "iotjs/net" {
         getTimeout(): [number, number]
 
         /**
-         * 發送一個數據幀，如果寫入緩衝區已滿則返回一個 Promise 用於異步寫入
+         * 發送數據
          * @remarks
-         * 這個函數和 read 類似，它比 tryWrite 開銷更大。當不可寫時會創建 Promise 並等待
-         * 設備變得可寫後，進行寫入。它在內部調用底層的 tryWrite 如果失敗則監聽 底層的 onWritable 回調
+         * 如果寫入成功返回寫入的字節數並且不會調用回調函數，
+         * 如果緩存區已滿會等待設備可寫後進行寫入，在寫入成功會發生錯誤後調用回調
          */
-        write(data: string | Uint8Array | ArrayBuffer): number | Promise<number>
+        write(data: string | Uint8Array | ArrayBuffer, cb?: (n?: number, e?: any) => void): number | Cancel
         /**
-         * 嘗試寫入數據，返回實際寫入字節數，如果緩衝區已滿返回 0
+         * 嘗試寫入數據，返回實際寫入字節數，如果緩衝區已滿返回 undefined
          * @param s 
          */
-        tryWrite(s: string | Uint8Array | ArrayBuffer): number
+        tryWrite(s: string | Uint8Array | ArrayBuffer): number | undefined
         /**
          * 嘗試讀取數據，返回實際讀取字節數，如果沒有數據返回 0
          * @param s 
@@ -612,7 +561,12 @@ declare module "iotjs/net" {
         /**
          * 連接 websocket 服務器
          */
-        static connect(url: string, opts?: WebsocketConnOptions): Promise<WebsocketConn>
+        static connect(url: string, opts: WebsocketConnOptions, cb: (conn?: WebsocketConn, e?: any) => void): void
+        /**
+         * 連接 websocket 服務器
+         */
+        static connect(url: string, cb: (conn?: WebsocketConn, e?: any) => void): void
+
         private constructor()
 
         /** 

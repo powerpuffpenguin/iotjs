@@ -133,6 +133,7 @@ export class NetError extends _iotjs.IotError {
         this.name = "NetError"
     }
     eof?: boolean
+    cancel?: boolean
 }
 function netError(e: any): never {
     if (typeof e === "string") {
@@ -286,34 +287,41 @@ export interface TCPConnHook {
     onClear?: (e: any) => boolean
 }
 export class TCPConn {
-    static connect(addr: string, port: number, opts?: TCPConnOptions, hook?: TCPConnHook): Promise<TCPConn> {
-        return runSync(() => {
-            const tls = opts?.tls ?? false;
-            return new Promise<TCPConn>((resolve, reject) => {
-                deps.tcp_connect({
-                    addr: addr,
-                    port: port,
-                    tls: tls,
-                    hostname: tls ? (opts?.hostname ?? addr) : undefined,
-                    insecure: tls ? (opts?.insecure ?? false) : undefined,
-                    timeout: opts?.timeout ?? 0,
-                    read: opts?.read ?? 1024 * 1024,
-                    write: opts?.write ?? 1024 * 1024,
-                }, (conn, e) => {
-                    if (conn) {
-                        let ok: TCPConn
-                        try {
-                            ok = new TCPConn(conn, hook)
-                        } catch (e) {
-                            reject(e)
-                            return
-                        }
-                        resolve(ok)
-                    } else {
-                        reject(getError(e))
-                    }
-                })
-            })
+    static connect(addr: string, port: number, arg0?: any, arg1?: any, arg2?: any): void {
+        let opts: undefined | TCPConnOptions
+        let cb: (conn?: TCPConn, e?: any) => void
+        let hook: undefined | TCPConnHook
+        if (typeof arg1 === "function") {
+            opts = arg0
+            cb = arg1
+            hook = arg2
+        } else {
+            cb = arg0
+            hook = arg1
+        }
+        const tls = opts?.tls ?? false;
+        deps.tcp_connect({
+            addr: addr,
+            port: port,
+            tls: tls,
+            hostname: tls ? (opts?.hostname ?? addr) : undefined,
+            insecure: tls ? (opts?.insecure ?? false) : undefined,
+            timeout: opts?.timeout ?? 0,
+            read: opts?.read ?? 1024 * 1024,
+            write: opts?.write ?? 1024 * 1024,
+        }, (conn, e) => {
+            if (conn) {
+                let ok: TCPConn
+                try {
+                    ok = new TCPConn(conn, hook)
+                } catch (e) {
+                    runSync(() => cb(undefined, e), true)
+                    return
+                }
+                runSync(() => cb(ok), true)
+            } else {
+                runSync(() => cb(undefined, getError(e)), true)
+            }
         })
     }
     protected constructor(readonly conn_: deps.TCPConn, readonly hook_?: TCPConnHook) {
@@ -422,16 +430,17 @@ export class TCPConn {
                 return
             }
             let c = this.write_
-            if (c) {
+            if (c && c.length) {
                 this.write_ = undefined
-                this.writeData_ = undefined
-                c.reject(e)
+                for (let i = 0; i < c.length; i++) {
+                    c[i].cb(undefined, e)
+                }
             }
-            c = this.read_
-            if (c) {
+            let c1 = this.read_
+            if (c1) {
                 this.read_ = undefined
                 this.readData_ = undefined
-                c.reject(e)
+                c1.reject(e)
             }
         }, true)
     }
@@ -446,19 +455,31 @@ export class TCPConn {
 
             // 寫入未完成數據
             const c = this.write_
-            if (c) {
-                const data = this.writeData_!
-                this.write_ = undefined
-                this.writeData_ = undefined
+            if (c && c.length) {
+                const length = c.length
+                let i = 0;
+                let node: TCPCancel
+                let n: number
+                for (; i < length; i++) {
+                    node = c[i]
+                    if (node.state_) {
+                        continue
+                    }
 
-                const n = deps.tcp_write(this.conn_, data)
-                if (n) {
-                    c.resolve(n)
-                } else {
-                    // 依然沒有足夠緩存，回調前可能有其它寫入
-                    this.write_ = c
-                    this.writeData_ = data
-                    return
+                    n = deps.tcp_write(this.conn_, node.data)
+                    if (n) {
+                        // 通知寫入成功
+                        node.cb(n)
+                    } else {
+                        // 依然沒有足夠緩存，回調前可能有其它寫入
+                        if (i) {
+                            c.splice(0, i)
+                        }
+                        return
+                    }
+                }
+                if (i) {
+                    c.splice(0, i)
                 }
             }
 
@@ -605,7 +626,7 @@ export class TCPConn {
      * 嘗試寫入數據，返回實際寫入字節數
      * @param s 
      */
-    tryWrite(s: string | Uint8Array | ArrayBuffer): number {
+    tryWrite(s: string | Uint8Array | ArrayBuffer): number | undefined {
         if (this.closed_) {
             throw new NetError("TCPConn already closed")
         }
@@ -613,38 +634,32 @@ export class TCPConn {
             return 0
         }
         try {
-            return deps.tcp_write(this.conn_, s)
+            const n = deps.tcp_write(this.conn_, s)
+            return n == 0 ? undefined : n
         } catch (e) {
             netError(e)
         }
     }
 
-    write(s: string | Uint8Array | ArrayBuffer): number | Promise<number> {
+    write(s: string | Uint8Array | ArrayBuffer, cb?: (n?: number, e?: any) => void): number | TCPCancel {
         const n = this.tryWrite(s)
-        if (n) {
+        if (n !== undefined) {
             return n
         }
-        return this._write(s)
-    }
-    private write_: _iotjs.Completer<number> | undefined
-    private writeData_: string | Uint8Array | ArrayBuffer | undefined
-    private async _write(s: string | Uint8Array | ArrayBuffer): Promise<number> {
-        // 等待未完成寫入
-        let c = this.write_
-        while (c) {
-            await c
-            if (this.closed_) {
-                throw new NetError("TCPConn already closed")
+        try {
+            const node = new TCPCancel(s, cb)
+            let w = this.write_
+            if (w) {
+                w.push(node)
+            } else {
+                this.write_ = [node]
             }
-            c = this.write_
+            return node
+        } catch (e) {
+            netError(e)
         }
-
-        // 鎖定寫入
-        c = new _iotjs.Completer<number>()
-        this.write_ = c
-        this.writeData_ = s
-        return c.promise
     }
+    private write_?: Array<TCPCancel>
     /**
      * 嘗試讀取數據，返回實際讀取的字節數
      */
@@ -735,6 +750,41 @@ export class TCPConn {
         return [this.tr_, this.tw_]
     }
 }
+class TCPCancel {
+    constructor(
+        readonly data: string | Uint8Array | ArrayBuffer,
+        readonly cb_?: (n?: number, e?: any) => void,
+    ) { }
+    state_?: number
+    cancel(e?: any): void {
+        if (this.state_) {
+            return
+        }
+        this.state_ = -1
+
+        const cb = this.cb_
+        if (cb) {
+            if (e) {
+                e = getError(e)
+            } else {
+                e = new NetError("write cancel")
+                e.cancel = true
+            }
+            runSync(() => cb(undefined, e), true)
+        }
+    }
+    cb(n?: number, e?: any) {
+        if (this.state_) {
+            return
+        }
+        this.state_ = 1
+
+        const cb = this.cb_
+        if (cb) {
+            runSync(() => cb(n, e), true)
+        }
+    }
+}
 export interface WebsocketConnOptions {
     /**
      * 如果設置了此值，將直接連接此地址，而非從 url 解析 服務器地址
@@ -805,23 +855,33 @@ class WebsocketConnect {
             hostname: opts?.wss ? opts.sni : undefined,
             read: ws?.read,
             write: ws?.write,
-        }, opts.hook).then(async (conn) => {
-            this.conn_ = conn
-            try {
-                await conn.write(opts.handshake)
-                deps.http_expand_ws(conn.conn_, opts.key, ws?.readlimit ?? 1024 * 1024, (e) => {
-                    if (e) {
-                        this._reject(e)
-                    } else {
-                        this._resolve(conn)
+        }, (conn?: TCPConn, e?: any) => {
+            if (conn) {
+                try {
+                    this.conn_ = conn
+                    const cb = () => {
+                        try {
+                            deps.http_expand_ws(conn.conn_, opts.key, ws?.readlimit ?? 1024 * 1024, (e) => {
+                                if (e) {
+                                    this._reject(e)
+                                } else {
+                                    this._resolve(conn)
+                                }
+                            })
+                        } catch (e) {
+                            this._reject(e)
+                        }
                     }
-                })
-            } catch (e) {
+                    if (typeof conn.write(opts.handshake, cb) === "number") {
+                        cb()
+                    }
+                } catch (e) {
+                    this._reject(e)
+                }
+            } else {
                 this._reject(e)
             }
-        }).catch((e) => {
-            this._reject(e)
-        })
+        }, opts.hook)
     }
     private _reject(e: any, timeout?: boolean) {
         let x: any = this.t_
@@ -852,7 +912,16 @@ export class WebsocketConn {
     * @param port 連接端口
     * @param opts 
     */
-    static connect(url: string, opts?: WebsocketConnOptions): Promise<WebsocketConn> {
+    static connect(url: string, arg1?: any, arg2?: any): void {
+        let opts: undefined | WebsocketConnOptions
+        let cb: (conn?: WebsocketConn, e?: any) => void
+        if (typeof arg1 === "function") {
+            cb = arg1
+        } else {
+            opts = arg1
+            cb = arg2
+        }
+
         const u = deps.http_parse_url(url)
         let port = u.port
         let host: string
@@ -901,21 +970,20 @@ Sec-WebSocket-Key: ${key}
             handshake: handshake,
             hook: hook,
         }, opts)
-        return new Promise((resolve, reject) => {
-            connect.begin((conn, e) => {
-                if (conn) {
-                    let cc: WebsocketConn
-                    try {
-                        cc = new WebsocketConn(conn, hook)
-                    } catch (e) {
-                        reject(getError(e))
-                        return
-                    }
-                    resolve(cc)
-                } else {
-                    reject(e)
+
+        connect.begin((conn, e) => {
+            if (conn) {
+                let cc: WebsocketConn
+                try {
+                    cc = new WebsocketConn(conn, hook)
+                } catch (e) {
+                    runSync(() => cb(undefined, getError(e)), true)
+                    return
                 }
-            })
+                runSync(() => cb(cc), true)
+            } else {
+                runSync(() => cb(undefined, e), true)
+            }
         })
     }
     private constructor(private readonly conn_: TCPConn, hook: TCPConnHook) {
