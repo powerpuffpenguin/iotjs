@@ -59,7 +59,15 @@ declare namespace deps {
         header: Record<string, string>
         body?: Uint8Array
     }
-    export function make_request(conn: Conn, req: Request, method: string, path: string): void
+    export interface MakeRequestOptions {
+        conn: Conn
+        req: Request
+        method: string
+        path: string
+        limit: number
+    }
+    export function make_request(opts: MakeRequestOptions): void
+    export function cancel_request(req: Request): void
 }
 
 export class HTTPError extends _iotjs.IotError {
@@ -67,7 +75,7 @@ export class HTTPError extends _iotjs.IotError {
         super(message, options)
         this.name = "NetError"
     }
-    eof?: boolean
+    cancel?: boolean
 }
 
 function getError(e: any): any {
@@ -161,7 +169,7 @@ export class Client {
     }
     onClose?: () => boolean
 
-    do(opts: RequestOptions, cb?: (resp?: deps.Response, e?: any) => void) {
+    do(opts: RequestOptions, cb?: (resp?: deps.Response, e?: any) => void): Cancel {
         let body: undefined | string | Uint8Array | ArrayBuffer
         const method = opts.method ?? "GET"
         switch (method) {
@@ -176,16 +184,37 @@ export class Client {
             default:
                 throw new Error(`not supported method: ${method}`)
         }
+        let ok = false
         const req = deps.new_request(body, (resp, e) => {
-            runSync(() => {
-                if (cb) {
+            if (ok) {
+                return
+            }
+            ok = true
+            if (cb) {
+                runSync(() => {
                     if (resp) {
-                        cb(resp)
+                        cb!(resp)
                     } else {
-                        cb(undefined, getError(e))
+                        cb!(undefined, getError(e))
                     }
-                }
-            })
+                })
+            }
+        })
+        const cancel = new Cancel((e?: any) => {
+            if (ok) {
+                deps.cancel_request(req)
+                return
+            }
+            ok = true
+            if (cb) {
+                runSync(() => {
+                    if (e === undefined || e === null) {
+                        e = new HTTPError("cancel")
+                        e.cancel = true
+                    }
+                    cb!(undefined, e)
+                })
+            }
         })
         try {
             const header = opts.header
@@ -221,14 +250,24 @@ export class Client {
             throw getError(e)
         }
         runSync(() => {
-            deps.make_request(this.conn_, req, method, opts.path ?? '/')
+            deps.make_request({
+                conn: this.conn_,
+                req: req,
+                method: method,
+                path: opts.path ?? '/',
+                limit: opts?.limit ?? 5 * 1024 * 1024,
+            })
         })
+        return cancel
     }
 }
-
+export class Cancel {
+    constructor(readonly cancel?: (e?: any) => void) { }
+}
 export interface RequestOptions {
-    method?: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+    limit?: number
     path?: string
+    method?: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
     header?: Record<string, string>
     body?: string | Uint8Array | ArrayBuffer
 }

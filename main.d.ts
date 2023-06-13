@@ -705,6 +705,15 @@ declare module "iotjs/net" {
     }
 }
 declare module "iotjs/net/http" {
+    /**
+     * 調用網路接口相關異常
+     */
+    export class HTTPError extends Error {
+        /**
+         * 調用 cancel 取消了請求
+         */
+        cancel?: boolean
+    }
     export interface URL {
         scheme: string
         host: string
@@ -754,7 +763,7 @@ declare module "iotjs/net/http" {
         /**
          * 發送一個 http 請求 
          */
-        do(req: RequestOptions, cb?: (resp?: Response, e?: any) => void): void
+        do(req: RequestOptions, cb?: (resp?: Response, e?: any) => void): Cancel
     }
     export interface RequestOptions {
         /**
@@ -762,13 +771,20 @@ declare module "iotjs/net/http" {
          * 默認爲 5*1024*1024
          */
         limit?: number
+        /**
+         * 請求路徑，默認 '/'
+         */
+        path?: string
         method?: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
         header?: Record<string, string>
         body?: string | Uint8Array | ArrayBuffer
     }
-    export class Response {
+    export interface Response {
         code: number
         header?: Record<string, string>
         body?: Uint8Array
+    }
+    export interface Cancel {
+        cancel(e?: any): void
     }
 }

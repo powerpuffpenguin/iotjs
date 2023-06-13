@@ -166,7 +166,9 @@ typedef struct
 {
     vm_context_t *vm;
     struct evhttp_request *req;
+    struct evhttp_request *req0;
     enum evhttp_request_error err;
+    duk_uint64_t limit;
     duk_bool_t hasErr;
 } http_request_t;
 static void http_request_free(void *arg)
@@ -284,7 +286,7 @@ static duk_ret_t native_http_cb(duk_context *ctx)
             }
             duk_put_prop_lstring(ctx, -2, "body", 4);
         }
-        else if (n > 1024 * 1024 * 5)
+        else if (p->limit && n > p->limit)
         {
             duk_range_error(ctx, "response.body too large %d", n);
         }
@@ -351,6 +353,7 @@ static duk_ret_t _native_new_request(duk_context *ctx)
         duk_push_lstring(ctx, "evhttp_request_new error", 24);
         duk_throw(ctx);
     }
+    p->req0 = p->req;
     evhttp_request_set_error_cb(p->req, on_http_error);
 
     if (sz)
@@ -436,18 +439,30 @@ static enum evhttp_cmd_type _native_check_method(duk_context *ctx, const char *m
 static duk_ret_t _native_make_request(duk_context *ctx)
 {
 
-    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, http_conn_free);
-    http_conn_t *conn = finalizer->p;
-    finalizer = vm_require_finalizer(ctx, 1, http_request_free);
-    http_request_t *req = finalizer->p;
     duk_size_t sz_method;
-    const char *method = duk_require_lstring(ctx, 2, &sz_method);
+    VM_DUK_REQUIRE_LSTRING(
+        const char *method = duk_require_lstring(ctx, -1, &sz_method),
+        ctx, 0, "method", 6)
     enum evhttp_cmd_type type = _native_check_method(ctx, method, sz_method);
-    const char *path = duk_require_string(ctx, 3);
+    VM_DUK_REQUIRE_LSTRING(
+        const char *path = duk_require_string(ctx, -1),
+        ctx, 0, "path", 4)
+    VM_DUK_REQUIRE_LSTRING(
+        duk_uint64_t limit = (duk_uint64_t)duk_require_number(ctx, -1),
+        ctx, 0, "limit", 5)
+
+    duk_get_prop_lstring(ctx, 0, "conn", 4);
+    finalizer_t *finalizer = vm_require_finalizer(ctx, -1, http_conn_free);
+    http_conn_t *conn = finalizer->p;
+    duk_pop(ctx);
+
+    duk_get_prop_lstring(ctx, 0, "req", 3);
+    finalizer = vm_require_finalizer(ctx, -1, http_request_free);
+    http_request_t *req = finalizer->p;
+    req->limit = limit;
+    duk_pop(ctx);
 
     vm_context_t *vm = vm_get_context(ctx);
-
-    // [args,  completer]
     struct evhttp_request *request = req->req;
     req->req = NULL;
     if (evhttp_make_request(conn->conn, request, type, path))
@@ -457,7 +472,13 @@ static duk_ret_t _native_make_request(duk_context *ctx)
     req->vm = vm;
     return 0;
 }
-
+duk_ret_t _native_cancel_request(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, http_request_free);
+    http_request_t *req = finalizer->p;
+    evhttp_cancel_request(req->req0);
+    return 0;
+}
 duk_ret_t native_iotjs_net_http_init(duk_context *ctx)
 {
     duk_swap(ctx, 0, 1);
@@ -478,10 +499,12 @@ duk_ret_t native_iotjs_net_http_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "new_request", 11);
         duk_push_c_lightfunc(ctx, _native_free_request, 1, 1, 0);
         duk_put_prop_lstring(ctx, -2, "free_request", 12);
-        duk_push_c_function(ctx, _native_add_header, 3);
+        duk_push_c_lightfunc(ctx, _native_add_header, 3, 3, 0);
         duk_put_prop_lstring(ctx, -2, "add_header", 10);
-        duk_push_c_function(ctx, _native_make_request, 4);
+        duk_push_c_lightfunc(ctx, _native_make_request, 1, 1, 0);
         duk_put_prop_lstring(ctx, -2, "make_request", 12);
+        duk_push_c_lightfunc(ctx, _native_cancel_request, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "cancel_request", 14);
 
         native_iotjs_net_deps_http(ctx, 1);
     }
