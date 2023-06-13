@@ -751,8 +751,10 @@ declare module "iotjs/net/http" {
          * 連接關閉後回調，你可以在此釋放相關資源
          */
         onClosed?: () => boolean
-        do(req: RequestOptions): Promise<Response>
-
+        /**
+         * 發送一個 http 請求 
+         */
+        do(req: RequestOptions, cb?: (resp?: Response, e?: any) => void): void
     }
     export interface RequestOptions {
         /**
@@ -769,14 +771,4 @@ declare module "iotjs/net/http" {
         header?: Record<string, string>
         body?: Uint8Array
     }
-    /**
-     * 發送一個 http 請求
-     * @param req 
-     */
-    export function request(url: string, opts: RequestOptions): Response | Promise<Response>
-
-    /**
-     * 關閉所有空閒的連接
-     */
-    export function close_idle(): void
 }
