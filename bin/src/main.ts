@@ -3,7 +3,6 @@ import { command as timer } from "./test/timer";
 import { command as fibonacci } from "./test/fibonacci";
 import { command as fs } from "./test/fs";
 import { command as dns } from "./test/dns";
-import { command as http } from "./test/http";
 import { command as tcp } from "./test/tcp";
 import { command as unit } from "./unit/command";
 if (iotjs.arch === "csky") {
@@ -22,7 +21,6 @@ root.add(
     fibonacci,
     fs,
     dns,
-    http,
     tcp,
 )
 

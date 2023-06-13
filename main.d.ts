@@ -340,6 +340,24 @@ declare module "iotjs/fs" {
  */
 declare module "iotjs/net" {
     /**
+     * @alpha
+     */
+    export class IP {
+        static fromIP4(s: string): IP;
+        static fromIP6(s: string): IP;
+        constructor(public readonly ip: Uint8Array) { }
+        readonly ip4: boolean
+        readonly ip6: boolean
+        toString(): string
+        string(): string
+    }
+    /**
+     * @alpha
+     */
+    export function resolveIP(network: 'ip' | 'ip4' | 'ip6', address: string): Promise<Array<IP>>
+
+
+    /**
      * 調用網路接口相關異常
      */
     export class NetError extends Error {
@@ -506,7 +524,7 @@ declare module "iotjs/net" {
          * 如果沒有數據可讀會等待設備變得可讀後進行讀取，在讀取成功或發生錯誤後調用回調，
          * 此時會返回一個 Cancel，你可以在回調前調用 Cancel.cancel() 取消讀取
          */
-        read(data: Uint8Array | ArrayBuffer): number | Cancel
+        read(data: Uint8Array | ArrayBuffer, cb?: (n?: number, e?: any) => void): number | Cancel
         /**
          * 當收到數據時回調
          */

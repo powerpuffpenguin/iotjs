@@ -29,7 +29,18 @@ class Client {
     private async readfull(data: Uint8Array) {
         let n: number
         while (data.length) {
-            n = await this.conn.read(data)
+            n = await new Promise((resolve, reject) => {
+                const n = this.conn.read(data, (n, e) => {
+                    if (n) {
+                        resolve(n)
+                    } else {
+                        reject(e)
+                    }
+                })
+                if (typeof n === "number") {
+                    resolve(n)
+                }
+            })
             data = data.subarray(n)
         }
     }
@@ -92,8 +103,18 @@ export const command = new Command({
         return async () => {
             const at = Date.now()
             try {
-                const conn = await net.TCPConn.connect(addr.value, port.value, {
-                    tls: tls.value,
+                const conn = await new Promise<net.TCPConn>((resolve, reject) => {
+                    const useTLS = tls.value
+                    net.TCPConn.connect(addr.value, port.value, {
+                        tls: useTLS,
+                        insecure: useTLS ? true : undefined,
+                    }, (conn, e) => {
+                        if (conn) {
+                            resolve(conn)
+                        } else {
+                            reject(e)
+                        }
+                    })
                 })
                 console.log(`connect: ${addr.value}:${port.value} success`)
                 try {
