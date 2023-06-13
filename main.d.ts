@@ -378,7 +378,7 @@ declare module "iotjs/net" {
          */
         write?: number
     }
-    export interface Cancel {
+    export class Cancel {
         /**
          * 取消操作
          */
@@ -394,9 +394,8 @@ declare module "iotjs/net" {
      * 1. 設置 onMessage 回調，系統會自動讀取數據並回調此函數
      * 2. onMessage 每次都會創建一個新的 Uint8Array 用於讀取數據，你也可以設置 onWritable，它將在有數據可讀時被回調，
      *      應該在回調中使用 tryRead 讀取數據
-     * 3. 調用 read 函數來讀取數據，如果沒有數據可讀它將返回一個 Promise 並在數據準備好後讀取數據並喚醒 Promise
+     * 3. 調用 read 函數來讀取數據，如果沒有數據可讀將等待數據可讀再自動讀取，並通過回調函數通知讀取結果
      * 
-     * 如果不設置 onMessage/onWritable 並且沒有調用 read 函數在，則可能無法獲取到 tcp 異常的通知
      */
     export class TCPConn {
         /**
@@ -485,7 +484,7 @@ declare module "iotjs/net" {
          * 發送數據
          * @remarks
          * 如果寫入成功返回寫入的字節數並且不會調用回調函數。
-         * 如果緩存區已滿會等待設備可寫後進行寫入，在寫入成功或發生錯誤後調用回調，
+         * 如果緩衝區已滿會等待設備可寫後進行寫入，在寫入成功或發生錯誤後調用回調，
          * 此時會返回一個 Cancel，你可以在回調前調用 Cancel.cancel() 取消寫入
          */
         write(data: string | Uint8Array | ArrayBuffer, cb?: (n?: number, e?: any) => void): number | Cancel
@@ -636,9 +635,13 @@ declare module "iotjs/net" {
         getTimeout(): [number, number]
 
         /**
-         * 寫入一幀數據，如果緩衝區已滿等待設備變得可寫後自動寫入並使用 Promis 返回寫入結果
+         * 寫入一幀數據
+         * @remarks
+         * 如果寫入成功返回 true 並且不會調用回調函數。
+         * 如果緩衝區已滿會等待設備可寫後進行寫入，在寫入成功或發生錯誤後調用回調，
+         * 此時會返回一個 Cancel，你可以在回調前調用 Cancel.cancel() 取消寫入
          */
-        send(data: string | Uint8Array | ArrayBuffer): boolean | Promise<boolean>
+        send(data: string | Uint8Array | ArrayBuffer, cb?: (ok?: boolean, e?: any) => void): boolean | Cancel
         /**
          * 嘗試寫入一幀數據，如果緩衝區已滿返回 false
          * @param s 
@@ -647,11 +650,15 @@ declare module "iotjs/net" {
         /**
          * 嘗試讀取一個完整的 消息
          */
-        tryRecv(): string | Uint8Array
+        tryRecv(): string | Uint8Array | undefined
         /**
-         * 讀取一個完整的 消息 如果消息沒有收完，繼續接收並使用 Promise 返回讀取結果
+         * 讀取一個完整的 消息 如果消息沒有收完
+          * @remarks
+         * 如果讀取到了數據返回讀取的數並且不會調用回調函數。
+         * 如果沒有消息可讀會等待接收完整的消息，在讀取成功或發生錯誤後調用回調，
+         * 此時會返回一個 Cancel，你可以在回調前調用 Cancel.cancel() 取消讀取
          */
-        recv(): string | Uint8Array | Promise<string | Uint8Array>
+        recv(cb?: (data?: string | Uint8Array, e?: any) => void): string | Uint8Array | Cancel
         /**
          * 當收到一個完整消息時回調
          */

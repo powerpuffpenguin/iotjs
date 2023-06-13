@@ -459,7 +459,7 @@ export class TCPConn {
             if (c && c.length) {
                 const length = c.length
                 let i = 0;
-                let node: TCPCancel
+                let node: Cancel
                 let n: number
                 for (; i < length; i++) {
                     node = c[i]
@@ -467,7 +467,7 @@ export class TCPConn {
                         continue
                     }
 
-                    n = deps.tcp_write(this.conn_, node.data)
+                    n = deps.tcp_write(this.conn_, node.data!)
                     if (n) {
                         // 通知寫入成功
                         node.cb(n)
@@ -504,7 +504,7 @@ export class TCPConn {
             if (c && c.length) {
                 const length = c.length
                 let i = 0;
-                let node: TCPCancel
+                let node: Cancel
                 let n: number
                 for (; i < length; i++) {
                     node = c[i]
@@ -655,25 +655,21 @@ export class TCPConn {
         }
     }
 
-    write(s: string | Uint8Array | ArrayBuffer, cb?: (n?: number, e?: any) => void): number | TCPCancel {
+    write(s: string | Uint8Array | ArrayBuffer, cb?: (n?: number, e?: any) => void): number | Cancel {
         const n = this.tryWrite(s)
         if (n !== undefined) {
             return n
         }
-        try {
-            const node = new TCPCancel(s, cb)
-            let w = this.write_
-            if (w) {
-                w.push(node)
-            } else {
-                this.write_ = [node]
-            }
-            return node
-        } catch (e) {
-            netError(e)
+        const node = new Cancel(s, cb)
+        let w = this.write_
+        if (w) {
+            w.push(node)
+        } else {
+            this.write_ = [node]
         }
+        return node
     }
-    private write_?: Array<TCPCancel>
+    private write_?: Array<Cancel>
     /**
      * 嘗試讀取數據，返回實際讀取的字節數
      */
@@ -692,25 +688,21 @@ export class TCPConn {
         }
     }
 
-    read(s: Uint8Array | ArrayBuffer, cb?: (n?: number, e?: any) => void): number | TCPCancel {
+    read(s: Uint8Array | ArrayBuffer, cb?: (n?: number, e?: any) => void): number | Cancel {
         const n = this.tryRead(s)
         if (n !== undefined) {
             return n
         }
-        try {
-            const node = new TCPCancel(s, cb)
-            let r = this.read_
-            if (r) {
-                r.push(node)
-            } else {
-                this.read_ = [node]
-            }
-            return node
-        } catch (e) {
-            netError(e)
+        const node = new Cancel(s, cb)
+        let r = this.read_
+        if (r) {
+            r.push(node)
+        } else {
+            this.read_ = [node]
         }
+        return node
     }
-    private read_?: Array<TCPCancel>
+    private read_?: Array<Cancel>
 
     get readable(): boolean {
         if (this.closed_) {
@@ -764,10 +756,10 @@ export class TCPConn {
         return [this.tr_, this.tw_]
     }
 }
-class TCPCancel {
+export class Cancel {
     constructor(
-        readonly data: string | Uint8Array | ArrayBuffer,
-        readonly cb_?: (n?: number, e?: any) => void,
+        readonly data?: string | Uint8Array | ArrayBuffer,
+        readonly cb_?: (n?: any, e?: any) => void,
     ) { }
     state_?: number
     cancel(e?: any): void {
@@ -787,7 +779,7 @@ class TCPCancel {
             runSync(() => cb(undefined, e), true)
         }
     }
-    cb(n?: number, e?: any) {
+    cb(n?: any, e?: any) {
         if (this.state_) {
             return
         }
@@ -1002,17 +994,33 @@ Sec-WebSocket-Key: ${key}
     }
     private constructor(private readonly conn_: TCPConn, hook: TCPConnHook) {
         hook.onWrite = () => {
-            // 讀取數據
+            // 寫入未完成數據
             const c = this.send_
-            if (c) {
-                const data = this.sendData_!
-                this.send_ = undefined
-                if (deps.ws_send(this.conn_.conn_, data)) {
-                    c.resolve(true)
-                } else {
-                    this.sendData_ = data
-                    this.send_ = c
-                    return true
+            if (c && c.length) {
+                const length = c.length
+                let i = 0;
+                let node: Cancel
+                let ok: boolean
+                for (; i < length; i++) {
+                    node = c[i]
+                    if (node.state_) {
+                        continue
+                    }
+
+                    ok = deps.ws_send(this.conn_.conn_, node.data!)
+                    if (ok) {
+                        // 通知寫入成功
+                        node.cb(ok)
+                    } else {
+                        // 依然沒有足夠緩存，回調前可能有其它寫入
+                        if (i) {
+                            c.splice(0, i)
+                        }
+                        return true
+                    }
+                }
+                if (i) {
+                    c.splice(0, i)
                 }
             }
 
@@ -1025,15 +1033,31 @@ Sec-WebSocket-Key: ${key}
         hook.onRead = () => {
             // 讀取數據
             const c = this.recv_
-            if (c) {
-                this.recv_ = undefined
-                const data = deps.ws_read(this.conn_.conn_)
-                if (data) {
-                    c.resolve(data)
-                } else {
-                    // 依然沒有數據，回調前可能有其它讀取
-                    this.recv_ = c
-                    return true
+            if (c && c.length) {
+                const length = c.length
+                let i = 0;
+                let node: Cancel
+                let data: string | Uint8Array | undefined
+                for (; i < length; i++) {
+                    node = c[i]
+                    if (node.state_) {
+                        continue
+                    }
+
+                    data = deps.ws_read(this.conn_.conn_)
+                    if (data) {
+                        // 通知讀取成功
+                        node.cb(data)
+                    } else {
+                        // 依然沒有可寫，回調前可能有其它讀取
+                        if (i) {
+                            c.splice(0, i)
+                        }
+                        return true
+                    }
+                }
+                if (i) {
+                    c.splice(0, i)
                 }
             }
 
@@ -1058,15 +1082,19 @@ Sec-WebSocket-Key: ${key}
             return true
         }
         hook.onClear = (e) => {
-            let c: any = this.send_
-            if (c) {
+            let c = this.send_
+            if (c && c.length) {
                 this.send_ = undefined
-                c.reject(e)
+                for (let i = 0; i < c.length; i++) {
+                    c[i].cb(undefined, e)
+                }
             }
             c = this.recv_
-            if (c) {
+            if (c && c.length) {
                 this.recv_ = undefined
-                c.reject(e)
+                for (let i = 0; i < c.length; i++) {
+                    c[i].cb(undefined, e)
+                }
             }
             return true
         }
@@ -1138,61 +1166,43 @@ Sec-WebSocket-Key: ${key}
         if (this.conn_.isClosed) {
             throw new NetError("TCPConn already closed")
         }
-        try {
-            return deps.ws_send(this.conn_.conn_, data)
-        } catch (e) {
-            netError(e)
-        }
+        return runSync(() => deps.ws_send(this.conn_.conn_, data), true)
     }
-    send(data: string | Uint8Array | ArrayBuffer): boolean | Promise<boolean> {
+    send(data: string | Uint8Array | ArrayBuffer, cb?: (ok?: boolean, e?: any) => void): boolean | Cancel {
         if (this.trySend(data)) {
             return true
         }
-        return this._send(data)
-    }
-    private send_?: _iotjs.Completer<boolean>
-    private sendData_?: string | Uint8Array | ArrayBuffer
-    private async _send(data: string | Uint8Array | ArrayBuffer): Promise<boolean> {
-        // 等待未完成寫入
-        let c = this.send_
-        while (c) {
-            await c
-            if (this.conn_.isClosed) {
-                throw new NetError("TCPConn already closed")
-            }
-            c = this.send_
+        const node = new Cancel(data, cb)
+        let w = this.send_
+        if (w) {
+            w.push(node)
+        } else {
+            this.send_ = [node]
         }
-        c = new _iotjs.Completer()
-        this.sendData_ = data
-        this.send_ = c
-        return c.promise
+        return node
     }
+    private send_?: Array<Cancel>
     tryRecv(): undefined | string | Uint8Array {
         if (this.conn_.isClosed) {
             throw new NetError("TCPConn already closed")
         }
         return runSync(() => deps.ws_read(this.conn_.conn_), true)
     }
-    recv(): string | Uint8Array | Promise<string | Uint8Array> {
+    recv(cb?: (data?: string | Uint8Array, e?: any) => void): string | Uint8Array | Cancel {
         const data = this.tryRecv()
-        if (data) {
+        if (data !== undefined) {
             return data
         }
-        return this._recv()
-    }
-    private async _recv(): Promise<string | Uint8Array> {
-        // 等待未完成讀取
-        let c = this.recv_
-        while (c) {
-            await c
-            if (this.conn_.isClosed) {
-                throw new NetError("TCPConn already closed")
-            }
-            c = this.recv_
+
+        const node = new Cancel(undefined, cb)
+        let r = this.recv_
+        if (r) {
+            r.push(node)
+        } else {
+            this.recv_ = [node]
         }
-        c = new _iotjs.Completer<string | Uint8Array>()
-        this.recv_ = c
-        return c.promise
+        return node
     }
-    private recv_: _iotjs.Completer<string | Uint8Array> | undefined
+
+    private recv_?: Array<Cancel>
 }
