@@ -30,42 +30,58 @@ export interface ResumeContext<T> {
     /**
      * 喚醒協程並爲協程返回值 v
      */
-    nextValue(v: T): void
+    value(v: T): void
+    /**
+     * 喚醒協程並在協程中拋出異常
+     */
+    error(e?: any): void
     /**
      * 調用 resume 之後喚醒協程，並且 resume 函數的返回值作爲協程的返回值，
      * 如果 resume 函數拋出了任何異常，可以被協程捕獲
      */
     next(resume: () => T): void
 }
-class resumeContext<T> {
+class resumeContext<T> implements ResumeContext<T> {
     constructor(private next_: (v: yieldValue<T>) => void) {
     }
-    private resume_ = 0
-    nextValue(v: T): void {
+    private resume_ = false
+    value(v: T): void {
         if (this.resume_) {
             throw new Error("Coroutine already resume");
         }
-        this.resume_ = 1
+        this.resume_ = true
         this.next_({
             v: v,
+        })
+    }
+    error(e?: any): void {
+        if (this.resume_) {
+            throw new Error("Coroutine already resume");
+        }
+        this.resume_ = true
+        this.next_({
+            e: e,
+            err: true
         })
     }
     next(resume: () => T): void {
         if (this.resume_) {
             throw new Error("Coroutine already resume");
         }
-        this.resume_ = 1
+        this.resume_ = true
+        let v: T
         try {
-            const v = resume()
-            this.next_({
-                v: v,
-            })
+            v = resume()
         } catch (e) {
             this.next_({
                 e: e,
                 err: true,
             })
+            return
         }
+        this.next_({
+            v: v,
+        })
     }
 }
 interface yieldValue<T> {

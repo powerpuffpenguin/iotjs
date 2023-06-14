@@ -55,6 +55,7 @@ declare module "iotjs" {
      */
     export function next(f: () => void): void
 
+
     export type BufferData = string | ArrayBuffer | DataView | Uint8Array | Uint8ClampedArray | Uint16Array | Uint32Array | Int8Array | Int16Array | Int32Array | Float32Array | Float64Array
 }
 /**
@@ -81,14 +82,18 @@ declare module "iotjs/coroutine" {
         yield<T>(f: (notify: ResumeContext<T>) => void): T
     }
     /**
-     * 協程喚醒上下文，你應該調用一次 nextValue/next 來喚醒協程，
+     * 協程喚醒上下文，你應該調用一次 nextValue/nextError/next 來喚醒協程，
      * 多次調用將拋出異常
      */
     export interface ResumeContext<T> {
         /**
          * 喚醒協程並爲協程返回值 v
          */
-        nextValue(v: T): void
+        value(v: T): void
+        /**
+         * 喚醒協程並在協程中拋出異常
+         */
+        error(e?: any): void
         /**
          * 調用 resume 之後喚醒協程，並且 resume 函數的返回值作爲協程的返回值，
          * 如果 resume 函數拋出了任何異常，可以被協程捕獲
