@@ -1,3 +1,11 @@
+namespace Duktape {
+    export class Thread {
+        __hash_duktape_thread: string
+        constructor(yielder: (v?: any) => void);
+        static resume<T>(t: Thread, v?: any): T
+        static yield<T>(v?: any): T
+    }
+}
 namespace iotjs {
     export * from "iotjs"
 }
@@ -41,7 +49,74 @@ declare module "iotjs" {
      */
     export function exit(code: number): never
 
+    /**
+     * 手動觸發一個事件回調用於調用函數 f，next 將立刻返回，函數 f 會在捕獲到事件激活後進行調用，
+     * 對於多次調用 next，傳入的多個函數 f 其調用順序是隨機的
+     */
+    export function next(f: () => void): void
+
     export type BufferData = string | ArrayBuffer | DataView | Uint8Array | Uint8ClampedArray | Uint16Array | Uint32Array | Int8Array | Int16Array | Int32Array | Float32Array | Float64Array
+}
+/**
+ * async await 源於 Promise，Promise 的完成回調必須在下一個 循環週期中調用，
+ * 這通常不是太大的問題，但是在嵌入式模式下這種運行模式會太慢。
+ * 
+ * 好在 Duktape 提供了支持協程的工具，本喵對它進行了簡單的包裝，以便能使用比 async await 更高效且能用於嵌入式的協程。
+ * 注意，一旦使用了協程代碼可能無法在其它js平臺上運行，因爲目前實現依賴與 Duktape 特性。
+ * 
+ * 這個協程庫的工作模式和 async await 不同它們的表現也不會一致，從運行角度來看，這個實現可能更像
+ * golang 的協程(但並不支持多cpu)
+ */
+declare module "iotjs/coroutine" {
+    /**
+     * 協程上下文
+     */
+    export interface YieldContext {
+        /**
+         * 在調用函數 f 後，讓出 cpu 以便其它協程可以運行
+         * @remarks
+         * 通常這是在協程中調用一個異步函數，讓協程等待異步完成後再執行後續代碼，
+         * 注意如果在協程之外調用行爲將是未定義的
+         */
+        yield<T>(f: (notify: ResumeContext<T>) => void): T
+    }
+    /**
+     * 協程喚醒上下文，你應該調用一次 nextValue/next 來喚醒協程，
+     * 多次調用將拋出異常
+     */
+    export interface ResumeContext<T> {
+        /**
+         * 喚醒協程並爲協程返回值 v
+         */
+        nextValue(v: T): void
+        /**
+         * 調用 resume 之後喚醒協程，並且 resume 函數的返回值作爲協程的返回值，
+         * 如果 resume 函數拋出了任何異常，可以被協程捕獲
+         */
+        next(resume: () => T): void
+    }
+    /**
+     * 啓動一個協程 執行函 f
+     * @remarks
+     * 如果創建協程失敗，可以使用 try catch 捕獲 go 拋出的異常
+     * @param f 要執行的協程函數
+     */
+    export function go(f: (co: YieldContext) => void): Coroutine
+    /**
+     * 協程實現，通常直接調用 go 函數，除非你想監聽 協程 狀態
+     */
+    export class Coroutine implements YieldContext {
+        constructor(f: (co: YieldContext) => void) { }
+        /**
+         * 協程當前狀態
+         */
+        readonly state: 'run' | 'yield' | 'finish'
+        /**
+         * 你可以設置這個回調函數，它將在協程函數返回後被調用
+         */
+        onFinish?: () => void
+    }
+
 }
 declare module "iotjs/encoding/hex" {
     export function encodeLen(n: number): number

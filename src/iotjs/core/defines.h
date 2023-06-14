@@ -36,6 +36,7 @@
 #define VM_STASH_KEY_ASYNC "async", 5
 // 服務器 dns 設定
 #define VM_STASH_KEY_NAMESERVER "nameserver", 10
+#define VM_STASH_KEY_NEXT "next", 3
 
 // 爲異步方法存儲 js 棧快照
 #define VM_STASH_KEY_SNAPSHOTS "snapshots", 9

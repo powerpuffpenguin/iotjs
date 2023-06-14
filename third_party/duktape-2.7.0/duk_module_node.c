@@ -18,8 +18,10 @@ static duk_bool_t duk__get_cached_module(duk_context *ctx, const char *id) {
 	duk_push_global_stash(ctx);
 	(void) duk_get_prop_string(ctx, -1, "\xff" "requireCache");
 	if (duk_get_prop_string(ctx, -1, id)) {
-		duk_remove(ctx, -2);
-		duk_remove(ctx, -2);
+		duk_swap_top(ctx, -2);
+    duk_pop(ctx);
+		duk_swap_top(ctx, -2);
+    duk_pop(ctx);
 		return 1;
 	} else {
 		duk_pop_3(ctx);

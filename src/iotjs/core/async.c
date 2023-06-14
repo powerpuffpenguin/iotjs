@@ -42,7 +42,8 @@ static duk_context *vm_snapshot_impl(duk_context *ctx, const char *bucket, duk_s
         duk_dup_top(ctx);
         duk_put_prop_lstring(ctx, -3, VM_STASH_KEY_SNAPSHOTS);
     }
-    duk_remove(ctx, -2);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
     // ... snapshot, snapshots
     duk_get_prop_lstring(ctx, -1, bucket, sz_bucket);
     if (duk_is_undefined(ctx, -1))
@@ -52,7 +53,8 @@ static duk_context *vm_snapshot_impl(duk_context *ctx, const char *bucket, duk_s
         duk_dup_top(ctx);
         duk_put_prop_lstring(ctx, -3, bucket, sz_bucket);
     }
-    duk_remove(ctx, -2);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
 
     // ... snapshot, bucket
     duk_swap_top(ctx, -2);
@@ -85,7 +87,8 @@ duk_context *vm_restore(duk_context *ctx, const char *bucket, duk_size_t sz_buck
         duk_pop_2(ctx);
         return NULL;
     }
-    duk_remove(ctx, -2);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
 
     // ... snapshots
     duk_get_prop_lstring(ctx, -1, bucket, sz_bucket);
@@ -94,7 +97,8 @@ duk_context *vm_restore(duk_context *ctx, const char *bucket, duk_size_t sz_buck
         duk_pop_2(ctx);
         return NULL;
     }
-    duk_remove(ctx, -2);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
 
     // ... bucket
     duk_push_pointer(ctx, key);
@@ -144,7 +148,8 @@ duk_context *vm_require_snapshot(duk_context *ctx, const char *bucket, duk_size_
         duk_pop_2(ctx);
         duk_error(ctx, DUK_ERR_ERROR, "snapshot not exists");
     }
-    duk_remove(ctx, -2);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
 
     // ... snapshots
     duk_get_prop_lstring(ctx, -1, bucket, sz_bucket);
@@ -153,7 +158,8 @@ duk_context *vm_require_snapshot(duk_context *ctx, const char *bucket, duk_size_
         duk_pop_2(ctx);
         duk_error(ctx, DUK_ERR_ERROR, "snapshot not exists");
     }
-    duk_remove(ctx, -2);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
 
     // ... bucket
     duk_push_pointer(ctx, key);
@@ -178,7 +184,8 @@ void vm_remove_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_buck
         duk_pop_2(ctx);
         return;
     }
-    duk_remove(ctx, -2);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
 
     // ... snapshots
     duk_get_prop_lstring(ctx, -1, bucket, sz_bucket);
@@ -187,7 +194,8 @@ void vm_remove_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_buck
         duk_pop_2(ctx);
         return;
     }
-    duk_remove(ctx, -2);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
     // ... bucket
     duk_push_pointer(ctx, key);
     duk_get_prop(ctx, -2);
@@ -205,10 +213,12 @@ duk_context *vm_new_completer(duk_context *ctx, const char *bucket, duk_size_t s
     // ...
     duk_push_heap_stash(ctx);
     duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_PRIVATE);
-    duk_remove(ctx, -2);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
     // ... _iotjs
     duk_get_prop_lstring(ctx, -1, VM_IOTJS_KEY_COMPLETER);
-    duk_remove(ctx, -2);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
 
     // ... class Completer
     duk_new(ctx, 0);
@@ -263,7 +273,8 @@ void vm_async_completer_args(duk_context *ctx, void *key)
 
     duk_push_heap_stash(ctx);
     duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_ASYNC);
-    duk_remove(ctx, -2);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
     duk_swap_top(ctx, -2);
 
     // ... {}, completer
@@ -281,7 +292,8 @@ void vm_async_complete(duk_context *ctx, void *key, duk_bool_t ok, duk_bool_t ge
     duk_require_stack(ctx, 3);
     duk_push_heap_stash(ctx);
     duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_ASYNC);
-    duk_remove(ctx, -2);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
 
     // error, {}
     duk_push_pointer(ctx, key);
@@ -289,7 +301,8 @@ void vm_async_complete(duk_context *ctx, void *key, duk_bool_t ok, duk_bool_t ge
     // error, {}, completer
     duk_push_pointer(ctx, key);
     duk_del_prop(ctx, -3);
-    duk_remove(ctx, -2);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
     // error, completer
     duk_swap_top(ctx, -2);
     if (ok)

@@ -488,7 +488,8 @@ duk_ret_t native_iotjs_net_http_init(duk_context *ctx)
     duk_swap_top(ctx, -2);
     duk_push_heap_stash(ctx);
     duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_PRIVATE);
-    duk_remove(ctx, -2);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
     duk_push_object(ctx);
     {
         duk_push_c_lightfunc(ctx, _native_connect, 1, 1, 0);

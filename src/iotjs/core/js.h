@@ -31,6 +31,9 @@ typedef struct
     threadpool threads;
     // 同步
     pthread_mutex_t mutex;
+
+    // 用於手動事件
+    event_t *bev;
 } vm_context_t;
 void vm_free_dns(vm_context_t *vm);
 // 由系統調用，初始化 vm_context_t

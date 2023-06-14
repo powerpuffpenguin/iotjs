@@ -3,6 +3,7 @@
 void __iotjs_modules_init()
 {
     vm_register_native("iotjs", native_iotjs_init);
+    vm_register_native("iotjs/coroutine", native_iotjs_coroutine_init);
     vm_register_native("iotjs/encoding/hex", native_iotjs_encoding_hex_init);
 
     vm_register_native("iotjs/crypto/md5", native_iotjs_crypto_md4_init);

@@ -1,3 +1,11 @@
+namespace Duktape {
+    export class Thread {
+        __hash_duktape_thread: string
+        constructor(yielder: (v?: any) => void);
+        static resume<T>(t: Thread, v?: any): T
+        static yield<T>(v?: any): T
+    }
+}
 declare namespace _iotjs {
     declare namespace path {
         export function join(...elem: Array<string>): string
@@ -27,6 +35,11 @@ declare namespace _iotjs {
      * 調用 c 的 exit(code) 退出程式
      */
     export function exit(code: number): never
+    /**
+     * 手動觸發一個事件回調用於調用函數 f，next 將立刻返回，函數 f 會在捕獲到事件激活後進行調用，
+     * 對於多次調用 next，傳入的多個函數 f 其調用順序是隨機的
+     */
+    export function next(f: () => void): void
     /**
      * 錯誤基類
      */

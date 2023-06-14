@@ -185,6 +185,8 @@ duk_ret_t _native_vm_init(duk_context *ctx)
 
 duk_int_t vm_init(duk_context *ctx, int argc, char *argv[])
 {
+    srand((unsigned)time(NULL));
+
     if (!duk_check_stack_top(ctx, 5))
     {
         duk_push_error_object(ctx, DUK_ERR_EVAL_ERROR, "duk_check_stack_top error");
@@ -346,6 +348,22 @@ duk_ret_t _vm_native_exit(duk_context *ctx)
     }
     return 0;
 }
+static duk_ret_t native_next(duk_context *ctx)
+{
+    duk_require_callable(ctx, 0);
+    vm_context_t *vm = vm_get_context(ctx);
+
+    duk_push_heap_stash(ctx);
+    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_NEXT);
+    duk_swap_top(ctx, 0);
+
+    // [], stash, cb
+    duk_size_t i = duk_get_length(ctx, 0);
+    duk_put_prop_index(ctx, 0, i);
+    duk_set_length(ctx, -1, i + 1);
+    event_active(vm->bev, 1, 0);
+    return 0;
+};
 duk_ret_t _vm_native_stat_module(duk_context *ctx)
 {
     const char *path = duk_get_string(ctx, 0);
@@ -394,14 +412,16 @@ void _native_vm_init_stash(duk_context *ctx, duk_context *main)
         duk_put_prop_lstring(ctx, -2, "path", 4);
 
         // [stash, _iotjs]
-        duk_push_c_function(ctx, _native_vm_read_utf8, 1);
+        duk_push_c_lightfunc(ctx, _native_vm_read_utf8, 1, 1, 0);
         duk_put_prop_lstring(ctx, -2, "read_text", 9);
-        duk_push_c_function(ctx, _vm_native_stat_module, 1);
+        duk_push_c_lightfunc(ctx, _vm_native_stat_module, 1, 1, 0);
         duk_put_prop_lstring(ctx, -2, "stat_module", 11);
-        duk_push_c_function(ctx, _vm_native_getcwd, 0);
+        duk_push_c_lightfunc(ctx, _vm_native_getcwd, 0, 0, 1);
         duk_put_prop_lstring(ctx, -2, "getcwd", 6);
-        duk_push_c_function(ctx, _vm_native_exit, 1);
+        duk_push_c_lightfunc(ctx, _vm_native_exit, 1, 1, 0);
         duk_put_prop_lstring(ctx, -2, "exit", 4);
+        duk_push_c_lightfunc(ctx, native_next, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "next", 4);
 
         duk_eval_lstring(ctx, (const char *)js_iotjs_core_js_module_min_js, js_iotjs_core_js_module_min_js_len);
         duk_dup(ctx, -2);
@@ -419,6 +439,8 @@ void _native_vm_init_stash(duk_context *ctx, duk_context *main)
     duk_put_prop_lstring(ctx, -2, VM_STASH_KEY_JOBS);
     duk_push_object(ctx);
     duk_put_prop_lstring(ctx, -2, VM_STASH_KEY_ASYNC);
+    duk_push_array(ctx);
+    duk_put_prop_lstring(ctx, -2, VM_STASH_KEY_NEXT);
 
     _vm_init_context(ctx, main);
     _vm_init_native(ctx);
@@ -486,6 +508,8 @@ void _native_vm_init_global(duk_context *ctx)
     duk_put_prop_lstring(ctx, -3, "getcwd", 6);
     duk_get_prop_lstring(ctx, -1, "exit", 4);
     duk_put_prop_lstring(ctx, -3, "exit", 4);
+    duk_get_prop_lstring(ctx, -1, "next", 4);
+    duk_put_prop_lstring(ctx, -3, "next", 4);
 
     duk_pop_2(ctx);
     // vm_dump_context_stdout(ctx);

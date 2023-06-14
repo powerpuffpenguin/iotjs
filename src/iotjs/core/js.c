@@ -27,6 +27,10 @@ duk_ret_t _vm_context_finalizer(duk_context *ctx)
     {
         evdns_base_free(vm->esb, 1);
     }
+    if (vm->bev)
+    {
+        event_free(vm->bev);
+    }
     if (vm->eb)
     {
         event_base_free(vm->eb);
@@ -112,6 +116,64 @@ void *vm_malloc_with_finalizer_init(duk_context *ctx, size_t sz, duk_c_function 
     duk_put_prop(ctx, -3);
     return ptr;
 }
+static duk_ret_t native_bev_cb(duk_context *ctx)
+{
+    duk_push_heap_stash(ctx);
+    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_NEXT);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
+
+    duk_size_t n = duk_get_length(ctx, -1);
+    duk_size_t i;
+    switch (n)
+    {
+    case 0:
+        duk_pop(ctx);
+        duk_push_number(ctx, 0);
+        return 1;
+    case 1:
+        i = 0;
+        break;
+    default:
+        i = rand() % n;
+        break;
+    }
+    duk_get_prop_index(ctx, -1, i);
+    duk_swap_top(ctx, -2);
+    // cb , []
+    duk_size_t last = n - 1;
+    if (i != n - 1)
+    {
+        duk_get_prop_index(ctx, -1, last);
+        duk_put_prop_index(ctx, -2, i);
+    }
+    duk_set_length(ctx, -1, last);
+    duk_pop(ctx);
+    duk_call(ctx, 0);
+    duk_pop(ctx);
+    duk_push_number(ctx, last);
+    return 1;
+}
+static void bev_handler(evutil_socket_t fd, short events, void *args)
+{
+
+    vm_context_t *vm = args;
+    switch (events)
+    {
+    case 1:
+    {
+        duk_push_c_lightfunc(vm->ctx, native_bev_cb, 0, 0, 0);
+        duk_call(vm->ctx, 0);
+        duk_size_t size = duk_require_number(vm->ctx, -1);
+        duk_pop(vm->ctx);
+        if (size)
+        {
+            event_active(vm->bev, 1, 0);
+        }
+    }
+    break;
+    }
+}
 void _vm_init_context(duk_context *ctx, duk_context *main)
 {
     // [..., stash]
@@ -124,22 +186,28 @@ void _vm_init_context(duk_context *ctx, duk_context *main)
     if (pthread_mutex_init(&vm->mutex, NULL))
     {
         duk_pop(ctx);
-        duk_push_error_object(ctx, DUK_ERR_ERROR, "pthread_mutex_init error");
-        duk_throw(ctx);
+        duk_error(ctx, DUK_ERR_ERROR, "pthread_mutex_init error");
     }
     vm->ctx = main;
     vm->eb = event_base_new();
     if (!vm->eb)
     {
-        duk_push_error_object(ctx, DUK_ERR_ERROR, "event_base_new error");
-        duk_throw(ctx);
+        duk_error(ctx, DUK_ERR_ERROR, "event_base_new error");
+    }
+    vm->bev = event_new(vm->eb, -1, EV_PERSIST, bev_handler, vm);
+    if (!vm->eb)
+    {
+        duk_error(ctx, DUK_ERR_ERROR, "event_new error");
+    }
+    if (event_add(vm->bev, NULL))
+    {
+        duk_error(ctx, DUK_ERR_ERROR, "event_add error");
     }
 
     vm->threads = thpool_init(8);
     if (!vm->threads)
     {
-        duk_push_error_object(ctx, DUK_ERR_ERROR, "thpool_init(8) error");
-        duk_throw(ctx);
+        duk_error(ctx, DUK_ERR_ERROR, "thpool_init(8) error");
     }
 }
 vm_context_t *_vm_get_context(duk_context *ctx, BOOL completer)
