@@ -35,7 +35,7 @@ static void _vm_timer_handler(finalizer_t *finalizer, BOOL interval)
     {
         duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_TIMEOUT);
     }
-    duk_swap_top(ctx, -2);
+    duk_swap_top(ctx,-2);
     duk_pop(ctx); // [..., timeout]
 
     duk_push_pointer(ctx, finalizer);
@@ -153,7 +153,7 @@ static int _nativa_set_timer(duk_context *ctx, BOOL interval)
     {
         duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_TIMEOUT);
     }
-    duk_swap_top(ctx, -2);
+    duk_swap_top(ctx,-2);
     duk_pop(ctx);
     duk_swap_top(ctx, -2); // [obj, timer]
 
@@ -187,7 +187,7 @@ static void nativa_clear_timer(duk_context *ctx, BOOL interval)
     {
         duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_TIMEOUT);
     }
-    duk_swap_top(ctx, -2);
+    duk_swap_top(ctx,-2);
     duk_pop(ctx); // [timeout]
 
     duk_push_pointer(ctx, finalizer);

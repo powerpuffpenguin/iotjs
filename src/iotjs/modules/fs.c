@@ -297,7 +297,7 @@ duk_ret_t native_iotjs_fs_init(duk_context *ctx)
     // [func, exports, _iotjs]
     duk_push_heap_stash(ctx);
     duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_PRIVATE);
-    duk_swap_top(ctx, -2);
+    duk_swap_top(ctx,-2);
     duk_pop(ctx);
 
     // push deps
