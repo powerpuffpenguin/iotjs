@@ -956,7 +956,8 @@ export class WebsocketConn {
         }
 
         const key = deps.ws_key()
-        const handshake = `GET ${u.path} HTTP/1.1
+        const path = u.query === undefined ? u.path : `${u.path}?${u.query}`
+        const handshake = `GET ${path} HTTP/1.1
 Host: ${host}
 User-Agent: iotjs-${iotjs.os}-${iotjs.arch}-client/1.1
 Origin: ${origin}
