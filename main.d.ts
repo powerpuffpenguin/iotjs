@@ -174,7 +174,7 @@ declare module "iotjs/crypto/md4" {
     /**
      * 創建一個 hash 對象用於計算大量數據的 hash 值
      */
-    export function hash(params: type): Hash
+    export function hash(): Hash
 }
 declare module "iotjs/crypto/md5" {
     import { BufferData } from "iotjs";
@@ -194,7 +194,7 @@ declare module "iotjs/crypto/md5" {
     /**
      * 創建一個 hash 對象用於計算大量數據的 hash 值
      */
-    export function hash(params: type): Hash
+    export function hash(): Hash
 }
 declare module "iotjs/crypto/sha1" {
     import { BufferData } from "iotjs";
@@ -214,7 +214,7 @@ declare module "iotjs/crypto/sha1" {
     /**
      * 創建一個 hash 對象用於計算大量數據的 hash 值
      */
-    export function hash(params: type): Hash
+    export function hash(): Hash
 }
 declare module "iotjs/crypto/sha224" {
     import { BufferData } from "iotjs";
@@ -234,7 +234,7 @@ declare module "iotjs/crypto/sha224" {
     /**
      * 創建一個 hash 對象用於計算大量數據的 hash 值
      */
-    export function hash(params: type): Hash
+    export function hash(): Hash
 }
 declare module "iotjs/crypto/sha256" {
     import { BufferData } from "iotjs";
@@ -254,7 +254,7 @@ declare module "iotjs/crypto/sha256" {
     /**
      * 創建一個 hash 對象用於計算大量數據的 hash 值
      */
-    export function hash(params: type): Hash
+    export function hash(): Hash
 }
 declare module "iotjs/crypto/sha384" {
     import { BufferData } from "iotjs";
@@ -274,7 +274,7 @@ declare module "iotjs/crypto/sha384" {
     /**
      * 創建一個 hash 對象用於計算大量數據的 hash 值
      */
-    export function hash(params: type): Hash
+    export function hash(): Hash
 }
 declare module "iotjs/crypto/sha512" {
     import { BufferData } from "iotjs";
@@ -294,7 +294,7 @@ declare module "iotjs/crypto/sha512" {
     /**
      * 創建一個 hash 對象用於計算大量數據的 hash 值
      */
-    export function hash(params: type): Hash
+    export function hash(): Hash
 }
 declare module "iotjs/crypto/sha512_224" {
     import { BufferData } from "iotjs";
@@ -314,7 +314,7 @@ declare module "iotjs/crypto/sha512_224" {
     /**
      * 創建一個 hash 對象用於計算大量數據的 hash 值
      */
-    export function hash(params: type): Hash
+    export function hash(): Hash
 }
 declare module "iotjs/crypto/sha512_256" {
     import { BufferData } from "iotjs";
@@ -334,7 +334,7 @@ declare module "iotjs/crypto/sha512_256" {
     /**
      * 創建一個 hash 對象用於計算大量數據的 hash 值
      */
-    export function hash(params: type): Hash
+    export function hash(): Hash
 }
 declare module "iotjs/fs" {
     export enum FileMode {

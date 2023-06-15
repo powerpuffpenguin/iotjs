@@ -177,7 +177,3 @@ int iotjs_module_crypto_sha1(const unsigned char *in, unsigned long inlen, unsig
     }
     return 0;
 }
-int iotjs_module_crypto_base64_encode(const unsigned char *in, unsigned long len, unsigned char *out, unsigned long *outlen)
-{
-    return base64_encode(in, len, out, outlen);
-}

@@ -6,6 +6,7 @@
 #include <http_parser.h>
 #include <stdarg.h>
 #include <iotjs/core/binary.h>
+#include <iotjs/core/utils.h>
 
 #define IOTJS_NET_EXPAND_WS_SUCCESS 0
 #define IOTJS_NET_EXPAND_WS_TIMEOUT 10
@@ -257,19 +258,19 @@ static int on_ws_header_field(http_parser *parser, const char *at, size_t length
     switch (length)
     {
     case 7:
-        if (!memcmp(at, "Upgrade", 7))
+        if (!iotjs_memcasecmp(at, "Upgrade", 7))
         {
             expand->header = IOTJS_NET_EXPAND_WS_STATE_UPGRADE;
         }
         break;
     case 10:
-        if (!memcmp(at, "Connection", 10))
+        if (!iotjs_memcasecmp(at, "Connection", 10))
         {
             expand->header = IOTJS_NET_EXPAND_WS_STATE_CONNECTION;
         }
         break;
     case 20:
-        if (!memcmp(at, "Sec-WebSocket-Accept", 20))
+        if (!iotjs_memcasecmp(at, "Sec-WebSocket-Accept", 20))
         {
             expand->header = IOTJS_NET_EXPAND_WS_STATE_SEC_WEBSOCKET_ACCEPT;
         }
@@ -303,7 +304,7 @@ static int on_ws_header_value(http_parser *parser, const char *at, size_t length
     switch (expand->header)
     {
     case IOTJS_NET_EXPAND_WS_STATE_UPGRADE:
-        if (length != 9 || memcmp(at, "websocket", length))
+        if (length != 9 || iotjs_memcasecmp(at, "websocket", length))
         {
             expand->state |= IOTJS_NET_EXPAND_WS_STATE_ERR;
             duk_push_lstring(conn->vm->ctx, "Upgrade must be websocket", 25);
@@ -312,7 +313,7 @@ static int on_ws_header_value(http_parser *parser, const char *at, size_t length
         expand->state |= IOTJS_NET_EXPAND_WS_STATE_UPGRADE;
         break;
     case IOTJS_NET_EXPAND_WS_STATE_CONNECTION:
-        if (length != 7 || memcmp(at, "Upgrade", length))
+        if (length != 7 || (iotjs_memcasecmp(at, "Upgrade", length)))
         {
 
             expand->state |= IOTJS_NET_EXPAND_WS_STATE_ERR;
