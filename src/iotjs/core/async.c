@@ -198,13 +198,8 @@ void vm_remove_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_buck
     duk_pop(ctx);
     // ... bucket
     duk_push_pointer(ctx, key);
-    duk_get_prop(ctx, -2);
-    // ... bucket, snapshot
-    if (duk_is_undefined(ctx, -1))
-    {
-        duk_pop_2(ctx);
-        return;
-    }
+    duk_del_prop(ctx, -2);
+    duk_pop(ctx);
 }
 
 duk_context *vm_new_completer(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_size_t n)

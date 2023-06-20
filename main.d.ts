@@ -852,6 +852,50 @@ declare module "iotjs/net/http" {
  * 提供了使用 mtd 訪問 flash 的能力
  */
 declare module "iotjs/mtd" {
+    export enum Seek {
+        set = 0,
+        cur = 1,
+        end = 2,
+    }
+    export interface Info {
+        type: number
+        flags: number
+        size: number
+        erasesize: number
+        writesize: number
+        oobsize: number
+    }
+    /**
+     * 用於打開一個 mtd 分區，以進行讀寫數據
+     */
+    export class File {
+        /**
+         * @param path 要打開的 mtd 分區路徑，例如 /dev/mtd0
+         * @param write 設備是否可寫
+         * @param excl 是否以獨佔的形式打開
+         */
+        constructor(readonly path: string, write = false)
+        /**
+         * 返回設備是否以及被關閉
+         */
+        readonly isClosed: boolean
+        /**
+         * 關閉設備
+         */
+        close(): void
+        /**
+         * 返回分區信息
+         */
+        info(): Info
+
+        seekSync(offset: number, whence: Seek): number
+        readSync(data: Uint8Array): number
+        writeSync(data: Uint8Array): number
+
+        seek(offset: number, cb?: (ret?: number, e?: any) => void): number | undefined
+        read(data: Uint8Array, cb?: (ret?: number, e?: any) => void): number | undefined
+        write(data: Uint8Array, cb?: (ret?: number, e?: any) => void): number | undefined
+    }
     /**
      * 使用 mtd 構建的 key value 存儲庫，它屏蔽了 mtd 底層實現的細節，
      * 並且會自動檢測壞塊以及爲塊計算磨損均衡，它需要使用一個完整的 mtd 分區，並且

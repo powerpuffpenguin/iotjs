@@ -111,6 +111,7 @@
     "path.h": "c",
     "es6-shim.h": "c",
     "memory.h": "c",
-    "core.h": "c"
+    "core.h": "c",
+    "mtd.h": "c"
   }
 }

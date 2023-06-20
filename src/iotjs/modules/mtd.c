@@ -1,46 +1,252 @@
 #include <duktape.h>
+#include <iotjs/core/js.h>
+#include <iotjs/core/memory.h>
+#include <iotjs/modules/js/mtd.h>
+#include <iotjs/core/async.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <mtd/mtd-user.h>
+#include <errno.h>
+#include <string.h>
 
+typedef struct
+{
+    int fd;
+    mtd_info_t mtd_info;
+} iotjs_mtd_fd_t;
+
+static void iotjs_mtd_fd_free(void *ptr)
+{
+    puts(" --------- iotjs_mtd_fd_free");
+#ifdef VM_TRACE_FINALIZER
+    puts(" --------- iotjs_mtd_fd_free");
+#endif
+    iotjs_mtd_fd_t *p = ptr;
+    if (p->fd != -1)
+    {
+        close(p->fd);
+    }
+}
+static duk_ret_t native_open(duk_context *ctx)
+{
+    VM_DUK_REQUIRE_LSTRING(
+        const char *path = duk_require_string(ctx, -1),
+        ctx, 0, "path", 4)
+    VM_DUK_REQUIRE_LSTRING(
+        duk_bool_t write = duk_require_boolean(ctx, -1),
+        ctx, 0, "write", 5)
+    duk_require_callable(ctx, 1);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
+
+    // cb
+    finalizer_t *finalizer = vm_create_finalizer_n(ctx, sizeof(iotjs_mtd_fd_t));
+    iotjs_mtd_fd_t *p = finalizer->p;
+    p->fd = -1;
+    finalizer->free = iotjs_mtd_fd_free;
+
+    p->fd = open(path, write ? O_RDWR : O_RDONLY);
+    if (p->fd == -1)
+    {
+        duk_error(ctx, DUK_ERR_ERROR, strerror(errno));
+    }
+    if (ioctl(p->fd, MEMGETINFO, &p->mtd_info) == -1)
+    {
+        vm_finalizer_free(ctx, -1, iotjs_mtd_fd_free);
+        duk_error(ctx, DUK_ERR_ERROR, strerror(errno));
+    }
+    // cb, finalizer
+    vm_snapshot_copy(ctx, VM_SNAPSHOT_MTD, p, 2);
+    return 1;
+}
+static duk_ret_t native_close(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_fd_free);
+    vm_remove_snapshot(ctx, VM_SNAPSHOT_MTD, finalizer->p);
+    vm_finalizer_free(ctx, 0, iotjs_mtd_fd_free);
+    return 0;
+}
+static duk_ret_t native_info(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_fd_free);
+    iotjs_mtd_fd_t *p = finalizer->p;
+    duk_pop(ctx);
+    duk_push_object(ctx);
+    duk_push_number(ctx, p->mtd_info.type);
+    duk_put_prop_lstring(ctx, -2, "type", 4);
+    duk_push_number(ctx, p->mtd_info.flags);
+    duk_put_prop_lstring(ctx, -2, "flags", 5);
+    duk_push_number(ctx, p->mtd_info.size);
+    duk_put_prop_lstring(ctx, -2, "size", 4);
+    duk_push_number(ctx, p->mtd_info.erasesize);
+    duk_put_prop_lstring(ctx, -2, "erasesize", 9);
+    duk_push_number(ctx, p->mtd_info.writesize);
+    duk_put_prop_lstring(ctx, -2, "writesize", 9);
+    duk_push_number(ctx, p->mtd_info.oobsize);
+    duk_put_prop_lstring(ctx, -2, "oobsize", 7);
+    return 1;
+}
+static duk_ret_t native_seek_sync(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_fd_free);
+    iotjs_mtd_fd_t *p = finalizer->p;
+    off_t offset = duk_require_number(ctx, 1);
+    int whence = duk_require_number(ctx, 2);
+    switch (whence)
+    {
+    case 0:
+        whence = SEEK_SET;
+        break;
+    case 1:
+        whence = SEEK_CUR;
+        break;
+    case 2:
+        whence = SEEK_END;
+        break;
+    default:
+        duk_error(ctx, DUK_ERR_TYPE_ERROR, "seek unknow whence %d", whence);
+        break;
+    }
+    offset = lseek(p->fd, offset, whence);
+    if (offset == -1)
+    {
+        duk_error(ctx, DUK_ERR_ERROR, strerror(errno));
+    }
+    duk_push_number(ctx, offset);
+    return 1;
+}
+static duk_ret_t native_read_sync(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_fd_free);
+    iotjs_mtd_fd_t *p = finalizer->p;
+    duk_size_t sz;
+    void *buf = duk_require_buffer_data(ctx, 1, &sz);
+    ssize_t ok = read(p->fd, buf, sz);
+    if (ok == -1)
+    {
+        duk_error(ctx, DUK_ERR_ERROR, strerror(errno));
+    }
+    duk_pop_2(ctx);
+    duk_push_number(ctx, ok);
+    return 1;
+}
+static duk_ret_t native_write_sync(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_fd_free);
+    iotjs_mtd_fd_t *p = finalizer->p;
+    duk_size_t sz;
+    void *buf = duk_require_buffer_data(ctx, 1, &sz);
+    ssize_t ok = sz == 0 ? 0 : write(p->fd, buf, sz);
+    if (ok == -1)
+    {
+        duk_error(ctx, DUK_ERR_ERROR, strerror(errno));
+    }
+    duk_pop_2(ctx);
+    duk_push_number(ctx, ok);
+    return 1;
+}
+
+static duk_ret_t native_seek(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_fd_free);
+    iotjs_mtd_fd_t *p = finalizer->p;
+    off_t offset = duk_require_number(ctx, 1);
+    int whence = duk_require_number(ctx, 2);
+    switch (whence)
+    {
+    case 0:
+        whence = SEEK_SET;
+        break;
+    case 1:
+        whence = SEEK_CUR;
+        break;
+    case 2:
+        whence = SEEK_END;
+        break;
+    default:
+        duk_error(ctx, DUK_ERR_TYPE_ERROR, "seek unknow whence %d", whence);
+        break;
+    }
+    offset = lseek(p->fd, offset, whence);
+    if (offset == -1)
+    {
+        duk_error(ctx, DUK_ERR_ERROR, strerror(errno));
+    }
+    duk_push_number(ctx, offset);
+    return 1;
+}
+static duk_ret_t native_read(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_fd_free);
+    iotjs_mtd_fd_t *p = finalizer->p;
+    duk_size_t sz;
+    void *buf = duk_require_buffer_data(ctx, 1, &sz);
+    if (sz = 0)
+    {
+        duk_pop_2(ctx);
+        duk_push_number(ctx, 0);
+        return 1;
+    }
+    return 0;
+}
+static duk_ret_t native_write(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_fd_free);
+    iotjs_mtd_fd_t *p = finalizer->p;
+    duk_size_t sz;
+    void *buf = duk_require_buffer_data(ctx, 1, &sz);
+    if (sz = 0)
+    {
+        duk_pop_2(ctx);
+        duk_push_number(ctx, 0);
+        return 1;
+    }
+
+    return 0;
+}
 duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
 {
     duk_swap(ctx, 0, 1);
     duk_pop_2(ctx);
 
-    // duk_eval_lstring(ctx, (const char *)js_iotjs_modules_js_net_min_js, js_iotjs_modules_js_net_min_js_len);
-    // duk_swap_top(ctx, -2);
-    // duk_push_heap_stash(ctx);
-    // duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_PRIVATE);
-    // duk_swap_top(ctx, -2);
-    // duk_pop(ctx);
-    // duk_push_object(ctx);
-    // {
-    //     duk_push_c_lightfunc(ctx, native_get_binary_length, 1, 1, 0);
-    //     duk_put_prop_lstring(ctx, -2, "get_length", 10);
-    //     duk_push_c_lightfunc(ctx, native_socket_error, 0, 0, 0);
-    //     duk_put_prop_lstring(ctx, -2, "socket_error", 12);
-    //     // tcp conn
-    //     duk_push_c_lightfunc(ctx, native_tcp_connect, 2, 2, 0);
-    //     duk_put_prop_lstring(ctx, -2, "tcp_connect", 11);
-    //     duk_push_c_lightfunc(ctx, native_tcp_free, 1, 1, 0);
-    //     duk_put_prop_lstring(ctx, -2, "tcp_free", 8);
-    //     duk_push_c_lightfunc(ctx, native_tcp_write, 2, 2, 0);
-    //     duk_put_prop_lstring(ctx, -2, "tcp_write", 9);
-    //     duk_push_c_lightfunc(ctx, native_tcp_read, 2, 2, 0);
-    //     duk_put_prop_lstring(ctx, -2, "tcp_read", 8);
-    //     duk_push_c_lightfunc(ctx, native_tcp_readable, 1, 1, 0);
-    //     duk_put_prop_lstring(ctx, -2, "tcp_readable", 12);
-    //     duk_push_c_lightfunc(ctx, native_tcp_writable, 1, 1, 0);
-    //     duk_put_prop_lstring(ctx, -2, "tcp_writable", 12);
-    //     duk_push_c_lightfunc(ctx, native_tcp_read_more, 1, 1, 0);
-    //     duk_put_prop_lstring(ctx, -2, "tcp_readMore", 12);
-    //     duk_push_c_lightfunc(ctx, native_tcp_set_buffer, 3, 3, 0);
-    //     duk_put_prop_lstring(ctx, -2, "tcp_setBuffer", 13);
-    //     duk_push_c_lightfunc(ctx, native_tcp_get_buffer, 2, 2, 0);
-    //     duk_put_prop_lstring(ctx, -2, "tcp_getBuffer", 13);
-    //     duk_push_c_lightfunc(ctx, native_tcp_set_timeout, 3, 3, 0);
-    //     duk_put_prop_lstring(ctx, -2, "tcp_setTimeout", 14);
-    //     // websocket
-    //     native_iotjs_net_deps_http(ctx, 0);
-    // }
+    duk_eval_lstring(ctx, (const char *)js_iotjs_modules_js_mtd_min_js, js_iotjs_modules_js_mtd_min_js_len);
+    duk_swap_top(ctx, -2);
+    duk_push_heap_stash(ctx);
+    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_PRIVATE);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
+    duk_push_object(ctx);
+    {
+        duk_push_object(ctx);
+        duk_push_number(ctx, 0);
+        duk_put_prop_lstring(ctx, -2, "set", 3);
+        duk_push_number(ctx, 1);
+        duk_put_prop_lstring(ctx, -2, "cur", 3);
+        duk_push_number(ctx, 2);
+        duk_put_prop_lstring(ctx, -2, "end", 3);
+        duk_put_prop_lstring(ctx, -2, "Seek", 4);
+
+        duk_push_c_lightfunc(ctx, native_open, 2, 2, 0);
+        duk_put_prop_lstring(ctx, -2, "open", 4);
+        duk_push_c_lightfunc(ctx, native_close, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "close", 5);
+        duk_push_c_lightfunc(ctx, native_info, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "info", 4);
+        duk_push_c_lightfunc(ctx, native_seek_sync, 3, 3, 0);
+        duk_put_prop_lstring(ctx, -2, "seekSync", 8);
+        duk_push_c_lightfunc(ctx, native_read_sync, 2, 2, 0);
+        duk_put_prop_lstring(ctx, -2, "readSync", 8);
+        duk_push_c_lightfunc(ctx, native_write_sync, 2, 2, 0);
+        duk_put_prop_lstring(ctx, -2, "writeSync", 9);
+
+        duk_push_c_lightfunc(ctx, native_seek, 3, 3, 0);
+        duk_put_prop_lstring(ctx, -2, "seek", 4);
+        duk_push_c_lightfunc(ctx, native_read, 2, 2, 0);
+        duk_put_prop_lstring(ctx, -2, "read", 4);
+        duk_push_c_lightfunc(ctx, native_write, 2, 2, 0);
+        duk_put_prop_lstring(ctx, -2, "write", 5);
+    }
     duk_call(ctx, 3);
     return 0;
 }

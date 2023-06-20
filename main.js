@@ -49,7 +49,22 @@
 // } catch (e) {
 //     console.log('-------', e.toString())
 // }
-console.log('2'.padStart(5, '01'))
-console.log('2'.padStart(4, '01'))
-console.log('2'.padEnd(5, '01'))
-console.log('2'.padEnd(4, '01'))
+try {
+    var mtd = require("iotjs/mtd")
+    console.log(mtd)
+    var f = new mtd.File("/dev/mtd2", true, true)
+    try {
+        var info = f.info()
+        console.log('info', info)
+        var buf = new Uint8Array(info.writesize)
+        f.writeSync(buf)
+        // console.log(f.seekSync(0, 2))
+        // console.log(f.seekSync(0, 1))
+        console.log("write ok")
+    } finally {
+        f.close()
+    }
+    console.log("end")
+} catch (e) {
+    console.log('err', e.toString())
+}
