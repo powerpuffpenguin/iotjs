@@ -847,3 +847,48 @@ declare module "iotjs/net/http" {
         cancel(e?: any): void
     }
 }
+
+/**
+ * 提供了使用 mtd 訪問 flash 的能力
+ */
+declare module "iotjs/mtd" {
+    /**
+     * 使用 mtd 構建的 key value 存儲庫，它屏蔽了 mtd 底層實現的細節，
+     * 並且會自動檢測壞塊以及爲塊計算磨損均衡，它需要使用一個完整的 mtd 分區，並且
+     * 不要把它和其它 mtd 檔案系統混用，否則可能會互相覆蓋數據導致未定義的行爲
+     */
+    export class DB {
+        /**
+         * 可以多次傳入相同分區創建 DB，這些 DB 會共享同一個底層系統
+         * 
+         * @param path 分區路徑，例如 /dev/mtd0
+         */
+        constructor(readonly path: string) { }
+        /**
+         * 是否關閉的當前 DB
+         */
+        readonly isClosed: boolean
+        /***
+         * 關閉 DB，當沒有 DB 引用底層分區時，才會釋放底層資源
+         */
+        close(): void
+        /**
+         * 向 DB 寫入一個 記錄
+         * @param key 
+         * @param s 
+         */
+        set(key: string, s: string | Uint8Array | ArrayBuffer, cb?: (e?: any) => void): void
+        /**
+         * 獲取 key 對對應的值並且將它轉爲 字符串，如果不存在將回調 cb(undefined, undefined)
+         */
+        getString(key: string, cb: (s?: string, e?: any) => void): void
+        /**
+         * 獲取 key 對對應的值並且將它轉爲 Uint8Array，如果不存在將回調 cb(undefined, undefined)
+         */
+        getUint8Array(key: string, cb: (s?: Uint8Array, e?: any) => void): void
+        /**
+         * 返回已存儲的 key 數量
+         */
+        readonly size: number
+    }
+}

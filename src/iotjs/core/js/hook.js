@@ -1,6 +1,6 @@
 "use strict";
 (function () {
-    String.prototype.padEnd = function (m, f) {
+    var pad = function (s, m, f, start) {
         if (f === null || f === undefined || f === '') {
             f = " "
         } else {
@@ -12,47 +12,45 @@
         if (typeof m === "string") {
             m = parseInt(m)
         } else if (typeof m !== "number") {
-            return this
+            return s
         }
         m = Math.floor(m)
-        if (!Number.isFinite(m) || this.length >= m) {
-            return this
+        var length = s.length
+        if (!Number.isFinite(m) || length >= m) {
+            return s
         }
-        var s = this
-        while (s.length < m) {
-            s += f
+        var i = f.length
+        var n = i == 1 ? m - length : Math.floor((m - length + i - 1) / i)
+        length += i * n
+        var str = new Array(n)
+        for (i = 0; i < n; i++) {
+            str[i] = f
         }
-        if (s.length > m) {
-            s = s.slice(0, m)
+        if (length > m) {
+            n = length - m
+            f = str[0].slice(0, i - n)
+            if (start) {
+                str[str.length - 1] = f
+                str.push(s)
+            } else {
+                str[0] = s
+                str.push(f)
+            }
+        } else {
+            if (start) {
+                str.push(s)
+            } else {
+                str[0] = s
+                str.push(f)
+            }
         }
-        return s
+        return str.join('')
+    }
+    String.prototype.padEnd = function (m, f) {
+        return pad(this, m, f, false)
     }
     String.prototype.padStart = function (m, f) {
-        if (f === null || f === undefined || f === '') {
-            f = " "
-        } else {
-            f = f.toString()
-            if (f == "") {
-                f = " "
-            }
-        }
-        if (typeof m === "string") {
-            m = parseInt(m)
-        } else if (typeof m !== "number") {
-            return this
-        }
-        m = Math.floor(m)
-        if (!Number.isFinite(m) || this.length >= m) {
-            return this
-        }
-        var s = this
-        while (s.length < m) {
-            s += f
-        }
-        if (s.length > m) {
-            s = s.slice(0, m)
-        }
-        return s
+        return pad(this, m, f, true)
     }
     var __values = (this && this.__values) || function (o) {
         var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
