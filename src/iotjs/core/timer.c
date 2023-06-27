@@ -13,10 +13,6 @@ static void timer_free(void *arg)
 #ifdef VM_TRACE_FINALIZER
     puts("timer_free");
 #endif
-    if (!arg)
-    {
-        return;
-    }
     _vm_timer_t *timer = arg;
     if (timer->ev)
     {
@@ -100,6 +96,7 @@ static int _nativa_set_timer(duk_context *ctx, BOOL interval)
     // [func]
     vm_context_t *vm = vm_get_context(ctx);
     finalizer_t *finalizer = vm_create_finalizer_n(ctx, sizeof(_vm_timer_t) + event_get_struct_event_size());
+    finalizer->free = timer_free;
     duk_swap_top(ctx, -2);
     duk_put_prop_lstring(ctx, -2, "cb", 2); // [timer]
     _vm_timer_t *timer = finalizer->p;
@@ -113,13 +110,12 @@ static int _nativa_set_timer(duk_context *ctx, BOOL interval)
         duk_pop(ctx);
         if (interval)
         {
-            duk_push_error_object(ctx, DUK_ERR_ERROR, "[setInterval] event_assign error");
+            duk_error(ctx, DUK_ERR_ERROR, "[setInterval] event_assign error");
         }
         else
         {
-            duk_push_error_object(ctx, DUK_ERR_ERROR, "[setTimeout] event_assign error");
+            duk_error(ctx, DUK_ERR_ERROR, "[setTimeout] event_assign error");
         }
-        duk_throw(ctx);
     }
     time_value_t tv = {
         .tv_sec = ms / 1000,
@@ -130,15 +126,13 @@ static int _nativa_set_timer(duk_context *ctx, BOOL interval)
         duk_pop(ctx);
         if (interval)
         {
-            duk_push_error_object(ctx, DUK_ERR_ERROR, "[setInterval] event_add error");
+            duk_error(ctx, DUK_ERR_ERROR, "[setInterval] event_add error");
         }
         else
         {
-            duk_push_error_object(ctx, DUK_ERR_ERROR, "[setTimeout] event_add error");
+            duk_error(ctx, DUK_ERR_ERROR, "[setTimeout] event_add error");
         }
-        duk_throw(ctx);
     }
-    finalizer->free = timer_free;
     timer->ev = ev;
 
     duk_push_heap_stash(ctx);
@@ -164,8 +158,7 @@ static int _nativa_set_timer(duk_context *ctx, BOOL interval)
 }
 static duk_ret_t nativa_setTimeout(duk_context *ctx)
 {
-    duk_ret_t ret = _nativa_set_timer(ctx, FALSE);
-    return ret;
+    return _nativa_set_timer(ctx, FALSE);
 }
 static duk_ret_t nativa_setInterval(duk_context *ctx)
 {

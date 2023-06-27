@@ -71,3 +71,10 @@
 
 var sha1 = require("iotjs/crypto/sha1")
 console.log(sha1.sum('123').length, sha1)
+
+setTimeout(function () {
+    console.log("-------")
+    setTimeout(function () {
+
+    }, 1000 );
+}, 1000);

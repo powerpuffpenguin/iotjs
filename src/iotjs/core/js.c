@@ -377,19 +377,3 @@ vm_context_t *vm_get_context_flags(duk_context *ctx, duk_uint32_t flags)
 //     duk_swap_top(ctx, -2);
 //     duk_call_prop(ctx, -3, 1);
 // }
-void vm_require_date(duk_context *ctx)
-{
-    duk_require_stack(ctx, 3);
-    duk_push_global_object(ctx);
-    duk_get_prop_lstring(ctx, -1, "Date", 4);
-    duk_swap_top(ctx, -2);
-    duk_pop(ctx);
-}
-void vm_push_error_object(duk_context *ctx, int code, const char *message)
-{
-    duk_push_object(ctx);
-    duk_push_int(ctx, code);
-    duk_put_prop_lstring(ctx, -2, "code", 4);
-    duk_push_string(ctx, message);
-    duk_put_prop_lstring(ctx, -2, "message", 7);
-}

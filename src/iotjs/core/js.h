@@ -96,10 +96,7 @@ vm_context_t *vm_get_context_flags(duk_context *ctx, duk_uint32_t flags);
 // // duk_throw ... job ... value => ... job ...
 // void vm_resolve_async_job(duk_context *ctx, duk_idx_t i);
 
-// duk_throw ... => ... Date
-void vm_require_date(duk_context *ctx);
 
-void vm_push_error_object(duk_context *ctx, int code, const char *message);
 
 #define VM_DUK_REQUIRE_LSTRING(require, ctx, idx, key, len) \
     duk_get_prop_lstring(ctx, idx, key, len);               \
