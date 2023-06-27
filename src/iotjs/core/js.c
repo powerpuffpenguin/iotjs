@@ -127,29 +127,7 @@ void _vm_init_context(duk_context *ctx, duk_context *main)
         duk_error(ctx, DUK_ERR_ERROR, "thpool_init(8) error");
     }
 }
-static vm_context_t *_vm_get_context(duk_context *ctx, BOOL completer)
-{
-    duk_require_stack(ctx, completer ? 5 : 3);
-    duk_push_heap_stash(ctx);
 
-    if (completer)
-    {
-        duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_PRIVATE);
-        duk_get_prop_lstring(ctx, -1, VM_IOTJS_KEY_COMPLETER);
-        duk_swap_top(ctx, -2);
-        duk_pop(ctx);
-        duk_swap_top(ctx, -2);
-    }
-
-    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_CONTEXT);
-    duk_swap_top(ctx, -2);
-    duk_pop(ctx); // [..., context]
-
-    finalizer_t *finalizer = vm_require_finalizer(ctx, -1, vm_context_free);
-    vm_context_t *vm = finalizer->p;
-    duk_pop(ctx);
-    return vm;
-}
 void vm_free_dns(vm_context_t *vm)
 {
     if (vm->dns > 0)
@@ -164,11 +142,21 @@ void vm_free_dns(vm_context_t *vm)
 }
 vm_context_t *vm_get_context(duk_context *ctx)
 {
-    return _vm_get_context(ctx, FALSE);
+    duk_require_stack(ctx, 3);
+    duk_push_heap_stash(ctx);
+
+    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_CONTEXT);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx); // [..., context]
+
+    finalizer_t *finalizer = vm_require_finalizer(ctx, -1, vm_context_free);
+    vm_context_t *vm = finalizer->p;
+    duk_pop(ctx);
+    return vm;
 }
 vm_context_t *vm_get_context_flags(duk_context *ctx, duk_uint32_t flags)
 {
-    vm_context_t *vm = _vm_get_context(ctx, flags & VM_CONTEXT_FLAGS_COMPLETER ? TRUE : FALSE);
+    vm_context_t *vm = vm_get_context(ctx);
     if ((flags & VM_CONTEXT_FLAGS_ESB) && !vm->esb)
     {
         duk_push_heap_stash(ctx);

@@ -47,14 +47,11 @@ void vm_dump_context_stdout(duk_context *ctx);
 // duk_throw ... => ...
 vm_context_t *vm_get_context(duk_context *ctx);
 
-// if set, return completer
-#define VM_CONTEXT_FLAGS_COMPLETER 0x1
+
 // if set, init esb
 #define VM_CONTEXT_FLAGS_ESB 0x2
 // 返回運行環境
 // duk_throw ... => ...
-// VM_CONTEXT_FLAGS_ESB
-// duk_throw ... => ... completer
 vm_context_t *vm_get_context_flags(duk_context *ctx, duk_uint32_t flags);
 
 // // 存儲一個異步工作
