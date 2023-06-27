@@ -158,7 +158,6 @@ duk_ret_t _native_vm_init(duk_context *ctx)
     duk_put_prop_lstring(ctx, -2, VM_STASH_KEY_IOTJS);
     _native_vm_init_stash(ctx, main);
     duk_pop(ctx);
-
     // []
     duk_push_global_object(ctx);
     _native_vm_init_global(ctx);
@@ -192,7 +191,7 @@ duk_int_t vm_init(duk_context *ctx, int argc, char *argv[])
         duk_push_error_object(ctx, DUK_ERR_EVAL_ERROR, "duk_check_stack_top error");
         return DUK_EXEC_ERROR;
     }
-    duk_push_c_function(ctx, _native_vm_init, 2);
+    duk_push_c_lightfunc(ctx, _native_vm_init, 2, 2, 0);
     duk_push_array(ctx);
     for (int i = 0; i < argc; i++)
     {

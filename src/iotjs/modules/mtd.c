@@ -9,7 +9,7 @@
 #include <mtd/mtd-user.h>
 #include <errno.h>
 #include <string.h>
-
+#include <iotjs/core/finalizer.h>
 typedef struct
 {
     int fd;

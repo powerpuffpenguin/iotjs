@@ -5,6 +5,7 @@
 #include <iotjs/modules/js/net.h>
 #include <iotjs/core/configure.h>
 #include <iotjs/core/memory.h>
+#include <iotjs/core/finalizer.h>
 
 duk_ret_t native_get_binary_length(duk_context *ctx)
 {

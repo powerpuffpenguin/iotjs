@@ -49,22 +49,25 @@
 // } catch (e) {
 //     console.log('-------', e.toString())
 // }
-try {
-    var mtd = require("iotjs/mtd")
-    console.log(mtd)
-    var f = new mtd.File("/dev/mtd2", true, true)
-    try {
-        var info = f.info()
-        console.log('info', info)
-        var buf = new Uint8Array(info.writesize)
-        f.writeSync(buf)
-        // console.log(f.seekSync(0, 2))
-        // console.log(f.seekSync(0, 1))
-        console.log("write ok")
-    } finally {
-        f.close()
-    }
-    console.log("end")
-} catch (e) {
-    console.log('err', e.toString())
-}
+// try {
+//     var mtd = require("iotjs/mtd")
+//     console.log(mtd)
+//     var f = new mtd.File("/dev/mtd2", true, true)
+//     try {
+//         var info = f.info()
+//         console.log('info', info)
+//         var buf = new Uint8Array(info.writesize)
+//         f.writeSync(buf)
+//         // console.log(f.seekSync(0, 2))
+//         // console.log(f.seekSync(0, 1))
+//         console.log("write ok")
+//     } finally {
+//         f.close()
+//     }
+//     console.log("end")
+// } catch (e) {
+//     console.log('err', e.toString())
+// }
+
+var sha1 = require("iotjs/crypto/sha1")
+console.log(sha1.sum('123').length, sha1)

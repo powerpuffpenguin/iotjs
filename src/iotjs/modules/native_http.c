@@ -3,6 +3,7 @@
 #include <iotjs/modules/net.h>
 #include <iotjs/core/configure.h>
 #include <iotjs/core/memory.h>
+#include <iotjs/core/finalizer.h>
 #include <http_parser.h>
 #include <stdarg.h>
 #include <iotjs/core/binary.h>

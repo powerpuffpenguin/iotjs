@@ -1,10 +1,12 @@
 declare namespace deps {
-    export class native extends Blob { }
+    export class native {
+        iotjs_hash_hash: string
+    }
     export const size: number
     export const block: number
     export function clone(n?: native): native
     export function reset(n: native): void
-    export function write(n: native, s: Uint8Array): number
+    export function write(n: native, s: Uint8Array | string | ArrayBuffer): number
     export function done(n: native): Uint8Array
 }
 export const size = deps.size
@@ -26,10 +28,7 @@ export class Hash {
         }
         return deps.done(n)
     }
-    write(b: Uint8Array): number {
-        if (!b.length) {
-            return 0;
-        }
+    write(b: Uint8Array | string | ArrayBuffer): number {
         return deps.write(this.n, b)
     }
 }

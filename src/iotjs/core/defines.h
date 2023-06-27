@@ -20,6 +20,8 @@
 #define VM_IOTJS_ARCH "amd64"
 #endif
 
+// 擴展的 指針
+#define VM_STASH_KEY_CONTEXT "context", 7
 // 存儲導出給 js 的核心 c 代碼，用於實現 js 核心庫使用
 #define VM_STASH_KEY_PRIVATE "_iotjs", 6
 // 全局變量存儲了一些 iotjs 的 runtime 信息

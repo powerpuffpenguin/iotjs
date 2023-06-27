@@ -17,7 +17,7 @@ void __iotjs_modules_init()
     vm_register_native("iotjs/crypto/sha512_224", native_iotjs_crypto_sha512_224_init);
     vm_register_native("iotjs/crypto/sha512_256", native_iotjs_crypto_sha512_256_init);
 
-    vm_register_native("iotjs/fs", native_iotjs_fs_init);
+    // vm_register_native("iotjs/fs", native_iotjs_fs_init);
     vm_register_native("iotjs/net", native_iotjs_net_init);
     vm_register_native("iotjs/net/http", native_iotjs_net_http_init);
 }
