@@ -420,24 +420,6 @@ declare module "iotjs/fs" {
  */
 declare module "iotjs/net" {
     /**
-     * @alpha
-     */
-    export class IP {
-        static fromIP4(s: string): IP;
-        static fromIP6(s: string): IP;
-        constructor(public readonly ip: Uint8Array) { }
-        readonly ip4: boolean
-        readonly ip6: boolean
-        toString(): string
-        string(): string
-    }
-    /**
-     * @alpha
-     */
-    export function resolveIP(network: 'ip' | 'ip4' | 'ip6', address: string): Promise<Array<IP>>
-
-
-    /**
      * 調用網路接口相關異常
      */
     export class NetError extends Error {

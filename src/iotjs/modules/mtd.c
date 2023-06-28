@@ -18,7 +18,7 @@ typedef struct
 
 static void iotjs_mtd_fd_free(void *ptr)
 {
-    puts(" --------- iotjs_mtd_fd_free");
+    // puts(" --------- iotjs_mtd_fd_free");
 #ifdef VM_TRACE_FINALIZER
     puts(" --------- iotjs_mtd_fd_free");
 #endif
@@ -43,9 +43,7 @@ static duk_ret_t native_open(duk_context *ctx)
     // cb
     finalizer_t *finalizer = vm_create_finalizer_n(ctx, sizeof(iotjs_mtd_fd_t));
     iotjs_mtd_fd_t *p = finalizer->p;
-    p->fd = -1;
     finalizer->free = iotjs_mtd_fd_free;
-
     p->fd = open(path, write ? O_RDWR : O_RDONLY);
     if (p->fd == -1)
     {
@@ -87,66 +85,6 @@ static duk_ret_t native_info(duk_context *ctx)
     duk_put_prop_lstring(ctx, -2, "oobsize", 7);
     return 1;
 }
-static duk_ret_t native_seek_sync(duk_context *ctx)
-{
-    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_fd_free);
-    iotjs_mtd_fd_t *p = finalizer->p;
-    off_t offset = duk_require_number(ctx, 1);
-    int whence = duk_require_number(ctx, 2);
-    switch (whence)
-    {
-    case 0:
-        whence = SEEK_SET;
-        break;
-    case 1:
-        whence = SEEK_CUR;
-        break;
-    case 2:
-        whence = SEEK_END;
-        break;
-    default:
-        duk_error(ctx, DUK_ERR_TYPE_ERROR, "seek unknow whence %d", whence);
-        break;
-    }
-    offset = lseek(p->fd, offset, whence);
-    if (offset == -1)
-    {
-        duk_error(ctx, DUK_ERR_ERROR, strerror(errno));
-    }
-    duk_push_number(ctx, offset);
-    return 1;
-}
-static duk_ret_t native_read_sync(duk_context *ctx)
-{
-    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_fd_free);
-    iotjs_mtd_fd_t *p = finalizer->p;
-    duk_size_t sz;
-    void *buf = duk_require_buffer_data(ctx, 1, &sz);
-    ssize_t ok = read(p->fd, buf, sz);
-    if (ok == -1)
-    {
-        duk_error(ctx, DUK_ERR_ERROR, strerror(errno));
-    }
-    duk_pop_2(ctx);
-    duk_push_number(ctx, ok);
-    return 1;
-}
-static duk_ret_t native_write_sync(duk_context *ctx)
-{
-    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_fd_free);
-    iotjs_mtd_fd_t *p = finalizer->p;
-    duk_size_t sz;
-    void *buf = duk_require_buffer_data(ctx, 1, &sz);
-    ssize_t ok = sz == 0 ? 0 : write(p->fd, buf, sz);
-    if (ok == -1)
-    {
-        duk_error(ctx, DUK_ERR_ERROR, strerror(errno));
-    }
-    duk_pop_2(ctx);
-    duk_push_number(ctx, ok);
-    return 1;
-}
-
 static duk_ret_t native_seek(duk_context *ctx)
 {
     finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_fd_free);
@@ -182,13 +120,14 @@ static duk_ret_t native_read(duk_context *ctx)
     iotjs_mtd_fd_t *p = finalizer->p;
     duk_size_t sz;
     void *buf = duk_require_buffer_data(ctx, 1, &sz);
-    if (sz = 0)
+    ssize_t ok = read(p->fd, buf, sz);
+    if (ok == -1)
     {
-        duk_pop_2(ctx);
-        duk_push_number(ctx, 0);
-        return 1;
+        duk_error(ctx, DUK_ERR_ERROR, strerror(errno));
     }
-    return 0;
+    duk_pop_2(ctx);
+    duk_push_number(ctx, ok);
+    return 1;
 }
 static duk_ret_t native_write(duk_context *ctx)
 {
@@ -196,15 +135,16 @@ static duk_ret_t native_write(duk_context *ctx)
     iotjs_mtd_fd_t *p = finalizer->p;
     duk_size_t sz;
     void *buf = duk_require_buffer_data(ctx, 1, &sz);
-    if (sz = 0)
+    ssize_t ok = sz == 0 ? 0 : write(p->fd, buf, sz);
+    if (ok == -1)
     {
-        duk_pop_2(ctx);
-        duk_push_number(ctx, 0);
-        return 1;
+        duk_error(ctx, DUK_ERR_ERROR, strerror(errno));
     }
-
-    return 0;
+    duk_pop_2(ctx);
+    duk_push_number(ctx, ok);
+    return 1;
 }
+
 duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
 {
     duk_swap(ctx, 0, 1);
@@ -233,13 +173,6 @@ duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "close", 5);
         duk_push_c_lightfunc(ctx, native_info, 1, 1, 0);
         duk_put_prop_lstring(ctx, -2, "info", 4);
-        duk_push_c_lightfunc(ctx, native_seek_sync, 3, 3, 0);
-        duk_put_prop_lstring(ctx, -2, "seekSync", 8);
-        duk_push_c_lightfunc(ctx, native_read_sync, 2, 2, 0);
-        duk_put_prop_lstring(ctx, -2, "readSync", 8);
-        duk_push_c_lightfunc(ctx, native_write_sync, 2, 2, 0);
-        duk_put_prop_lstring(ctx, -2, "writeSync", 9);
-
         duk_push_c_lightfunc(ctx, native_seek, 3, 3, 0);
         duk_put_prop_lstring(ctx, -2, "seek", 4);
         duk_push_c_lightfunc(ctx, native_read, 2, 2, 0);
