@@ -409,7 +409,7 @@ export class TCPConn {
         runSync(() => {
             const onRead = this.hook_?.onRead
             if (onRead) {
-                if (onRead()) {
+                if (onRead() || this.closed_) {
                     return
                 }
             }
@@ -430,6 +430,9 @@ export class TCPConn {
                     if (n) {
                         // 通知讀取成功
                         node.cb(n)
+                        if (this.closed_) {
+                            return
+                        }
                     } else {
                         // 依然沒有可寫，回調前可能有其它讀取
                         if (i) {
@@ -450,6 +453,9 @@ export class TCPConn {
                     return;
                 }
                 r()
+                if (this.closed_) {
+                    return
+                }
             }
 
             // 通知上層用戶 有消息需要處理
@@ -963,6 +969,9 @@ Sec-WebSocket-Key: ${key}
                     if (data) {
                         // 通知讀取成功
                         node.cb(data)
+                        if (this.conn_.isClosed) {
+                            return true
+                        }
                     } else {
                         // 依然沒有可寫，回調前可能有其它讀取
                         if (i) {
@@ -983,6 +992,9 @@ Sec-WebSocket-Key: ${key}
                     return true
                 }
                 r()
+                if (this.conn_.isClosed) {
+                    return true
+                }
             }
 
             // 通知上層用戶 有消息需要處理
