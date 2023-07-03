@@ -683,7 +683,7 @@ static void ws_expand_read_cb(struct bufferevent *bev, void *args)
             expand_ws_lerror(conn, "upgrade websocket not support content", 37);
             return;
         }
-        expand_ws_ec(conn, 0);
+
         // 初始化 解幀狀態
         expand->state = IOTJS_NET_EXPAND_WS_STATE_READY;
         expand->ws.length = 0;
@@ -695,6 +695,9 @@ static void ws_expand_read_cb(struct bufferevent *bev, void *args)
 
         bufferevent_setcb(conn->bev, ws_expand_read_cb, tcp_connection_write_cb, tcp_connection_event_cb, conn);
         evbuffer_drain(buf, readed);
+
+        // 通知前端連接完成
+        expand_ws_ec(conn, 0);
     }
 }
 static void ws_expand_event_cb(struct bufferevent *bev, short what, void *args)
