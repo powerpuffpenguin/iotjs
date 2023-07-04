@@ -307,6 +307,7 @@ static void on_http_cb(struct evhttp_request *req, void *arg)
     duk_push_pointer(ctx, req);
     duk_push_pointer(ctx, arg);
     duk_call(ctx, 2);
+    duk_pop(ctx);
 }
 static void on_http_error(enum evhttp_request_error err, void *arg)
 {
@@ -473,7 +474,7 @@ static duk_ret_t _native_make_request(duk_context *ctx)
     req->vm = vm;
     return 0;
 }
-duk_ret_t _native_cancel_request(duk_context *ctx)
+static duk_ret_t _native_cancel_request(duk_context *ctx)
 {
     finalizer_t *finalizer = vm_require_finalizer(ctx, 0, http_request_free);
     http_request_t *req = finalizer->p;

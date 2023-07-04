@@ -28,10 +28,8 @@ function sendJSON(co, dst, data) {
 }
 function recv(co, src) {
     return co.yield(function (notify) {
-        console.log('-------------recv')
         var finish = false
         const cb = function (data, e) {
-            console.log("---------1", finish)
             if (finish) {
                 return
             }
@@ -42,9 +40,7 @@ function recv(co, src) {
                 notify.value(data)
             }
         };
-        console.log("do recv")
         const v = src.recv(cb)
-        console.log("---------0", finish)
         if (finish) {
             return
         }
@@ -78,6 +74,9 @@ coroutine.go(function (co) {
         console.log('recv success', new Date(), data)
 
         console.log("all success", new Date())
+        conn.onMessage = function (msg) {
+            console.log(msg)
+        }
     } catch (e) {
         if (e instanceof Error) {
             console.log(e.toString())
