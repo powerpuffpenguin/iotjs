@@ -135,8 +135,15 @@ static duk_ret_t native_is(duk_context *ctx)
     duk_uint8_t c = duk_require_number(ctx, 1);
     for (duk_size_t i = 0; i < sz_dst; i++)
     {
-        dst[i] = c;
+        if (dst[i] != c)
+        {
+            duk_pop_2(ctx);
+            duk_push_false(ctx);
+            return 1;
+        }
     }
+    duk_pop_2(ctx);
+    duk_push_true(ctx);
     return 0;
 }
 duk_ret_t native_iotjs_bytes_init(duk_context *ctx)
