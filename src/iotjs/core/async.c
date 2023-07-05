@@ -1,6 +1,7 @@
 #include <iotjs/core/async.h>
 #include <iotjs/core/defines.h>
 #include <iotjs/core/js.h>
+#include <iotjs/core/memory.h>
 #include <stdio.h>
 static duk_context *vm_snapshot_impl(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_size_t n, duk_uint8_t copy)
 {
@@ -200,4 +201,39 @@ void vm_remove_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_buck
     duk_push_pointer(ctx, key);
     duk_del_prop(ctx, -2);
     duk_pop(ctx);
+}
+typedef struct
+{
+    vm_context_t *vm;
+    vm_async_work work;
+    void *args;
+} _iotjs_vm_async_args_t;
+
+static void _vm_async(void *args)
+{
+    _iotjs_vm_async_args_t *p = args;
+    vm_context_t *vm = p->vm;
+    vm_async_work work = p->work;
+    args = p->args;
+    vm_free(p);
+
+    work(vm, args);
+}
+void vm_async(duk_context *ctx, vm_async_work work, void *args)
+{
+    vm_context_t *vm = vm_get_context(ctx);
+
+    _iotjs_vm_async_args_t *p = vm_malloc(sizeof(_iotjs_vm_async_args_t));
+    if (!p)
+    {
+        duk_error(ctx, DUK_ERR_ERROR, "malloc async args fail");
+    }
+    p->vm = vm;
+    p->work = work;
+    p->args = args;
+    if (thpool_add_work(vm->threads, _vm_async, p))
+    {
+        vm_free(p);
+        duk_error(ctx, DUK_ERR_ERROR, "thpool_add_work fail");
+    }
 }

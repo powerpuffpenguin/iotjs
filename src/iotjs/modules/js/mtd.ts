@@ -7,17 +7,13 @@ declare namespace deps {
     export interface MTD {
         readonly __iotjs_mtd_hash: string
     }
-    export interface OpenOptions {
-        path: string
-        write: boolean
-    }
     /**
      * 打開一個 mtd 分區
      * @param path 分區路徑
      * @param write 是否可寫，默認只是可讀
      * @param excl 是否獨佔打開
      */
-    export function open(opts: OpenOptions): MTD
+    export function open(path: string, cb: (evt: number, ret: number, e?: any) => void): MTD
     /**
      * 關閉分區
      */
@@ -36,19 +32,42 @@ declare namespace deps {
      */
     export function info(fd: MTD): Info
 
+    export function seekSync(fd: MTD, offset: number, whence: number): number
+    export function readSync(fd: MTD, data: Uint8Array): number
+    export function writeSync(fd: MTD, data: Uint8Array): number
+
     export function seek(fd: MTD, offset: number, whence: number): number
     export function read(fd: MTD, data: Uint8Array): number
     export function write(fd: MTD, data: Uint8Array): number
 }
 
 export const Seek = deps.Seek
+
+interface Task {
+    next?: Task
+    evt: number
+    data?: Uint8Array
+    offset?: number
+    whence?: number
+    cb?: (ret?: number, e?: any) => void
+}
 export class File {
     private fd_: deps.MTD
     private close_ = false
-    constructor(readonly path: string, write = false) {
-        this.fd_ = deps.open({
-            path: path,
-            write: write,
+    constructor(readonly path: string) {
+        this.fd_ = deps.open(path, (evt, errno, ret) => {
+            console.log(evt, errno, ret)
+            switch (evt) {
+                case 0: // seek
+
+                    break;
+                case 1: // read
+
+                    break
+                case 2: // write
+
+                    break
+            }
         })
     }
     get isClosed(): boolean {
@@ -67,74 +86,66 @@ export class File {
         }
         return deps.info(this.fd_)
     }
-    seek(offset: number, whence: deps.Seek) {
+    seekSync(offset: number, whence: deps.Seek) {
         if (this.close_) {
             throw new Error("db already closed")
         }
-        return deps.seek(this.fd_, offset, whence)
+        return deps.seekSync(this.fd_, offset, whence)
     }
-    read(data: Uint8Array): number {
+    readSync(data: Uint8Array): number {
         if (this.close_) {
             throw new Error("db already closed")
         }
-        return deps.read(this.fd_, data)
+        return deps.readSync(this.fd_, data)
     }
-    write(data: Uint8Array): number {
+    writeSync(data: Uint8Array): number {
         if (this.close_) {
             throw new Error("db already closed")
         }
-        return deps.write(this.fd_, data)
+        return deps.writeSync(this.fd_, data)
     }
-}
-const keys = new Map<string, _DB>()
-class _DB {
-    constructor(readonly path: string, readonly fd: deps.MTD) {
-        const info = deps.info(fd)
-        const blocks = info.size / info.erasesize
-        console.log(blocks)
+    private front_?: Task
+    private back_?: Task
+    private _do(next: Task) {
+        switch (next.evt) {
+            case 0:
+                deps.seek(this.fd_, next.offset!, next.whence!)
+                break;
+            case 1:
+                deps.read(this.fd_, next.data!)
+                break;
+            case 2:
+                deps.write(this.fd_, next.data!)
+                break;
+            default:
+                throw new Error(`unknow task ${next.evt}`);
+        }
     }
-    reference = 1
-}
-export class DB {
-    private db_: _DB
-    private close_ = 0
-    constructor(path: string) {
-        path = _iotjs.path.clean(path)
-        const found = keys.get(path)
-        if (found) {
-            found.reference++
-            this.db_ = found
+    private _task(next: Task) {
+        if (this.back_) {
+            this.back_.next = next
         } else {
-            const fd = deps.open({
-                path: path,
-                write: true,
-            })
-            try {
-                const db = new _DB(path, fd)
-                keys.set(path, db)
-                this.db_ = db
-            } catch (e) {
-                deps.close(fd)
-                throw e
-            }
+            this._do(next)
+            this.back_ = next
+            this.front_ = next
         }
     }
-    close() {
-        if (this.close_) {
-            return
-        }
-        this.close_ = 1
-        const db = this.db_
-        db.reference--
-        if (!db.reference) {
-            keys.delete(db.path)
-            deps.close(db.fd)
-        }
-    }
-    info() {
+    seek(offset: number, whence: number, cb?: (ret?: number, e?: any) => void): void {
         if (this.close_) {
             throw new Error("db already closed")
         }
-        return deps.info(this.db_.fd)
+        this._task({ evt: 0, offset: offset, whence: whence, cb: cb })
+    }
+    read(data: Uint8Array, cb?: (ret?: number, e?: any) => void): void {
+        if (this.close_) {
+            throw new Error("db already closed")
+        }
+        this._task({ evt: 1, data: data, cb: cb })
+    }
+    write(data: Uint8Array, cb?: (ret?: number, e?: any) => void): void {
+        if (this.close_) {
+            throw new Error("db already closed")
+        }
+        this._task({ evt: 2, data: data, cb: cb })
     }
 }
