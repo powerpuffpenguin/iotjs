@@ -117,7 +117,7 @@ static duk_ret_t native_compare(duk_context *ctx)
     duk_push_int(ctx, 0);
     return 1;
 }
-static duk_ret_t native_set(duk_context *ctx)
+static duk_ret_t native_fill(duk_context *ctx)
 {
     duk_size_t sz_dst;
     duk_uint8_t *dst = duk_require_buffer_data(ctx, 0, &sz_dst);
@@ -125,6 +125,17 @@ static duk_ret_t native_set(duk_context *ctx)
     if (sz_dst)
     {
         memset(dst, c, sz_dst);
+    }
+    return 0;
+}
+static duk_ret_t native_is(duk_context *ctx)
+{
+    duk_size_t sz_dst;
+    duk_uint8_t *dst = duk_require_buffer_data(ctx, 0, &sz_dst);
+    duk_uint8_t c = duk_require_number(ctx, 1);
+    for (duk_size_t i = 0; i < sz_dst; i++)
+    {
+        dst[i] = c;
     }
     return 0;
 }
@@ -137,7 +148,9 @@ duk_ret_t native_iotjs_bytes_init(duk_context *ctx)
     duk_put_prop_lstring(ctx, -2, "copy", 4);
     duk_push_c_lightfunc(ctx, native_compare, 3, 3, 0);
     duk_put_prop_lstring(ctx, -2, "compare", 7);
-    duk_push_c_lightfunc(ctx, native_set, 2, 2, 0);
-    duk_put_prop_lstring(ctx, -2, "set", 3);
+    duk_push_c_lightfunc(ctx, native_fill, 2, 2, 0);
+    duk_put_prop_lstring(ctx, -2, "fill", 4);
+    duk_push_c_lightfunc(ctx, native_is, 2, 2, 0);
+    duk_put_prop_lstring(ctx, -2, "is", 2);
     return 0;
 }

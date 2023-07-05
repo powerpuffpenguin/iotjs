@@ -77,7 +77,11 @@ declare module "iotjs/bytes" {
     /**
      * 將 dst 每個字節設置爲指定字符
      */
-    export function set(dst: Uint8Array, c: number): void
+    export function fill(dst: Uint8Array, c: number): void
+    /**
+     * 如果 dst 中每個字符都是指定的字符 則返回 true 否則返回 false
+     */
+    export function is(dst: Uint8Array, c: number): boolean
 }
 /**
  * async await 源於 Promise，Promise 的完成回調必須在下一個 循環週期中調用，
