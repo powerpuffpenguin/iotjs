@@ -136,7 +136,7 @@ duk_ret_t native_iotjs_bytes_init(duk_context *ctx)
     duk_push_c_lightfunc(ctx, native_copy, 2, 2, 0);
     duk_put_prop_lstring(ctx, -2, "copy", 4);
     duk_push_c_lightfunc(ctx, native_compare, 3, 3, 0);
-    duk_put_prop_lstring(ctx, -2, "compare", 8);
+    duk_put_prop_lstring(ctx, -2, "compare", 7);
     duk_push_c_lightfunc(ctx, native_set, 2, 2, 0);
     duk_put_prop_lstring(ctx, -2, "set", 3);
     return 0;
