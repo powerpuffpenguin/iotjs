@@ -58,6 +58,27 @@ declare module "iotjs" {
 
     export type BufferData = string | ArrayBuffer | DataView | Uint8Array | Uint8ClampedArray | Uint16Array | Uint32Array | Int8Array | Int16Array | Int32Array | Float32Array | Float64Array
 }
+declare module "iotjs/bytes" {
+    /**
+     * 將 src 的數據以字節形式拷貝到 dst, 返回實際拷貝的字節數
+     * @param dst 
+     * @param src 
+     */
+    export function copy(dst: Uint8Array, src: Uint8Array | ArrayBuffer | string): number
+    /**
+     * 以字節形式比較 l r
+     * @param l 
+     * @param r 
+     * @param icase 是否忽略大小寫
+     * @returns l == r ? 0 ( l < r ? -1 : 1)
+     */
+    export function compare(l: Uint8Array | ArrayBuffer | string, r: Uint8Array | ArrayBuffer | string, icase = false): number
+
+    /**
+     * 將 dst 每個字節設置爲指定字符
+     */
+    export function set(dst: Uint8Array, c: number): void
+}
 /**
  * async await 源於 Promise，Promise 的完成回調必須在下一個 循環週期中調用，
  * 這通常不是太大的問題，但是在嵌入式模式下這種運行模式會太慢。
@@ -868,15 +889,30 @@ declare module "iotjs/mtd" {
          */
         info(): Info
 
+        /**
+         * 同步移動讀寫位置
+         * @param offset 
+         * @param whence 
+         */
         seekSync(offset: number, whence: Seek): number
+        /**
+         * 使用 0xff 擦除數據 
+         * @param offset 擦除起始位置, mtd 必須整塊擦除所以 offset % info().erasesize === 0
+         * @param size 擦除大小, mtd 必須整塊擦除所以 offset % info().erasesize === 0
+         */
+        eraseSync(offset: number, size: number): void
         /**
          * 同步讀取數據,如果讀取到 eof 返回 0
          */
         readSync(data: Uint8Array): number
+        /**
+         * 同步寫入數據,返回實際寫入的字節數
+         * @param data 
+         */
         writeSync(data: Uint8Array | string | ArrayBuffer): number
 
-        seek(offset: number, cb?: (ret?: number, e?: any) => void): void
-        read(data: Uint8Array, cb?: (ret?: number, e?: any) => void): void
-        write(data: Uint8Array | string | ArrayBuffer, cb?: (ret?: number, e?: any) => void): void
+        // seek(offset: number, cb?: (ret?: number, e?: any) => void): void
+        // read(data: Uint8Array, cb?: (ret?: number, e?: any) => void): void
+        // write(data: Uint8Array | string | ArrayBuffer, cb?: (ret?: number, e?: any) => void): void
     }
 }

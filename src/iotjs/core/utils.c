@@ -1,5 +1,5 @@
 #include <stddef.h>
-unsigned char iotjs_c_lower(unsigned char c)
+static unsigned char iotjs_c_uper(unsigned char c)
 {
     if (c >= 'a' && c <= 'z')
     {
@@ -17,13 +17,17 @@ int iotjs_memcasecmp(const void *s1, const void *s2, size_t n)
     const unsigned char *p1 = (const unsigned char *)s1;
     const unsigned char *p2 = (const unsigned char *)s2;
     int result;
+
+    unsigned char l, r;
     for (size_t i = 0; i < n; i++)
     {
-        result = iotjs_c_lower(*p1++) - iotjs_c_lower(*p2++);
-        if (result)
+        l = iotjs_c_uper(*p1++);
+        r = iotjs_c_uper(*p2++);
+        if (l == r)
         {
-            return result;
+            continue;
         }
+        return l < r ? -1 : 1;
     }
     return 0;
 }

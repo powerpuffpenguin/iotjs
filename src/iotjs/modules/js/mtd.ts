@@ -33,6 +33,7 @@ declare namespace deps {
     export function info(fd: MTD): Info
 
     export function seekSync(fd: MTD, offset: number, whence: number): number
+    export function eraseSync(fd: MTD, offset: number, size: number): void
     export function readSync(fd: MTD, data: Uint8Array): number
     export function writeSync(fd: MTD, data: Uint8Array): number
 
@@ -91,6 +92,12 @@ export class File {
             throw new Error("db already closed")
         }
         return deps.seekSync(this.fd_, offset, whence)
+    }
+    eraseSync(offset: number, size: number): void {
+        if (this.close_) {
+            throw new Error("db already closed")
+        }
+        return deps.eraseSync(this.fd_, offset, size)
     }
     readSync(data: Uint8Array): number {
         if (this.close_) {

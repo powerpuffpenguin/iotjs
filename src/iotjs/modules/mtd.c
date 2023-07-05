@@ -142,6 +142,20 @@ static duk_ret_t native_seek_sync(duk_context *ctx)
     duk_push_number(ctx, offset);
     return 1;
 }
+static duk_ret_t native_erase_sync(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_fd_free);
+    iotjs_mtd_fd_t *p = finalizer->p;
+    erase_info_t ei;
+    ei.start = duk_require_number(ctx, 1);
+    ei.length = duk_require_number(ctx, 2);
+    if (ioctl(p->fd, MEMERASE, &ei) == -1)
+    {
+        duk_error(ctx, DUK_ERR_ERROR, strerror(errno));
+        return -1;
+    }
+    return 0;
+}
 static duk_ret_t native_read_sync(duk_context *ctx)
 {
     finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_fd_free);
@@ -284,6 +298,8 @@ duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
 
         duk_push_c_lightfunc(ctx, native_seek_sync, 3, 3, 0);
         duk_put_prop_lstring(ctx, -2, "seekSync", 8);
+        duk_push_c_lightfunc(ctx, native_erase_sync, 3, 3, 0);
+        duk_put_prop_lstring(ctx, -2, "eraseSync", 9);
         duk_push_c_lightfunc(ctx, native_read_sync, 2, 2, 0);
         duk_put_prop_lstring(ctx, -2, "readSync", 8);
         duk_push_c_lightfunc(ctx, native_write_sync, 2, 2, 0);

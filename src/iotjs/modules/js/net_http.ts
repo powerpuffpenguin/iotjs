@@ -102,7 +102,7 @@ function runSync<T>(f: () => T, exit?: boolean) {
     }
 }
 
-export const parse_url = deps.parse_url;
+export const parseURL = deps.parse_url;
 export interface ClientOptions {
     /**
      * 如果爲 true 使用 tls
