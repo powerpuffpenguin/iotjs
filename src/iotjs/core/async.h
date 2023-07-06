@@ -17,14 +17,15 @@ duk_context *vm_require_snapshot(duk_context *ctx, const char *bucket, duk_size_
 // 如果快照存在則刪除快照
 void vm_remove_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key);
 
+typedef void (*vm_async_work)(void *args);
 typedef struct
 {
-    /* data */
+    vm_context_t *vm;
+    void *in;
+    void *out;
 } vm_job_t;
 
-typedef void (*vm_async_work)(vm_context_t *vm, void *args);
-// 將 vm_async_work 放到工作線程中執行
-// duk_throw ... => ...
-void vm_async(duk_context *ctx, vm_async_work work, void *args);
-
+vm_job_t *vm_new_job(duk_context *ctx, size_t in, size_t out);
+duk_bool_t vm_run_job(vm_job_t *job, void (*work)(vm_job_t *job));
+void vm_must_run_job(duk_context *ctx, vm_job_t *job, void (*work)(vm_job_t *job));
 #endif

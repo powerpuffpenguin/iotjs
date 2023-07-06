@@ -202,38 +202,32 @@ void vm_remove_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_buck
     duk_del_prop(ctx, -2);
     duk_pop(ctx);
 }
-typedef struct
-{
-    vm_context_t *vm;
-    vm_async_work work;
-    void *args;
-} _iotjs_vm_async_args_t;
-
-static void _vm_async(void *args)
-{
-    _iotjs_vm_async_args_t *p = args;
-    vm_context_t *vm = p->vm;
-    vm_async_work work = p->work;
-    args = p->args;
-    vm_free(p);
-
-    work(vm, args);
-}
-void vm_async(duk_context *ctx, vm_async_work work, void *args)
+vm_job_t *vm_new_job(duk_context *ctx, size_t in, size_t out)
 {
     vm_context_t *vm = vm_get_context(ctx);
-
-    _iotjs_vm_async_args_t *p = vm_malloc(sizeof(_iotjs_vm_async_args_t));
+    size_t n = sizeof(vm_job_t) + in + out;
+    duk_uint8_t *p = vm_malloc(n);
     if (!p)
     {
-        duk_error(ctx, DUK_ERR_ERROR, "malloc async args fail");
+        duk_error(ctx, DUK_ERR_ERROR, "malloc job fail");
     }
-    p->vm = vm;
-    p->work = work;
-    p->args = args;
-    if (thpool_add_work(vm->threads, _vm_async, p))
+    memset(p, 0, n);
+    vm_job_t *job = (vm_job_t *)p;
+    job->vm = vm;
+    job->in = in ? (p + sizeof(vm_job_t)) : 0;
+    job->out = out ? (p + sizeof(vm_job_t) + in) : 0;
+    return job;
+}
+
+duk_bool_t vm_run_job(vm_job_t *job, void(work)(vm_job_t *job))
+{
+    return thpool_add_work(job->vm->threads, (void (*)(void *))(work), job) ? 0 : 1;
+}
+void vm_must_run_job(duk_context *ctx, vm_job_t *job, void (*work)(vm_job_t *job))
+{
+    if (thpool_add_work(job->vm->threads, (void (*)(void *))(work), job))
     {
-        vm_free(p);
+        vm_free(job);
         duk_error(ctx, DUK_ERR_ERROR, "thpool_add_work fail");
     }
 }

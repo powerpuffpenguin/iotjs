@@ -915,8 +915,9 @@ declare module "iotjs/mtd" {
          */
         writeSync(data: Uint8Array | string | ArrayBuffer): number
 
-        // seek(offset: number, cb?: (ret?: number, e?: any) => void): void
-        // read(data: Uint8Array, cb?: (ret?: number, e?: any) => void): void
-        // write(data: Uint8Array | string | ArrayBuffer, cb?: (ret?: number, e?: any) => void): void
+        seek(offset: number, cb?: (ret?: number, e?: any) => void): void
+        erase(offset: number, size: number, cb?: (e?: any) => void): void
+        read(data: Uint8Array, cb?: (ret?: number, e?: any) => void): void
+        write(data: Uint8Array | string | ArrayBuffer, cb?: (ret?: number, e?: any) => void): void
     }
 }

@@ -18,6 +18,7 @@ declare namespace deps {
      * 關閉分區
      */
     export function close(fd: MTD): void
+    export function free(fd: MTD): void
     export interface Info {
         type: number
         flags: number
@@ -37,37 +38,75 @@ declare namespace deps {
     export function readSync(fd: MTD, data: Uint8Array): number
     export function writeSync(fd: MTD, data: Uint8Array): number
 
-    export function seek(fd: MTD, offset: number, whence: number): number
-    export function read(fd: MTD, data: Uint8Array): number
-    export function write(fd: MTD, data: Uint8Array): number
+    export function seek(fd: MTD, offset: number, whence: number): void
+    export function erase(fd: MTD, offset: number, size: number): void
+    export function read(fd: MTD, data: Uint8Array): number | undefined
+    export function write(fd: MTD, data: Uint8Array): number | undefined
 }
 
 export const Seek = deps.Seek
+function runSync<T>(f: () => T, exit?: boolean) {
+    try {
+        return f()
+    } catch (e) {
+        if (exit) {
 
+            if (e instanceof Error) {
+                console.error(e.toString())
+            } else {
+                console.error(e)
+            }
+            _iotjs.exit(1)
+        } else {
+            throw e
+        }
+    }
+}
 interface Task {
     next?: Task
     evt: number
     data?: Uint8Array
     offset?: number
     whence?: number
+    size?: number
     cb?: (ret?: number, e?: any) => void
 }
 export class File {
     private fd_: deps.MTD
     private close_ = false
     constructor(readonly path: string) {
-        this.fd_ = deps.open(path, (evt, errno, ret) => {
-            console.log(evt, errno, ret)
-            switch (evt) {
-                case 0: // seek
-
-                    break;
-                case 1: // read
-
-                    break
-                case 2: // write
-
-                    break
+        this.fd_ = deps.open(path, (evt, ret, e) => {
+            this._onEvt(evt, ret, e)
+        })
+    }
+    private _onEvt(evt: number, ret?: number, e?: any) {
+        runSync(() => {
+            const front = this.front_!
+            const next = front.next
+            if (next) {
+                this.front_ = next
+            } else {
+                this.front_ = undefined
+                this.back_ = undefined
+            }
+            const cb = front.cb
+            if (cb) {
+                switch (evt) {
+                    case 1: //erase
+                        cb(e)
+                        break
+                    case 0: // seek
+                    case 2: // read
+                    case 3: // write
+                        cb(ret, e)
+                        break
+                }
+            }
+            if (next) {
+                ret = this._do(next)
+                if (ret !== undefined) {
+                    this._onEvt(next.evt, ret)
+                }
             }
         })
     }
@@ -80,6 +119,9 @@ export class File {
         }
         this.close_ = true
         deps.close(this.fd_)
+        if (!this.front_) {
+            deps.free(this.fd_)
+        }
     }
     info() {
         if (this.close_) {
@@ -113,28 +155,53 @@ export class File {
     }
     private front_?: Task
     private back_?: Task
-    private _do(next: Task) {
+    private _do(next: Task): number | undefined {
+        let ret: number | undefined
         switch (next.evt) {
             case 0:
-                deps.seek(this.fd_, next.offset!, next.whence!)
-                break;
+                try {
+                    deps.seek(this.fd_, next.offset!, next.whence!)
+                } catch (e) {
+                    this._onEvt(0, undefined, e)
+                }
+                return
             case 1:
-                deps.read(this.fd_, next.data!)
-                break;
+                try {
+                    deps.erase(this.fd_, next.offset!, next.size!)
+                } catch (e) {
+                    this._onEvt(1, e as any)
+                }
+                return
             case 2:
-                deps.write(this.fd_, next.data!)
+                try {
+                    ret = deps.read(this.fd_, next.data!)
+                } catch (e) {
+                    this._onEvt(2, undefined, e)
+                    return
+                }
+            case 3:
+                try {
+                    ret = deps.write(this.fd_, next.data!)
+                } catch (e) {
+                    this._onEvt(3, undefined, e)
+                    return
+                }
                 break;
             default:
                 throw new Error(`unknow task ${next.evt}`);
         }
+        return ret
     }
     private _task(next: Task) {
         if (this.back_) {
             this.back_.next = next
         } else {
-            this._do(next)
             this.back_ = next
             this.front_ = next
+            const ret = this._do(next)
+            if (ret !== undefined) {
+                this._onEvt(next.evt, ret)
+            }
         }
     }
     seek(offset: number, whence: number, cb?: (ret?: number, e?: any) => void): void {
@@ -143,16 +210,22 @@ export class File {
         }
         this._task({ evt: 0, offset: offset, whence: whence, cb: cb })
     }
+    erase(offset: number, size: number, cb?: (e?: any) => void): void {
+        if (this.close_) {
+            throw new Error("db already closed")
+        }
+        this._task({ evt: 1, offset: offset, size: size, cb: cb })
+    }
     read(data: Uint8Array, cb?: (ret?: number, e?: any) => void): void {
         if (this.close_) {
             throw new Error("db already closed")
         }
-        this._task({ evt: 1, data: data, cb: cb })
+        this._task({ evt: 2, data: data, cb: cb })
     }
     write(data: Uint8Array, cb?: (ret?: number, e?: any) => void): void {
         if (this.close_) {
             throw new Error("db already closed")
         }
-        this._task({ evt: 2, data: data, cb: cb })
+        this._task({ evt: 3, data: data, cb: cb })
     }
 }
