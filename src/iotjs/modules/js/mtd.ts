@@ -74,6 +74,7 @@ interface Task {
 export class File {
     private fd_: deps.MTD
     private close_ = false
+    private free_ = false
     constructor(readonly path: string) {
         this.fd_ = deps.open(path, (evt, ret, e) => {
             this._onEvt(evt, ret, e)
@@ -82,7 +83,7 @@ export class File {
     private _onEvt(evt: number, ret?: number, e?: any) {
         runSync(() => {
             const front = this.front_!
-            const next = front.next
+            let next = front.next
             if (next) {
                 this.front_ = next
             } else {
@@ -102,6 +103,25 @@ export class File {
                         break
                 }
             }
+            if (this.close_) {
+                this._free()
+                this.front_ = undefined
+                this.back_ = undefined
+                if (next) {
+                    let e = new Error("mtd already closed")
+                    while (next) {
+                        if (next.cb) {
+                            if (next.evt == 1) {
+                                next.cb(e as any)
+                            } else {
+                                next.cb(undefined, e)
+                            }
+                        }
+                        next = next.next
+                    }
+                }
+                return
+            }
             if (next) {
                 ret = this._do(next)
                 if (ret !== undefined) {
@@ -120,36 +140,42 @@ export class File {
         this.close_ = true
         deps.close(this.fd_)
         if (!this.front_) {
+            this._free()
+        }
+    }
+    private _free() {
+        if (!this.free_) {
+            this.free_ = true
             deps.free(this.fd_)
         }
     }
     info() {
         if (this.close_) {
-            throw new Error("db already closed")
+            throw new Error("mtd already closed")
         }
         return deps.info(this.fd_)
     }
     seekSync(offset: number, whence: deps.Seek) {
         if (this.close_) {
-            throw new Error("db already closed")
+            throw new Error("mtd already closed")
         }
         return deps.seekSync(this.fd_, offset, whence)
     }
     eraseSync(offset: number, size: number): void {
         if (this.close_) {
-            throw new Error("db already closed")
+            throw new Error("mtd already closed")
         }
         return deps.eraseSync(this.fd_, offset, size)
     }
     readSync(data: Uint8Array): number {
         if (this.close_) {
-            throw new Error("db already closed")
+            throw new Error("mtd already closed")
         }
         return deps.readSync(this.fd_, data)
     }
     writeSync(data: Uint8Array): number {
         if (this.close_) {
-            throw new Error("db already closed")
+            throw new Error("mtd already closed")
         }
         return deps.writeSync(this.fd_, data)
     }
@@ -179,6 +205,7 @@ export class File {
                     this._onEvt(2, undefined, e)
                     return
                 }
+                break
             case 3:
                 try {
                     ret = deps.write(this.fd_, next.data!)
@@ -195,6 +222,7 @@ export class File {
     private _task(next: Task) {
         if (this.back_) {
             this.back_.next = next
+            this.back_ = next
         } else {
             this.back_ = next
             this.front_ = next
@@ -206,25 +234,25 @@ export class File {
     }
     seek(offset: number, whence: number, cb?: (ret?: number, e?: any) => void): void {
         if (this.close_) {
-            throw new Error("db already closed")
+            throw new Error("mtd already closed")
         }
         this._task({ evt: 0, offset: offset, whence: whence, cb: cb })
     }
     erase(offset: number, size: number, cb?: (e?: any) => void): void {
         if (this.close_) {
-            throw new Error("db already closed")
+            throw new Error("mtd already closed")
         }
         this._task({ evt: 1, offset: offset, size: size, cb: cb })
     }
     read(data: Uint8Array, cb?: (ret?: number, e?: any) => void): void {
         if (this.close_) {
-            throw new Error("db already closed")
+            throw new Error("mtd already closed")
         }
         this._task({ evt: 2, data: data, cb: cb })
     }
     write(data: Uint8Array, cb?: (ret?: number, e?: any) => void): void {
         if (this.close_) {
-            throw new Error("db already closed")
+            throw new Error("mtd already closed")
         }
         this._task({ evt: 3, data: data, cb: cb })
     }

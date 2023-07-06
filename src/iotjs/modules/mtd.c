@@ -62,6 +62,11 @@ typedef struct
 
 static void iotjs_mtd_fd_handler(evutil_socket_t fd, short events, void *args)
 {
+    if (events)
+    {
+        return;
+    }
+
     iotjs_mtd_fd_t *p = args;
     vm_job_t *job = p->job;
     if (!job)
@@ -70,32 +75,24 @@ static void iotjs_mtd_fd_handler(evutil_socket_t fd, short events, void *args)
     }
     p->job = NULL;
     duk_context *ctx = job->vm->ctx;
-    switch (events)
+
+    async_out_t *out = job->out;
+    vm_restore(ctx, VM_SNAPSHOT_MTD, p, 0);
+    duk_pop(ctx);
+    duk_push_number(ctx, events);
+    if (out->ret == -1)
     {
-    case 0: // seek
-    case 1: // erase
-    case 2: // read
-    case 3: // write
+        duk_push_undefined(ctx);
+        duk_push_error_object(ctx, DUK_ERR_ERROR, strerror(out->err));
+        duk_call(ctx, 3);
+    }
+    else
     {
-        async_out_t *out = job->out;
-        vm_restore(ctx, VM_SNAPSHOT_MTD, p, 0);
-        duk_pop(ctx);
-        duk_push_number(ctx, events);
-        if (out->ret == -1)
-        {
-            duk_push_undefined(ctx);
-            duk_push_error_object(ctx, DUK_ERR_ERROR, strerror(errno));
-            duk_call(ctx, 3);
-        }
-        else
-        {
-            duk_push_number(ctx, out->ret);
-            duk_call(ctx, 2);
-        }
-        duk_pop(ctx);
+        duk_push_number(ctx, out->ret);
+        duk_call(ctx, 2);
     }
-    break;
-    }
+    duk_pop(ctx);
+
     vm_free(job);
 }
 static duk_ret_t native_open(duk_context *ctx)
@@ -319,7 +316,7 @@ static void async_erase(vm_job_t *job)
     {
         out->err = errno;
     }
-    event_active(in->mtd->ev, 1, 0);
+    event_active(in->mtd->ev, 0, 0);
 }
 static duk_ret_t native_erase(duk_context *ctx)
 {
@@ -348,7 +345,7 @@ static void async_read(vm_job_t *job)
     {
         out->err = errno;
     }
-    event_active(in->mtd->ev, 2, 0);
+    event_active(in->mtd->ev, 0, 0);
 }
 static void async_write(vm_job_t *job)
 {
@@ -359,10 +356,11 @@ static void async_write(vm_job_t *job)
     {
         out->err = errno;
     }
-    event_active(in->mtd->ev, 3, 0);
+    event_active(in->mtd->ev, 0, 0);
 }
 static duk_ret_t native_read(duk_context *ctx)
 {
+
     finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_fd_free);
     iotjs_mtd_fd_t *p = finalizer->p;
     duk_size_t sz;
