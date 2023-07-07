@@ -42,6 +42,20 @@ declare namespace deps {
     export function erase(fd: MTD, offset: number, size: number): void
     export function read(fd: MTD, data: Uint8Array): number | undefined
     export function write(fd: MTD, data: Uint8Array): number | undefined
+
+    export class DB {
+        readonly __iotjs_mtd_db_hash: string
+    }
+    export function db(path: string, cb: (evt: number, ret?: any, e?: any) => void): DB
+    /**
+     * 關閉分區
+     */
+    export function db_close(db: DB): void
+    export function db_free(db: DB): void
+    export function base64_encode(v: any): string
+    export function db_set_sync(db: DB, key: string, data: Uint8Array | ArrayBuffer): void
+    export function db_get_sync(db: DB, key: string): Uint8Array | undefined
+    export function db_has_sync(db: DB, key: string): boolean
 }
 
 export const Seek = deps.Seek
@@ -255,5 +269,56 @@ export class File {
             throw new Error("mtd already closed")
         }
         this._task({ evt: 3, data: data, cb: cb })
+    }
+}
+
+export class DB {
+    private db_: deps.DB
+    private close_ = false
+    private free_ = false
+    constructor(readonly path: string) {
+        this.db_ = deps.db(path, (evt, ret, e) => {
+            console.log(evt, ret, e)
+        })
+    }
+    get isClosed(): boolean {
+        return this.close_
+    }
+    close() {
+        if (this.close_) {
+            return
+        }
+        this.close_ = true
+        deps.db_close(this.db_)
+        // if (!this.front_) {
+        this._free()
+        // }
+    }
+    private _free() {
+        if (!this.free_) {
+            this.free_ = true
+            deps.db_free(this.db_)
+        }
+    }
+    setSync(key: string, data: Uint8Array | ArrayBuffer): void {
+        if (this.close_) {
+            throw new Error("db already closed")
+        }
+        key = deps.base64_encode(key)
+        deps.db_set_sync(this.db_, key, data)
+    }
+    getSync(key: string): Uint8Array | undefined {
+        if (this.close_) {
+            throw new Error("db already closed")
+        }
+        key = deps.base64_encode(key)
+        return deps.db_get_sync(this.db_, key)
+    }
+    hasSync(key: string): boolean {
+        if (this.close_) {
+            throw new Error("db already closed")
+        }
+        key = deps.base64_encode(key)
+        return deps.db_has_sync(this.db_, key)
     }
 }

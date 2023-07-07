@@ -46,6 +46,7 @@
 #define VM_SNAPSHOT_HTTP_CONN "HttpConn", 8
 #define VM_SNAPSHOT_HTTP_REQUEST "HttpReq", 7
 #define VM_SNAPSHOT_MTD "MTD", 3
+#define VM_SNAPSHOT_MTD_KV "MTD-KV", 6
 
 #define VM_IOTJS_KEY_COMPLETER "Completer", 9
 #define VM_IOTJS_KEY_ERROR "IotError", 8

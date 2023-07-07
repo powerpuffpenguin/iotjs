@@ -920,4 +920,19 @@ declare module "iotjs/mtd" {
         read(data: Uint8Array, cb?: (ret?: number, e?: any) => void): void
         write(data: Uint8Array | string | ArrayBuffer, cb?: (ret?: number, e?: any) => void): void
     }
+
+    export class DB {
+        /**
+         * 將一個 mtd 分區作爲 key-value 數據庫
+         */
+        constructor(readonly path: string) {
+        }
+        setSync(key: string, data: Uint8Array | ArrayBuffer): void
+        getSync(key: string): undefined | Uint8Array
+        hasSync(key: string): boolean
+
+        set(key: string, data: Uint8Array | ArrayBuffer, cb?: (e?: any) => void): void
+        get(key: string, cb?: (data?: Uint8Array, e?: any) => void): undefined | Uint8Array
+        has(key: string, cb?: (exists?: boolean, e?: any) => void): boolean
+    }
 }
