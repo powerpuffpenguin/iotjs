@@ -1,5 +1,6 @@
 include_directories("${CMAKE_SOURCE_DIR}/${OUTPUT_ROOT_DIR}/include")
 
+include("${CMAKE_CURRENT_LIST_DIR}/third_party/memoryPool.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/third_party/threads.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/third_party/duktape.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/third_party/spiffs.cmake")

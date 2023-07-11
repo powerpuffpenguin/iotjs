@@ -113,6 +113,10 @@
     "memory.h": "c",
     "core.h": "c",
     "mtd.h": "c",
-    "finalizer.h": "c"
+    "finalizer.h": "c",
+    "valarray": "c",
+    "list": "c",
+    "set": "c",
+    "stack": "c"
   }
 }

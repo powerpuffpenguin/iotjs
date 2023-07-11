@@ -17,6 +17,8 @@ void free_function(void *udata, void *ptr)
 }
 int main(int argc, char *argv[])
 {
+    vm_set_mem_default_pool(0);
+
     int ret = -1;
     if (evthread_use_pthreads())
     {

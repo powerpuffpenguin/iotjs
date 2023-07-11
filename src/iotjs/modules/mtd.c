@@ -23,7 +23,7 @@ int mtd_fs_fd = -1;
 
 static s32_t my_spiffs_read(u32_t addr, u32_t size, u8_t *dst)
 {
-    printf("my_spiffs_read %d %d \r\n", addr, size);
+    // printf("my_spiffs_read %d %d \r\n", addr, size);
     int ret = lseek(mtd_fs_fd, addr, SEEK_SET);
     if (ret == -1)
     {
@@ -39,7 +39,7 @@ static s32_t my_spiffs_read(u32_t addr, u32_t size, u8_t *dst)
 
 static s32_t my_spiffs_write(u32_t addr, u32_t size, u8_t *src)
 {
-    printf("my_spiffs_write %d %d \r\n", addr, size);
+    // printf("my_spiffs_write %d %d \r\n", addr, size);
     int ret = lseek(mtd_fs_fd, addr, SEEK_SET);
     if (ret == -1)
     {
