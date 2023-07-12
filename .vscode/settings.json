@@ -117,6 +117,9 @@
     "valarray": "c",
     "list": "c",
     "set": "c",
-    "stack": "c"
+    "stack": "c",
+    "memorypool.h": "c",
+    "mep.h": "c",
+    "__memory": "cpp"
   }
 }

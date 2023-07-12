@@ -3,6 +3,7 @@ set(dirs
     src/iotjs/core
     src/iotjs/assert
     src/iotjs/modules
+    src/iotjs/mempool
 )
 include_directories("${CMAKE_SOURCE_DIR}/src")
 foreach(dir ${dirs})

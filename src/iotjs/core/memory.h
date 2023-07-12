@@ -9,5 +9,4 @@ void *vm_malloc(size_t sz);
 void *vm_realloc(void *ptr, size_t sz);
 void vm_free(void *ptr);
 void vm_set_mem_functions(vm_malloc_t malloc, vm_realloc_t realloc, vm_free_t free);
-void vm_set_mem_default_pool(size_t size);
 #endif
