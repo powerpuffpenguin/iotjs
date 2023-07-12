@@ -8,9 +8,11 @@
 #define IOTJS_MEP_OUT(p) ((uint8_t *)p + sizeof(iotjs_mep_ele_t))
 #define IOTJS_MEP_IN(p) (void *)((uint8_t *)p - sizeof(iotjs_mep_ele_t))
 
-#define IOTJS_MEP_MIN_BLOCK 16
-#define IOTJS_MEP_MAX_BLOCK 64 * 1024
-
+void iotjs_mep_init(iotjs_mep_t *mep, iotjs_mep_alloctor_t *alloctors, size_t len)
+{
+    mep->alloctors = alloctors;
+    mep->len = len;
+}
 static iotjs_mep_ele_t *iotjs_mep_new_block(size_t block, size_t len)
 {
     iotjs_mep_ele_t *p = malloc(block + sizeof(iotjs_mep_ele_t));
@@ -22,7 +24,7 @@ static iotjs_mep_ele_t *iotjs_mep_new_block(size_t block, size_t len)
     p->value.block = block;
     return p;
 }
-static void _iotjs_mep_alloctor_clear(_iotjs_mep_alloctor_t *alloctor)
+static void _iotjs_mep_alloctor_clear(iotjs_mep_alloctor_t *alloctor)
 {
     iotjs_mep_list_t *l = &alloctor->idle;
     if (l->len)
@@ -53,57 +55,18 @@ static void _iotjs_mep_alloctor_clear(_iotjs_mep_alloctor_t *alloctor)
         iotjs_mep_list_init(l);
     }
 }
-iotjs_mep_t *iotjs_mep_new()
-{
-    iotjs_mep_t *mep = malloc(sizeof(iotjs_mep_t));
-    if (mep)
-    {
-        size_t count = sizeof(mep->alloctors) / sizeof(_iotjs_mep_alloctor_t);
-        size_t block = IOTJS_MEP_MIN_BLOCK / 2; // 小於 16 的內存分配直接分配 16 字節
-        size_t cache[13] = {
-            8192,
-            4096,
-            2048,
-            1024,
-            512,
-            256,
-            128,
-            64,
-            32,
-            16,
-            8,
-            8,
-            8,
-        };
-        size_t num = 0;
-        for (size_t i = 0; i < count; i++)
-        {
-            block *= 2;
-            iotjs_mep_list_init(&mep->alloctors[i].idle);
-            iotjs_mep_list_init(&mep->alloctors[i].used);
-            mep->alloctors[i].block = block;
-            mep->alloctors[i].cache = cache[i];
-            // printf("block %zu %zu %zu\r\n", block, mep->alloctors[i].cache, block * mep->alloctors[i].cache);
-            // num += block * mep->alloctors[i].cache;
-        }
-        // printf("%zu\r\n", num / 1024);
-    }
-    return mep;
-}
 
 void iotjs_mep_destroy(iotjs_mep_t *mep)
 {
-    size_t count = sizeof(mep->alloctors) / sizeof(_iotjs_mep_alloctor_t);
-    for (size_t i = 0; i < count; i++)
+    for (size_t i = 0; i < mep->len; i++)
     {
         _iotjs_mep_alloctor_clear(mep->alloctors + i);
     }
-    free(mep);
 }
 static int iotjs_mep_find_alloctor(iotjs_mep_t *mep, size_t sz)
 {
     int i = 0;
-    int n = sizeof(mep->alloctors) / sizeof(_iotjs_mep_alloctor_t);
+    int n = mep->len;
     int j = n;
     while (i < j)
     {
@@ -127,7 +90,7 @@ static int iotjs_mep_find_alloctor(iotjs_mep_t *mep, size_t sz)
 }
 static iotjs_mep_ele_t *iotjs_mep_alloctor_malloc(iotjs_mep_t *mep, int i, size_t sz)
 {
-    _iotjs_mep_alloctor_t *alloctor = mep->alloctors + i;
+    iotjs_mep_alloctor_t *alloctor = mep->alloctors + i;
     iotjs_mep_ele_t *front;
     if (alloctor->idle.len)
     {
@@ -148,9 +111,10 @@ static iotjs_mep_ele_t *iotjs_mep_alloctor_malloc(iotjs_mep_t *mep, int i, size_
 }
 void *iotjs_mep_malloc(iotjs_mep_t *mep, size_t sz)
 {
+
     iotjs_mep_ele_t *p;
     // 超過 最大塊的大內存 直接交給系統處理
-    if (sz > IOTJS_MEP_MAX_BLOCK)
+    if (sz > mep->alloctors[mep->len - 1].block)
     {
         p = iotjs_mep_new_block(sz, sz);
     }
@@ -163,7 +127,7 @@ void *iotjs_mep_malloc(iotjs_mep_t *mep, size_t sz)
 
 static void iotjs_mep_alloctor_free(iotjs_mep_t *mep, int i, iotjs_mep_ele_t *ele)
 {
-    _iotjs_mep_alloctor_t *alloctor = mep->alloctors + i;
+    iotjs_mep_alloctor_t *alloctor = mep->alloctors + i;
     if (ele->list != &alloctor->used)
     {
         puts("iotjs_mep_free not by iotjs_mep_malloc");
@@ -185,7 +149,7 @@ void iotjs_mep_free(iotjs_mep_t *mep, void *ptr)
     if (ptr)
     {
         iotjs_mep_ele_t *ele = IOTJS_MEP_IN(ptr);
-        if (ele->value.block > IOTJS_MEP_MAX_BLOCK)
+        if (ele->value.block > mep->alloctors[mep->len - 1].block)
         {
             free(ele);
             return;
@@ -216,7 +180,7 @@ void *iotjs_mep_realloc(iotjs_mep_t *mep, void *ptr, size_t sz)
     void *dst = iotjs_mep_malloc(mep, sz);
     if (dst)
     {
-        memcpy(dst, ptr, old_size < sz ? old_size : sz);
+        memcpy(dst, ptr, old_size);
     }
     iotjs_mep_free(mep, ptr);
     return dst;

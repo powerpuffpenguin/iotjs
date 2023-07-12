@@ -13,15 +13,16 @@ typedef struct
     size_t block;
     // 最多緩存多少個塊
     size_t cache;
-} _iotjs_mep_alloctor_t;
+} iotjs_mep_alloctor_t;
 
 typedef struct
 {
-    _iotjs_mep_alloctor_t alloctors[13];
+    iotjs_mep_alloctor_t *alloctors;
+    size_t len;
 } iotjs_mep_t;
 
 // 初始化內存池
-iotjs_mep_t *iotjs_mep_new();
+void iotjs_mep_init(iotjs_mep_t *mep, iotjs_mep_alloctor_t *alloctors, size_t len);
 // 銷毀內存池
 void iotjs_mep_destroy(iotjs_mep_t *mep);
 
