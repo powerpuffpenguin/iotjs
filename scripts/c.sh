@@ -178,6 +178,14 @@ c_iotjs(){
         mkdir -p iotjs/include/iotjs/core
         cp ../../src/iotjs/core/*.h iotjs/include/iotjs/core/
     fi
+    if [[ ! -f iotjs/include/iotjs/container/list.h ]];then
+        mkdir -p iotjs/include/iotjs/container
+        cp ../../src/iotjs/container/*.h iotjs/include/iotjs/container/
+    fi
+    if [[ ! -f iotjs/include/iotjs/mempool/list.h ]];then
+        mkdir -p iotjs/include/iotjs/mempool
+        cp ../../src/iotjs/mempool/*.h iotjs/include/iotjs/mempool/
+    fi
 
     if [[ $test == true ]];then
         log_info "test for $target"
