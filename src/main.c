@@ -3,105 +3,111 @@
 #include <iotjs/core/memory.h>
 #include <event2/thread.h>
 #include <event2/event.h>
-#include <iotjs/mempool/mempool.h>
-#include <pthread.h>
-typedef struct
-{
-    iotjs_mep_t mep;
-    iotjs_mep_alloctor_t alloctors[13];
-    pthread_mutex_t mutex;
-} default_mep_t;
-default_mep_t default_mep;
-void init_default_mep()
-{
-    if (pthread_mutex_init(&default_mep.mutex, NULL))
-    {
-        puts("init_default_mep_mutex fail");
-        exit(1);
-    }
+// #include <iotjs/mempool/mempool.h>
+// #include <pthread.h>
+// typedef struct
+// {
+//     iotjs_mep_t mep;
+//     iotjs_mep_alloctor_t alloctors[13];
+//     pthread_mutex_t mutex;
+// } default_mep_t;
+// default_mep_t default_mep;
+// void init_default_mep()
+// {
+//     if (pthread_mutex_init(&default_mep.mutex, NULL))
+//     {
+//         puts("init_default_mep_mutex fail");
+//         exit(1);
+//     }
 
-    iotjs_mep_t *mep = &default_mep.mep;
-    iotjs_mep_alloctor_t *alloctors = (void *)&default_mep.alloctors;
+//     iotjs_mep_t *mep = &default_mep.mep;
+//     iotjs_mep_alloctor_t *alloctors = (void *)&default_mep.alloctors;
 
-    size_t len = 13;
-    size_t cache[13] = {
-        8192,
-        4096,
-        2048,
-        1024,
-        512,
-        256,
-        128,
-        64,
-        32,
-        16,
-        8,
-        8,
-        8,
-    };
-    size_t block = 16 / 2; // 小於 16 的內存分配直接分配 16 字節
-    size_t num = 0;
-    for (size_t i = 0; i < len; i++)
-    {
-        block *= 2;
-        alloctors[i].block = block;
-        alloctors[i].cache = cache[i];
-        iotjs_mep_list_init(&alloctors[i].idle);
-        iotjs_mep_list_init(&alloctors[i].used);
-    }
-    iotjs_mep_init(mep, alloctors, len);
-}
+//     size_t len = 13;
+//     size_t cache[13] = {
+//         8192,
+//         4096,
+//         2048,
+//         1024,
+//         512,
+//         256,
+//         128,
+//         64,
+//         32,
+//         16,
+//         8,
+//         8,
+//         8,
+//     };
+//     size_t block = 16 / 2; // 小於 16 的內存分配直接分配 16 字節
+//     size_t num = 0;
+//     for (size_t i = 0; i < len; i++)
+//     {
+//         block *= 2;
+//         alloctors[i].block = block;
+//         alloctors[i].cache = cache[i];
+//         iotjs_mep_list_init(&alloctors[i].idle);
+//         iotjs_mep_list_init(&alloctors[i].used);
+//     }
+//     iotjs_mep_init(mep, alloctors, len);
+// }
 
 void *my_malloc(size_t sz)
 {
-    pthread_mutex_lock(&default_mep.mutex);
-    void *p = iotjs_mep_malloc(&default_mep.mep, sz);
-    pthread_mutex_unlock(&default_mep.mutex);
-    return p;
+    // pthread_mutex_lock(&default_mep.mutex);
+    // void *p = iotjs_mep_malloc(&default_mep.mep, sz);
+    // pthread_mutex_unlock(&default_mep.mutex);
+    // return p;
+    return malloc(sz);
 }
 void *my_realloc(void *p, size_t sz)
 {
-    pthread_mutex_lock(&default_mep.mutex);
-    p = iotjs_mep_realloc(&default_mep.mep, p, sz);
-    pthread_mutex_unlock(&default_mep.mutex);
-    return p;
+    // pthread_mutex_lock(&default_mep.mutex);
+    // p = iotjs_mep_realloc(&default_mep.mep, p, sz);
+    // pthread_mutex_unlock(&default_mep.mutex);
+    // return p;
+    return realloc(p, sz);
 }
 void my_free(void *p)
 {
     if (p)
     {
-        pthread_mutex_lock(&default_mep.mutex);
-        iotjs_mep_free(&default_mep.mep, p);
-        pthread_mutex_unlock(&default_mep.mutex);
+        // pthread_mutex_lock(&default_mep.mutex);
+        // iotjs_mep_free(&default_mep.mep, p);
+        // pthread_mutex_unlock(&default_mep.mutex);
+        free(p);
     }
 }
 void *alloc_function(void *udata, duk_size_t sz)
 {
-    pthread_mutex_lock(&default_mep.mutex);
-    void *p = iotjs_mep_malloc(&default_mep.mep, sz);
-    pthread_mutex_unlock(&default_mep.mutex);
-    return p;
+    // pthread_mutex_lock(&default_mep.mutex);
+    // void *p = iotjs_mep_malloc(&default_mep.mep, sz);
+    // pthread_mutex_unlock(&default_mep.mutex);
+    // return p;
+    return malloc(sz);
 }
 void *realloc_function(void *udata, void *p, duk_size_t sz)
 {
-    pthread_mutex_lock(&default_mep.mutex);
-    p = iotjs_mep_realloc(&default_mep.mep, p, sz);
-    pthread_mutex_unlock(&default_mep.mutex);
-    return p;
+    // pthread_mutex_lock(&default_mep.mutex);
+    // p = iotjs_mep_realloc(&default_mep.mep, p, sz);
+    // pthread_mutex_unlock(&default_mep.mutex);
+    // return p;
+    return realloc(p, sz);
 }
 void free_function(void *udata, void *p)
 {
     if (p)
     {
-        pthread_mutex_lock(&default_mep.mutex);
-        iotjs_mep_free(&default_mep.mep, p);
-        pthread_mutex_unlock(&default_mep.mutex);
+        // pthread_mutex_lock(&default_mep.mutex);
+        // iotjs_mep_free(&default_mep.mep, p);
+        // pthread_mutex_unlock(&default_mep.mutex);
+        free(p);
     }
 }
 
 int main(int argc, char *argv[])
 {
-    init_default_mep();
+    // init_default_mep();
     int ret = -1;
     if (evthread_use_pthreads())
     {
