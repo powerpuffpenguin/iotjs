@@ -428,6 +428,7 @@ typedef struct
     duk_uint8_t state;
     struct event *ev;
     vm_job_t *job;
+    pthread_mutex_t mutex;
 
     spiffs *fs;
     u8_t *buf;
@@ -447,12 +448,15 @@ static void iotjs_mtd_db_free(void *ptr)
     {
         vm_free(p->buf);
     }
-    if (p->state)
+    if (p->state & 0x01)
     {
-        p->state = 0;
         close(p->fd);
     }
-
+    if (p->state & 0x02)
+    {
+        pthread_mutex_destroy(&p->mutex);
+    }
+    p->state = 0;
     if (p->ev)
     {
         event_free(p->ev);
@@ -520,6 +524,12 @@ static duk_ret_t native_db(duk_context *ctx)
         vm_finalizer_free(ctx, -1, iotjs_mtd_db_free);
         duk_error(ctx, DUK_ERR_ERROR, strerror(err));
     }
+    if (pthread_mutex_init(&p->mutex, NULL))
+    {
+        vm_finalizer_free(ctx, -1, iotjs_mtd_db_free);
+        duk_error(ctx, DUK_ERR_ERROR, "pthread_mutex_init error");
+    }
+    p->state |= 0x2;
 
     vm_context_t *vm = vm_get_context(ctx);
     p->ev = event_new(vm->eb, -1, EV_PERSIST | EV_TIMEOUT, iotjs_mtd_db_handler, p);
@@ -929,6 +939,20 @@ static duk_ret_t native_db_info(duk_context *ctx)
 
     return 1;
 }
+static duk_ret_t native_db_lock(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
+    iotjs_mtd_db_t *db = finalizer->p;
+    pthread_mutex_lock(&db->mutex);
+    return 0;
+}
+static duk_ret_t native_db_unlock(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
+    iotjs_mtd_db_t *db = finalizer->p;
+    pthread_mutex_unlock(&db->mutex);
+    return 0;
+}
 duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
 {
     duk_swap(ctx, 0, 1);
@@ -999,6 +1023,10 @@ duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "db_get_sync", 11);
         duk_push_c_lightfunc(ctx, native_db_info, 1, 1, 0);
         duk_put_prop_lstring(ctx, -2, "db_info", 7);
+        duk_push_c_lightfunc(ctx, native_db_lock, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "db_lock", 7);
+        duk_push_c_lightfunc(ctx, native_db_unlock, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "db_unlock", 9);
     }
     duk_call(ctx, 3);
     return 0;

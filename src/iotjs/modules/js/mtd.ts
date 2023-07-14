@@ -58,6 +58,9 @@ declare namespace deps {
     export function db_get_sync(db: DB, k0: string, k1: string, s: boolean): Uint8Array | string | undefined
     export function db_has_sync(db: DB, k0: string, k1: string): boolean
     export function db_info(db: DB): any
+
+    export function db_lock(db: DB): void
+    export function db_unlock(db: DB): void
 }
 
 export const Seek = deps.Seek
@@ -324,7 +327,12 @@ export class DB {
         key = deps.key_encode(key)
         const k0 = `/0.${key}`
         const k1 = `/1.${key}`
-        deps.db_set_sync(this.db_, k0, k1, data, buf)
+        deps.db_lock(this.db_)
+        try {
+            deps.db_set_sync(this.db_, k0, k1, data, buf)
+        } finally {
+            deps.db_unlock(this.db_)
+        }
     }
     getSync(key: string, s?: boolean): string | Uint8Array | undefined {
         if (this.close_) {
@@ -333,7 +341,13 @@ export class DB {
         key = deps.key_encode(key)
         const k0 = `/0.${key}`
         const k1 = `/1.${key}`
-        return deps.db_get_sync(this.db_, k0, k1, s ? true : false)
+
+        deps.db_lock(this.db_)
+        try {
+            return deps.db_get_sync(this.db_, k0, k1, s ? true : false)
+        } finally {
+            deps.db_unlock(this.db_)
+        }
     }
     hasSync(key: string): boolean {
         if (this.close_) {
@@ -342,7 +356,12 @@ export class DB {
         key = deps.key_encode(key)
         const k0 = `/0.${key}`
         const k1 = `/1.${key}`
-        return deps.db_has_sync(this.db_, k0, k1)
+        deps.db_lock(this.db_)
+        try {
+            return deps.db_has_sync(this.db_, k0, k1)
+        } finally {
+            deps.db_unlock(this.db_)
+        }
     }
     info() {
         if (this.close_) {
