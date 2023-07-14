@@ -5,6 +5,7 @@ try {
     var path = "/dev/mtd5"
     var db = new mtd.DB(path)
     try {
+        console.log(db.info())
         for (var i = 0; i < 12; i++) {
             db.setSync("ko" + i, "this is value " + i)
             console.log("ko" + i, db.hasSync("ko" + i))

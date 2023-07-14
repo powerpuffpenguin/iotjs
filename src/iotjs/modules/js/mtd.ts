@@ -57,6 +57,7 @@ declare namespace deps {
     export function db_set_sync(db: DB, k0: string, k1: string, data: Uint8Array | ArrayBuffer | string, buf: Uint8Array): void
     export function db_get_sync(db: DB, k0: string, k1: string, s: boolean): Uint8Array | string | undefined
     export function db_has_sync(db: DB, k0: string, k1: string): boolean
+    export function db_info(db: DB): any
 }
 
 export const Seek = deps.Seek
@@ -332,7 +333,7 @@ export class DB {
         key = deps.key_encode(key)
         const k0 = `/0.${key}`
         const k1 = `/1.${key}`
-        return deps.db_get_sync(this.db_, k0, k1, s ?? false)
+        return deps.db_get_sync(this.db_, k0, k1, s ? true : false)
     }
     hasSync(key: string): boolean {
         if (this.close_) {
@@ -342,5 +343,11 @@ export class DB {
         const k0 = `/0.${key}`
         const k1 = `/1.${key}`
         return deps.db_has_sync(this.db_, k0, k1)
+    }
+    info() {
+        if (this.close_) {
+            throw new Error("db already closed")
+        }
+        return deps.db_info(this.db_)
     }
 }

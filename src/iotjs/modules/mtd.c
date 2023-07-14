@@ -774,18 +774,23 @@ static duk_ret_t native_db_set_sync(duk_context *ctx)
     memcpy(buf + 4, data, sz_data);
     iotjs_little_endian.put_uint64(buf + 4 + sz_data, version);
 
-    SPIFFS_remove(fs, k);
+    s32_t ok = SPIFFS_remove(fs, k);
+    if (ok < 0 && ok != SPIFFS_ERR_NOT_FOUND)
+    {
+        int err = SPIFFS_errno(fs);
+        duk_error(ctx, DUK_ERR_ERROR, "SPIFFS_remove fail %d", err);
+    }
     spiffs_file fd = SPIFFS_open(fs, k, SPIFFS_CREAT | SPIFFS_TRUNC | SPIFFS_RDWR, 0);
     if (fd < 0)
     {
         int err = SPIFFS_errno(fs);
-        duk_error(ctx, DUK_ERR_ERROR, "SPIFFS fail %d", err);
+        duk_error(ctx, DUK_ERR_ERROR, "SPIFFS_open fail %d", err);
     }
     if (SPIFFS_write(fs, fd, buf, sz) != sz)
     {
         int err = SPIFFS_errno(fs);
         SPIFFS_close(fs, fd);
-        duk_error(ctx, DUK_ERR_ERROR, "SPIFFS fail %d", err);
+        duk_error(ctx, DUK_ERR_ERROR, "SPIFFS_write fail %d", err);
     }
     else
     {
@@ -904,6 +909,26 @@ static duk_ret_t native_db_get_sync(duk_context *ctx)
     }
     return 1;
 }
+static duk_ret_t native_db_info(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
+    iotjs_mtd_db_t *db = finalizer->p;
+    spiffs *fs = db->fs;
+
+    duk_pop(ctx);
+
+    duk_push_object(ctx);
+    duk_push_number(ctx, fs->free_blocks);
+    duk_put_prop_lstring(ctx, -2, "freeBlocks", 10);
+    duk_push_number(ctx, fs->block_count);
+    duk_put_prop_lstring(ctx, -2, "blockCount", 10);
+    duk_push_number(ctx, (u32_t)SPIFFS_OBJ_IX_LEN(fs));
+    duk_put_prop_lstring(ctx, -2, "entries", 7);
+    duk_push_number(ctx, (u32_t)SPIFFS_OBJ_HDR_IX_LEN(fs));
+    duk_put_prop_lstring(ctx, -2, "headerEntries", 13);
+
+    return 1;
+}
 duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
 {
     duk_swap(ctx, 0, 1);
@@ -972,6 +997,8 @@ duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "db_has_sync", 11);
         duk_push_c_lightfunc(ctx, native_db_get_sync, 4, 4, 0);
         duk_put_prop_lstring(ctx, -2, "db_get_sync", 11);
+        duk_push_c_lightfunc(ctx, native_db_info, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "db_info", 7);
     }
     duk_call(ctx, 3);
     return 0;

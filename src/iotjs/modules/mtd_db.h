@@ -2,6 +2,7 @@
 #define IOTJS_MODULES_MTD_DB_H
 
 #include <spiffs.h>
+#include <spiffs_nucleus.h>
 
 #define LOG_PAGE_SIZE 256
 
