@@ -927,7 +927,7 @@ declare module "iotjs/mtd" {
      */
     export class DB {
         /**
-         * 將一個 mtd 分區作爲 key-value 數據庫
+         * 將一個 mtd 分區作爲 key-value 數據庫，最大只能同時打開 3 個設備
          */
         constructor(readonly path: string) {
         }

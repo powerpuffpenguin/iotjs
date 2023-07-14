@@ -46,7 +46,7 @@ declare namespace deps {
     export class DB {
         readonly __iotjs_mtd_db_hash: string
     }
-    export function db(path: string, cb: (evt: number, ret?: any, e?: any) => void): DB
+    export function db(path: string, device: number, cb: (evt: number, ret?: any, e?: any) => void): DB
     /**
      * 關閉分區
      */
@@ -271,15 +271,23 @@ export class File {
         this._task({ evt: 3, data: data, cb: cb })
     }
 }
-
+const dbDevices = [false, false, false]
 export class DB {
+    private device_: number
     private db_: deps.DB
     private close_ = false
-    private free_ = false
     constructor(readonly path: string) {
-        this.db_ = deps.db(path, (evt, ret, e) => {
-            console.log(evt, ret, e)
-        })
+        for (let i = 0; i < dbDevices.length; i++) {
+            if (!dbDevices[i]) {
+                this.db_ = deps.db(path, i, (evt, ret, e) => {
+                    console.log(evt, ret, e)
+                })
+                dbDevices[i] = true
+                this.device_ = i
+                return
+            }
+        }
+        throw new Error("device busy")
     }
     get isClosed(): boolean {
         return this.close_
@@ -295,8 +303,10 @@ export class DB {
         // }
     }
     private _free() {
-        if (!this.free_) {
-            this.free_ = true
+        const i = this.device_
+        if (i > -1) {
+            this.device_ = -1
+            dbDevices[i] = false
             deps.db_free(this.db_)
         }
     }

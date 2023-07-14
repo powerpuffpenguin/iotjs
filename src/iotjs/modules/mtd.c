@@ -16,6 +16,8 @@
 #include <iotjs/modules/mtd_db.h>
 
 IOTJS_SPIFFS_DEFINE(0)
+IOTJS_SPIFFS_DEFINE(1)
+IOTJS_SPIFFS_DEFINE(2)
 
 typedef struct
 {
@@ -105,7 +107,7 @@ static duk_ret_t native_open(duk_context *ctx)
 {
     const char *path = duk_require_string(ctx, 0);
     duk_require_callable(ctx, 1);
-    duk_swap_top(ctx, -2);
+    duk_swap_top(ctx, 0);
     duk_pop(ctx);
 
     // cb
@@ -466,10 +468,14 @@ static void iotjs_mtd_db_handler(evutil_socket_t fd, short events, void *args)
 duk_ret_t native_db(duk_context *ctx)
 {
     const char *path = duk_require_string(ctx, 0);
-    duk_require_callable(ctx, 1);
-    duk_swap_top(ctx, -2);
-    duk_pop(ctx);
-
+    duk_uint_t device = duk_require_uint(ctx, 1);
+    duk_require_callable(ctx, 2);
+    duk_swap_top(ctx, 0);
+    duk_pop_2(ctx);
+    if (device > 2)
+    {
+        duk_error(ctx, DUK_ERR_ERROR, "unknow device %d", device);
+    }
     // cb
     finalizer_t *finalizer = vm_create_finalizer_n(ctx, sizeof(iotjs_mtd_db_t));
     iotjs_mtd_db_t *p = finalizer->p;
@@ -533,15 +539,43 @@ duk_ret_t native_db(duk_context *ctx)
             duk_error(ctx, DUK_ERR_ERROR, "vm_malloc buf fail");
         }
     }
-    IOTJS_SPIFFS_INIT(0, p->fd, p->mtd_info.writesize, p->buf, cfg);
-    int res = IOTJS_SPIFFS_MOUNT(0, &cfg);
-    if (res < 0)
+    int res;
+    switch (device)
     {
-        int err = IOTJS_SPIFFS_errno(0);
-        vm_finalizer_free(ctx, -1, iotjs_mtd_db_free);
-        duk_error(ctx, DUK_ERR_ERROR, "SPIFFS fail %d", err);
+    case 0:
+        IOTJS_SPIFFS_INIT(0, p->fd, p->mtd_info.writesize, p->buf, cfg);
+        res = IOTJS_SPIFFS_MOUNT(0, &cfg);
+        if (res < 0)
+        {
+            int err = IOTJS_SPIFFS_errno(0);
+            vm_finalizer_free(ctx, -1, iotjs_mtd_db_free);
+            duk_error(ctx, DUK_ERR_ERROR, "SPIFFS fail %d", err);
+        }
+        p->fs = IOTJS_SPIFFS_fs(0);
+        break;
+    case 1:
+        IOTJS_SPIFFS_INIT(1, p->fd, p->mtd_info.writesize, p->buf, cfg);
+        res = IOTJS_SPIFFS_MOUNT(1, &cfg);
+        if (res < 0)
+        {
+            int err = IOTJS_SPIFFS_errno(1);
+            vm_finalizer_free(ctx, -1, iotjs_mtd_db_free);
+            duk_error(ctx, DUK_ERR_ERROR, "SPIFFS fail %d", err);
+        }
+        p->fs = IOTJS_SPIFFS_fs(1);
+        break;
+    default:
+        IOTJS_SPIFFS_INIT(2, p->fd, p->mtd_info.writesize, p->buf, cfg);
+        res = IOTJS_SPIFFS_MOUNT(2, &cfg);
+        if (res < 0)
+        {
+            int err = IOTJS_SPIFFS_errno(2);
+            vm_finalizer_free(ctx, -1, iotjs_mtd_db_free);
+            duk_error(ctx, DUK_ERR_ERROR, "SPIFFS fail %d", err);
+        }
+        p->fs = IOTJS_SPIFFS_fs(2);
+        break;
     }
-    p->fs = IOTJS_SPIFFS_fs(0);
     // cb, finalizer
     vm_snapshot_copy(ctx, VM_SNAPSHOT_MTD_KV, p, 2);
     return 1;
@@ -726,7 +760,7 @@ duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
         duk_push_c_lightfunc(ctx, native_write, 2, 2, 0);
         duk_put_prop_lstring(ctx, -2, "write", 5);
 
-        duk_push_c_lightfunc(ctx, native_db, 2, 2, 0);
+        duk_push_c_lightfunc(ctx, native_db, 3, 3, 0);
         duk_put_prop_lstring(ctx, -2, "db", 2);
         duk_push_c_lightfunc(ctx, native_db_close, 1, 1, 0);
         duk_put_prop_lstring(ctx, -2, "db_close", 8);
