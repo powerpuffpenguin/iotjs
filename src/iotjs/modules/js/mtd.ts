@@ -52,8 +52,8 @@ declare namespace deps {
      */
     export function db_close(db: DB): void
     export function db_free(db: DB): void
-    export function base64_encode(v: any): string
-    export function db_set_sync(db: DB, key: string, data: Uint8Array | ArrayBuffer): void
+    export function key_encode(v: any): string
+    export function db_set_sync(db: DB, k0: string, data: Uint8Array | ArrayBuffer | string): void
     export function db_get_sync(db: DB, key: string): Uint8Array | undefined
     export function db_has_sync(db: DB, key: string): boolean
 }
@@ -300,25 +300,28 @@ export class DB {
             deps.db_free(this.db_)
         }
     }
-    setSync(key: string, data: Uint8Array | ArrayBuffer): void {
+    setSync(key: string, data: Uint8Array | ArrayBuffer | string): void {
         if (this.close_) {
             throw new Error("db already closed")
         }
-        key = deps.base64_encode(key)
+        key = deps.key_encode(key)
+        // const k0 = `/0.${key}`
+        // const k1 = `/1.${key}`
         deps.db_set_sync(this.db_, key, data)
+
     }
     getSync(key: string): Uint8Array | undefined {
         if (this.close_) {
             throw new Error("db already closed")
         }
-        key = deps.base64_encode(key)
+        key = deps.key_encode(key)
         return deps.db_get_sync(this.db_, key)
     }
     hasSync(key: string): boolean {
         if (this.close_) {
             throw new Error("db already closed")
         }
-        key = deps.base64_encode(key)
+        key = deps.key_encode(key)
         return deps.db_has_sync(this.db_, key)
     }
 }

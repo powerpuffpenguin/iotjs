@@ -120,6 +120,7 @@
     "stack": "c",
     "memorypool.h": "c",
     "mep.h": "c",
-    "__memory": "cpp"
+    "__memory": "cpp",
+    "random": "cpp"
   }
 }

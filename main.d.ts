@@ -921,6 +921,10 @@ declare module "iotjs/mtd" {
         write(data: Uint8Array | string | ArrayBuffer, cb?: (ret?: number, e?: any) => void): void
     }
 
+    /**
+     * 支持 api nor，雖然 nand 也可以但，其寫入效率偏低，因爲 nand 只能以塊寫入不支持寫入 byte，
+     * 故在寫入 nand 時爲了不破壞數據，需要先讀取原塊數據進行覆蓋之後在以整塊數據寫入
+     */
     export class DB {
         /**
          * 將一個 mtd 分區作爲 key-value 數據庫

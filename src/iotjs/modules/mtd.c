@@ -3,6 +3,7 @@
 #include <iotjs/core/memory.h>
 #include <iotjs/modules/js/mtd.h>
 #include <iotjs/core/async.h>
+#include <iotjs/core/binary.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
@@ -12,60 +13,9 @@
 #include <iotjs/core/finalizer.h>
 #include <event2/event.h>
 
-#include <spiffs.h>
+#include <iotjs/modules/mtd_db.h>
 
-static spiffs mtd_fs_spiffs;
-#define LOG_PAGE_SIZE 256
-static u8_t spiffs_work_buf[LOG_PAGE_SIZE * 2];
-static u8_t spiffs_fds[32 * 4];
-static u8_t spiffs_cache_buf[(LOG_PAGE_SIZE + 32) * 4];
-int mtd_fs_fd = -1;
-
-static s32_t my_spiffs_read(u32_t addr, u32_t size, u8_t *dst)
-{
-    // printf("my_spiffs_read %d %d \r\n", addr, size);
-    int ret = lseek(mtd_fs_fd, addr, SEEK_SET);
-    if (ret == -1)
-    {
-        return ret;
-    }
-    ret = read(mtd_fs_fd, dst, size);
-    if (ret == -1)
-    {
-        return ret;
-    }
-    return SPIFFS_OK;
-}
-
-static s32_t my_spiffs_write(u32_t addr, u32_t size, u8_t *src)
-{
-    // printf("my_spiffs_write %d %d \r\n", addr, size);
-    int ret = lseek(mtd_fs_fd, addr, SEEK_SET);
-    if (ret == -1)
-    {
-        return ret;
-    }
-    ret = write(mtd_fs_fd, src, size);
-    if (ret == -1)
-    {
-        return ret;
-    }
-    return SPIFFS_OK;
-}
-
-static s32_t my_spiffs_erase(u32_t addr, u32_t size)
-{
-    printf("my_spiffs_erase %d %d \r\n", addr, size);
-    erase_info_t ei;
-    ei.start = addr;
-    ei.length = size;
-    int ret = ioctl(mtd_fs_fd, MEMERASE, &ei);
-    if (ret == -1)
-    {
-        return ret;
-    }
-    return SPIFFS_OK;
-}
+IOTJS_SPIFFS_DEFINE(0)
 
 typedef struct
 {
@@ -478,6 +428,7 @@ typedef struct
     vm_job_t *job;
 
     spiffs *fs;
+    u8_t *buf;
 } iotjs_mtd_db_t;
 static void iotjs_mtd_db_free(void *ptr)
 {
@@ -489,6 +440,10 @@ static void iotjs_mtd_db_free(void *ptr)
     {
         SPIFFS_unmount(p->fs);
         p->fs = NULL;
+    }
+    if (p->buf)
+    {
+        vm_free(p->buf);
     }
     if (p->state)
     {
@@ -561,8 +516,6 @@ duk_ret_t native_db(duk_context *ctx)
         duk_error(ctx, DUK_ERR_ERROR, "event_add error");
     }
 
-    mtd_fs_fd = p->fd;
-
     // mount
     spiffs_config cfg;
     cfg.phys_size = p->mtd_info.size;             // use all spi flash
@@ -571,25 +524,24 @@ duk_ret_t native_db(duk_context *ctx)
     cfg.log_block_size = p->mtd_info.erasesize;   // let us not complicate things
     cfg.log_page_size = LOG_PAGE_SIZE;            // as we said
 
-    cfg.hal_read_f = my_spiffs_read;
-    cfg.hal_write_f = my_spiffs_write;
-    cfg.hal_erase_f = my_spiffs_erase;
-
-    int res = SPIFFS_mount(&mtd_fs_spiffs,
-                           &cfg,
-                           spiffs_work_buf,
-                           spiffs_fds,
-                           sizeof(spiffs_fds),
-                           spiffs_cache_buf,
-                           sizeof(spiffs_cache_buf),
-                           0);
+    if (p->mtd_info.writesize > 1)
+    {
+        p->buf = vm_malloc(p->mtd_info.writesize);
+        if (!p->buf)
+        {
+            vm_finalizer_free(ctx, -1, iotjs_mtd_db_free);
+            duk_error(ctx, DUK_ERR_ERROR, "vm_malloc buf fail");
+        }
+    }
+    IOTJS_SPIFFS_INIT(0, p->fd, p->mtd_info.writesize, p->buf, cfg);
+    int res = IOTJS_SPIFFS_MOUNT(0, &cfg);
     if (res < 0)
     {
-        int err = SPIFFS_errno(&mtd_fs_spiffs);
+        int err = IOTJS_SPIFFS_errno(0);
         vm_finalizer_free(ctx, -1, iotjs_mtd_db_free);
         duk_error(ctx, DUK_ERR_ERROR, "SPIFFS fail %d", err);
     }
-    p->fs = &mtd_fs_spiffs;
+    p->fs = IOTJS_SPIFFS_fs(0);
     // cb, finalizer
     vm_snapshot_copy(ctx, VM_SNAPSHOT_MTD_KV, p, 2);
     return 1;
@@ -617,9 +569,33 @@ static duk_ret_t native_db_free(duk_context *ctx)
     vm_finalizer_free(ctx, 0, iotjs_mtd_db_free);
     return 0;
 }
-static duk_ret_t native_base64_encode(duk_context *ctx)
+static duk_ret_t native_key_encode(duk_context *ctx)
 {
-    duk_base64_encode(ctx, -1);
+    duk_size_t sz;
+    const void *src;
+    if (duk_is_buffer_data(ctx, 0))
+    {
+        src = duk_get_buffer_data(ctx, 0, &sz);
+    }
+    else if (duk_is_string(ctx, 0))
+    {
+        src = duk_get_lstring(ctx, 0, &sz);
+    }
+    else
+    {
+        src = duk_safe_to_lstring(ctx, 0, &sz);
+    }
+    if (sz)
+    {
+        unsigned int len = iotjs_base64.raw_url.encoded_len(sz);
+        void *dst = duk_push_buffer(ctx, len, 0);
+        iotjs_base64.raw_url.encode(dst, src, sz);
+        duk_buffer_to_string(ctx, -1);
+    }
+    else
+    {
+        duk_push_lstring(ctx, "", 0);
+    }
     return 1;
 }
 
@@ -756,8 +732,8 @@ duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "db_close", 8);
         duk_push_c_lightfunc(ctx, native_db_free, 1, 1, 0);
         duk_put_prop_lstring(ctx, -2, "db_free", 7);
-        duk_push_c_lightfunc(ctx, native_base64_encode, 1, 1, 0);
-        duk_put_prop_lstring(ctx, -2, "base64_encode", 13);
+        duk_push_c_lightfunc(ctx, native_key_encode, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "key_encode", 10);
 
         duk_push_c_lightfunc(ctx, native_db_set_sync, 3, 3, 0);
         duk_put_prop_lstring(ctx, -2, "db_set_sync", 11);
