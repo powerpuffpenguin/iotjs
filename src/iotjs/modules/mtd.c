@@ -465,7 +465,22 @@ static void iotjs_mtd_db_handler(evutil_socket_t fd, short events, void *args)
         return;
     }
 }
-duk_ret_t native_db(duk_context *ctx)
+static duk_ret_t native_len(duk_context *ctx)
+{
+    duk_size_t sz;
+    if (duk_is_string(ctx, 0))
+    {
+        duk_require_lstring(ctx, 0, &sz);
+    }
+    else
+    {
+        duk_require_buffer_data(ctx, 0, &sz);
+    }
+    duk_pop(ctx);
+    duk_push_number(ctx, sz);
+    return 1;
+}
+static duk_ret_t native_db(duk_context *ctx)
 {
     const char *path = duk_require_string(ctx, 0);
     duk_uint_t device = duk_require_uint(ctx, 1);
@@ -632,23 +647,141 @@ static duk_ret_t native_key_encode(duk_context *ctx)
     }
     return 1;
 }
+// 讀取數據
+// version 如果非 NULL，返回數據版本
+// len 如果非 NULL, 返回數據長度
+// cp 如果非 NULL, 將數據拷貝到此
+static const char *spiffs_fs_get(spiffs *fs, const char *path, uint64_t *version, s32_t *len, void *cp)
+{
+    spiffs_file fd = SPIFFS_open(fs, path, SPIFFS_RDWR, 0);
+    if (fd < 0)
+    {
+        if (fd == SPIFFS_ERR_NOT_FOUND)
+        {
+            return 0;
+        }
+        return "SPIFFS_open fail";
+    }
+    spiffs_stat s;
+    if (SPIFFS_fstat(fs, fd, &s) < 0)
+    {
+        SPIFFS_close(fs, fd);
+        return "stat SPIFFS fail";
+    }
 
+    uint8_t buf[8];
+    s32_t x = SPIFFS_read(fs, fd, buf, 4);
+    if (x != 4)
+    {
+        SPIFFS_close(fs, fd);
+        return "read SPIFFS short";
+    }
+    s32_t sz = iotjs_little_endian.uint32(buf);
+    if (s.size != sz + 4 + 8)
+    {
+        SPIFFS_close(fs, fd);
+        return "data corruption";
+    }
+    if (cp)
+    {
+        if (SPIFFS_read(fs, fd, cp, sz) != sz)
+        {
+            SPIFFS_close(fs, fd);
+            return "read SPIFFS short";
+        }
+    }
+    else
+    {
+        if (SPIFFS_lseek(fs, fd, sz, SPIFFS_SEEK_CUR) != sz + 4)
+        {
+            SPIFFS_close(fs, fd);
+            return "lseek SPIFFS fail";
+        }
+    }
+    if (SPIFFS_read(fs, fd, buf, 8) != 8)
+    {
+        SPIFFS_close(fs, fd);
+        return "read SPIFFS short";
+    }
+    SPIFFS_close(fs, fd);
+    if (version)
+    {
+        *version = iotjs_little_endian.uint64(buf);
+    }
+    if (len)
+    {
+        *len = sz;
+    }
+    return 0;
+}
 static duk_ret_t native_db_set_sync(duk_context *ctx)
 {
     finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
     iotjs_mtd_db_t *p = finalizer->p;
     spiffs *fs = p->fs;
-    const char *key = duk_require_string(ctx, 1);
-    duk_size_t sz;
-    u8_t *buf = duk_require_buffer_data(ctx, 2, &sz);
 
-    spiffs_file fd = SPIFFS_open(fs, key, SPIFFS_CREAT | SPIFFS_TRUNC | SPIFFS_RDWR, 0);
+    const char *emsg;
+
+    const char *k0 = duk_require_string(ctx, 1);
+    uint64_t v0 = 0;
+    emsg = spiffs_fs_get(fs, k0, &v0, 0, 0);
+    if (emsg)
+    {
+        duk_pop_n(ctx, 5);
+        duk_error(ctx, DUK_ERR_ERROR, emsg);
+    }
+    const char *k1 = duk_require_string(ctx, 2);
+    uint64_t v1 = 0;
+    emsg = spiffs_fs_get(fs, k1, &v1, 0, 0);
+    if (emsg)
+    {
+        duk_pop_n(ctx, 5);
+        duk_error(ctx, DUK_ERR_ERROR, emsg);
+    }
+
+    duk_swap(ctx, 0, -2);
+    duk_swap(ctx, 1, -1);
+    duk_pop_3(ctx);
+    uint64_t version;
+    const char *k;
+    const char *rm;
+    if (v0 < v1)
+    {
+        k = k0;
+        rm = k1;
+        version = v1 + 1;
+    }
+    else
+    {
+        k = k1;
+        rm = k0;
+        version = v0 + 1;
+    }
+
+    duk_size_t sz_data;
+    const u8_t *data;
+    if (duk_is_string(ctx, 0))
+    {
+        data = duk_require_lstring(ctx, 0, &sz_data);
+    }
+    else
+    {
+        data = duk_require_buffer_data(ctx, 0, &sz_data);
+    }
+    duk_size_t sz;
+    u8_t *buf = duk_require_buffer_data(ctx, 1, &sz);
+    iotjs_little_endian.put_uint32(buf, sz_data);
+    memcpy(buf + 4, data, sz_data);
+    iotjs_little_endian.put_uint64(buf + 4 + sz_data, version);
+
+    SPIFFS_remove(fs, k);
+    spiffs_file fd = SPIFFS_open(fs, k, SPIFFS_CREAT | SPIFFS_TRUNC | SPIFFS_RDWR, 0);
     if (fd < 0)
     {
         int err = SPIFFS_errno(fs);
         duk_error(ctx, DUK_ERR_ERROR, "SPIFFS fail %d", err);
     }
-    if (SPIFFS_write(fs, fd, buf, sz) < 0)
+    if (SPIFFS_write(fs, fd, buf, sz) != sz)
     {
         int err = SPIFFS_errno(fs);
         SPIFFS_close(fs, fd);
@@ -656,57 +789,118 @@ static duk_ret_t native_db_set_sync(duk_context *ctx)
     }
     else
     {
+        // success
+        SPIFFS_remove(fs, rm);
         SPIFFS_close(fs, fd);
     }
     return 0;
 }
-typedef struct
+static duk_ret_t native_db_has_sync(duk_context *ctx)
 {
-    spiffs *fs;
-    spiffs_file fd;
-} spiffs_file_fd_t;
-static void native_spiffs_file_free(void *args)
-{
-    spiffs_file_fd_t *fd = args;
-    SPIFFS_close(fd->fs, fd->fd);
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
+    iotjs_mtd_db_t *p = finalizer->p;
+    spiffs *fs = p->fs;
+
+    const char *emsg;
+
+    const char *k0 = duk_require_string(ctx, 1);
+    uint64_t v0 = 0;
+    emsg = spiffs_fs_get(fs, k0, &v0, 0, 0);
+    if (emsg)
+    {
+        duk_pop_n(ctx, 3);
+        duk_error(ctx, DUK_ERR_ERROR, emsg);
+    }
+    const char *k1 = duk_require_string(ctx, 2);
+    uint64_t v1 = 0;
+    emsg = spiffs_fs_get(fs, k1, &v1, 0, 0);
+    if (emsg)
+    {
+        duk_pop_n(ctx, 3);
+        duk_error(ctx, DUK_ERR_ERROR, emsg);
+    }
+    duk_pop_n(ctx, 3);
+    if (v0 || v1)
+    {
+        duk_push_true(ctx);
+    }
+    else
+    {
+        duk_push_false(ctx);
+    }
+    return 1;
 }
+
 static duk_ret_t native_db_get_sync(duk_context *ctx)
 {
     finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
     iotjs_mtd_db_t *db = finalizer->p;
-    duk_swap_top(ctx, 0);
-    duk_pop(ctx);
-    const char *key = duk_require_string(ctx, 0);
+    spiffs *fs = db->fs;
 
-    finalizer = vm_create_finalizer_n(ctx, sizeof(spiffs_file_fd_t));
-    spiffs_file_fd_t *p = finalizer->p;
-    p->fs = db->fs;
-    p->fd = SPIFFS_open(p->fs, key, SPIFFS_RDWR, 0);
-    if (p->fd < 0)
+    const char *emsg;
+
+    const char *k0 = duk_require_string(ctx, 1);
+    uint64_t v0 = 0;
+    s32_t l0 = 0;
+    emsg = spiffs_fs_get(fs, k0, &v0, &l0, 0);
+    if (emsg)
     {
-        if (p->fd == SPIFFS_ERR_NOT_FOUND)
+        duk_pop_n(ctx, 4);
+        duk_error(ctx, DUK_ERR_ERROR, emsg);
+    }
+
+    const char *k1 = duk_require_string(ctx, 2);
+    uint64_t v1 = 0;
+    s32_t l1 = 0;
+    emsg = spiffs_fs_get(fs, k1, &v1, &l1, 0);
+    if (emsg)
+    {
+        duk_pop_n(ctx, 4);
+        duk_error(ctx, DUK_ERR_ERROR, emsg);
+    }
+    duk_bool_t s = duk_require_boolean(ctx, 3);
+    duk_pop_n(ctx, 4);
+
+    if (!v0 && !v1)
+    {
+        return 0;
+    }
+    const char *k;
+    s32_t l;
+    if (v0 < v1)
+    {
+        k = k1;
+        l = l1;
+    }
+    else
+    {
+        k = k0;
+        l = l0;
+    }
+
+    if (l)
+    {
+        void *dst = duk_push_buffer(ctx, l, 0);
+        emsg = spiffs_fs_get(fs, k, 0, 0, dst);
+        if (emsg)
         {
-            return 0;
+            duk_error(ctx, DUK_ERR_ERROR, emsg);
         }
-        int err = SPIFFS_errno(p->fs);
-        duk_error(ctx, DUK_ERR_ERROR, "SPIFFS fail %d", err);
+        if (s)
+        {
+            duk_buffer_to_string(ctx, -1);
+        }
     }
-    finalizer->free = native_spiffs_file_free;
-
-    spiffs_stat s;
-    if (SPIFFS_fstat(p->fs, p->fd, &s) < 0)
+    else
     {
-        int err = SPIFFS_errno(p->fs);
-        vm_finalizer_free(ctx, -1, native_spiffs_file_free);
-        duk_error(ctx, DUK_ERR_ERROR, "stat SPIFFS fail %d", err);
-    }
-    void *buf = duk_push_buffer(ctx, s.size, 0);
-    s32_t x = SPIFFS_read(p->fs, p->fd, buf, s.size);
-    if (x < 0)
-    {
-        int err = SPIFFS_errno(p->fs);
-        vm_finalizer_free(ctx, -2, native_spiffs_file_free);
-        duk_error(ctx, DUK_ERR_ERROR, "read SPIFFS fail %d", err);
+        if (s)
+        {
+            duk_push_lstring(ctx, "", 0);
+        }
+        else
+        {
+            duk_push_buffer(ctx, 0, 0);
+        }
     }
     return 1;
 }
@@ -760,6 +954,9 @@ duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
         duk_push_c_lightfunc(ctx, native_write, 2, 2, 0);
         duk_put_prop_lstring(ctx, -2, "write", 5);
 
+        duk_push_c_lightfunc(ctx, native_len, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "len", 3);
+
         duk_push_c_lightfunc(ctx, native_db, 3, 3, 0);
         duk_put_prop_lstring(ctx, -2, "db", 2);
         duk_push_c_lightfunc(ctx, native_db_close, 1, 1, 0);
@@ -769,9 +966,11 @@ duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
         duk_push_c_lightfunc(ctx, native_key_encode, 1, 1, 0);
         duk_put_prop_lstring(ctx, -2, "key_encode", 10);
 
-        duk_push_c_lightfunc(ctx, native_db_set_sync, 3, 3, 0);
+        duk_push_c_lightfunc(ctx, native_db_set_sync, 5, 5, 0);
         duk_put_prop_lstring(ctx, -2, "db_set_sync", 11);
-        duk_push_c_lightfunc(ctx, native_db_get_sync, 2, 2, 0);
+        duk_push_c_lightfunc(ctx, native_db_has_sync, 3, 3, 0);
+        duk_put_prop_lstring(ctx, -2, "db_has_sync", 11);
+        duk_push_c_lightfunc(ctx, native_db_get_sync, 4, 4, 0);
         duk_put_prop_lstring(ctx, -2, "db_get_sync", 11);
     }
     duk_call(ctx, 3);

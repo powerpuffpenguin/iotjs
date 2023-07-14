@@ -6,9 +6,10 @@ try {
     var db = new mtd.DB(path)
     try {
         for (var i = 0; i < 12; i++) {
-            db.setSync("ko" + i, new TextEncoder().encode("this is value " + i))
-            var val = db.getSync("ko" + i)
-            console.log('-------read', val === undefined ? undefined : new TextDecoder().decode(val))
+            db.setSync("ko" + i, "this is value " + i)
+            console.log("ko" + i, db.hasSync("ko" + i))
+            var val = db.getSync("ko" + i, true)
+            console.log('-------read', val)
         }
     } finally {
         db.close()

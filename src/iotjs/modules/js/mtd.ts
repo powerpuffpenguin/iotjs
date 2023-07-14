@@ -47,15 +47,16 @@ declare namespace deps {
         readonly __iotjs_mtd_db_hash: string
     }
     export function db(path: string, device: number, cb: (evt: number, ret?: any, e?: any) => void): DB
+    export function len(data: Uint8Array | ArrayBuffer | string): number
     /**
      * 關閉分區
      */
     export function db_close(db: DB): void
     export function db_free(db: DB): void
     export function key_encode(v: any): string
-    export function db_set_sync(db: DB, k0: string, data: Uint8Array | ArrayBuffer | string): void
-    export function db_get_sync(db: DB, key: string): Uint8Array | undefined
-    export function db_has_sync(db: DB, key: string): boolean
+    export function db_set_sync(db: DB, k0: string, k1: string, data: Uint8Array | ArrayBuffer | string, buf: Uint8Array): void
+    export function db_get_sync(db: DB, k0: string, k1: string, s: boolean): Uint8Array | string | undefined
+    export function db_has_sync(db: DB, k0: string, k1: string): boolean
 }
 
 export const Seek = deps.Seek
@@ -314,24 +315,32 @@ export class DB {
         if (this.close_) {
             throw new Error("db already closed")
         }
+        const len = deps.len(data)
+        if (len > 4294967295 - 4 - 8) {
+            throw new Error("data too long")
+        }
+        const buf = new Uint8Array(len + 4 + 8) // len:4 + data + version:8
         key = deps.key_encode(key)
-        // const k0 = `/0.${key}`
-        // const k1 = `/1.${key}`
-        deps.db_set_sync(this.db_, key, data)
-
+        const k0 = `/0.${key}`
+        const k1 = `/1.${key}`
+        deps.db_set_sync(this.db_, k0, k1, data, buf)
     }
-    getSync(key: string): Uint8Array | undefined {
+    getSync(key: string, s?: boolean): string | Uint8Array | undefined {
         if (this.close_) {
             throw new Error("db already closed")
         }
         key = deps.key_encode(key)
-        return deps.db_get_sync(this.db_, key)
+        const k0 = `/0.${key}`
+        const k1 = `/1.${key}`
+        return deps.db_get_sync(this.db_, k0, k1, s ?? false)
     }
     hasSync(key: string): boolean {
         if (this.close_) {
             throw new Error("db already closed")
         }
         key = deps.key_encode(key)
-        return deps.db_has_sync(this.db_, key)
+        const k0 = `/0.${key}`
+        const k1 = `/1.${key}`
+        return deps.db_has_sync(this.db_, k0, k1)
     }
 }
