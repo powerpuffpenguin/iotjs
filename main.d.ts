@@ -933,11 +933,12 @@ declare module "iotjs/mtd" {
         }
         setSync(key: string, data: Uint8Array | ArrayBuffer): void
         getSync(key: string): undefined | Uint8Array
-        getSync(key: string, s = true): undefined | string
+        getStringSync(key: string): undefined | string
         hasSync(key: string): boolean
 
         set(key: string, data: Uint8Array | ArrayBuffer, cb?: (e?: any) => void): void
-        get(key: string, cb?: (data?: Uint8Array, e?: any) => void): undefined | Uint8Array
-        has(key: string, cb?: (exists?: boolean, e?: any) => void): boolean
+        get(key: string, cb?: (data?: Uint8Array, e?: any) => void): void
+        getString(key: string, cb?: (data?: string, e?: any) => void): void
+        has(key: string, cb?: (exists?: boolean, e?: any) => void): void
     }
 }

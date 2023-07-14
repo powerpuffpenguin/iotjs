@@ -61,6 +61,10 @@ declare namespace deps {
 
     export function db_lock(db: DB): void
     export function db_unlock(db: DB): void
+
+    export function db_set(db: DB, k0: string, k1: string, data: Uint8Array | ArrayBuffer | string, buf: Uint8Array): void
+    export function db_get(db: DB, k0: string, k1: string, s: boolean): void
+    export function db_has(db: DB, k0: string, k1: string): void
 }
 
 export const Seek = deps.Seek
@@ -277,6 +281,20 @@ export class File {
     }
 }
 const dbDevices = [false, false, false]
+
+interface DBTask {
+    next?: DBTask
+    evt: 0 | 1 | 2
+    k0: string
+    k1: string
+
+    s?: boolean
+
+    data?: Uint8Array | ArrayBuffer | string
+    buf?: Uint8Array
+
+    cb?: (ret?: any, e?: any) => void
+}
 export class DB {
     private device_: number
     private db_: deps.DB
@@ -294,6 +312,56 @@ export class DB {
         }
         throw new Error("device busy")
     }
+    private _onEvt(evt: number, ret?: number, e?: any) {
+        runSync(() => {
+            const front = this.front_!
+            let next = front.next
+            if (next) {
+                this.front_ = next
+            } else {
+                this.front_ = undefined
+                this.back_ = undefined
+            }
+            const cb = front.cb
+            if (cb) {
+                switch (evt) {
+                    case 0: //set
+                        cb(e)
+                        break
+                    case 1: // has
+                    case 2: // get
+                        cb(ret, e)
+                        break
+                }
+            }
+            if (this.close_) {
+                this._free()
+                this.front_ = undefined
+                this.back_ = undefined
+                if (next) {
+                    let e = new Error("db already closed")
+                    while (next) {
+                        if (next.cb) {
+                            if (next.evt == 0) {
+                                next.cb(e as any)
+                            } else {
+                                next.cb(undefined, e)
+                            }
+                        }
+                        next = next.next
+                    }
+                }
+                return
+            }
+            if (next) {
+                try {
+                    this._do(next)
+                } catch (e) {
+                    this._onEvt(next.evt, undefined, ret)
+                }
+            }
+        })
+    }
     get isClosed(): boolean {
         return this.close_
     }
@@ -303,9 +371,9 @@ export class DB {
         }
         this.close_ = true
         deps.db_close(this.db_)
-        // if (!this.front_) {
-        this._free()
-        // }
+        if (!this.front_) {
+            this._free()
+        }
     }
     private _free() {
         const i = this.device_
@@ -334,7 +402,7 @@ export class DB {
             deps.db_unlock(this.db_)
         }
     }
-    getSync(key: string, s?: boolean): string | Uint8Array | undefined {
+    private _getSync(key: string, s: boolean) {
         if (this.close_) {
             throw new Error("db already closed")
         }
@@ -344,10 +412,16 @@ export class DB {
 
         deps.db_lock(this.db_)
         try {
-            return deps.db_get_sync(this.db_, k0, k1, s ? true : false)
+            return deps.db_get_sync(this.db_, k0, k1, s)
         } finally {
             deps.db_unlock(this.db_)
         }
+    }
+    getSync(key: string) {
+        return this._getSync(key, false)
+    }
+    getStringSync(key: string) {
+        return this._getSync(key, true)
     }
     hasSync(key: string): boolean {
         if (this.close_) {
@@ -369,4 +443,78 @@ export class DB {
         }
         return deps.db_info(this.db_)
     }
+
+    private front_?: DBTask
+    private back_?: DBTask
+    private _do(next: DBTask) {
+        switch (next.evt) {
+            case 0:// set
+                deps.db_set(this.db_, next.k0, next.k1, next.data!, next.buf!)
+                break
+            case 1:// has
+                deps.db_has(this.db_, next.k0, next.k1)
+                break
+            case 2: // get
+                deps.db_get(this.db_, next.k0, next.k1, next.s!)
+                break
+            default:
+                throw new Error(`unknow task ${next.evt}`);
+        }
+    }
+    private _task(next: DBTask) {
+        if (this.back_) {
+            this.back_.next = next
+            this.back_ = next
+        } else {
+            this.back_ = next
+            this.front_ = next
+            try {
+                this._do(next)
+            } catch (e) {
+                this._onEvt(next.evt, undefined, e)
+            }
+        }
+    }
+    set(key: string, data: Uint8Array | ArrayBuffer, cb?: (e?: any) => void): void {
+        if (this.close_) {
+            throw new Error("db already closed")
+        }
+        const len = deps.len(data)
+        if (len > 4294967295 - 4 - 8) {
+            throw new Error("data too long")
+        }
+        const buf = new Uint8Array(len + 4 + 8) // len:4 + data + version:8
+        key = deps.key_encode(key)
+        const k0 = `/0.${key}`
+        const k1 = `/1.${key}`
+
+        this._task({ evt: 0, k0: k0, k1: k1, data: data, buf: buf, cb: cb })
+    }
+    has(key: string, cb?: (exists?: boolean, e?: any) => void): void {
+        if (this.close_) {
+            throw new Error("db already closed")
+        }
+        key = deps.key_encode(key)
+        const k0 = `/0.${key}`
+        const k1 = `/1.${key}`
+
+        this._task({ evt: 1, k0: k0, k1: k1, cb: cb })
+    }
+    private _get(key: string, s: boolean, cb?: (data?: Uint8Array, e?: any) => void) {
+        if (this.close_) {
+            throw new Error("db already closed")
+        }
+        key = deps.key_encode(key)
+        const k0 = `/0.${key}`
+        const k1 = `/1.${key}`
+
+        this._task({ evt: 2, k0: k0, k1: k1, s: s, cb: cb })
+    }
+    get(key: string, cb?: (data?: Uint8Array, e?: any) => void): void {
+        this._get(key, false, cb)
+    }
+    getString(key: string, cb?: (data?: Uint8Array, e?: any) => void): void {
+        this._get(key, true, cb)
+    }
+
 }
