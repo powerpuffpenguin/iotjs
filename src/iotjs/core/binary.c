@@ -170,7 +170,7 @@ unsigned int iotjs_base64_encode(uint8_t *dst, const uint8_t *src, unsigned int 
         unsigned int di = 0, si = 0;
         unsigned int n = (src_len / 3) * 3;
         uint32_t val;
-        while (src_len > 3)
+        while (src_len >= 3)
         {
             dst[0] = encode[src[0] >> 2];
             dst[1] = encode[((src[0] & 0x3) << 4) | (src[1] >> 4)];
