@@ -6,10 +6,14 @@ try {
     try {
         console.log(db.info())
         for (var i = 0; i < 12; i++) {
-            db.setSync("ko" + i, "this is value " + i)
-            console.log("ko" + i, db.hasSync("ko" + i))
-            var val = db.getStringSync("ko" + i)
-            console.log('-------read', val)
+            var key = "ko" + i
+            db.setSync(key, "this is value " + i)
+            if (i % 3 == 1) {
+                db.deleteSync(key)
+            }
+            console.log(key, db.hasSync(key))
+            var val = db.getStringSync(key)
+            console.log('read ' + i + ':', val)
         }
     } finally {
         db.close()

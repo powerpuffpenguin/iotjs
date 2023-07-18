@@ -8,8 +8,9 @@ coroutine.go(function (co) {
         try {
             console.log(db.info())
             for (var i = 0; i < 12; i++) {
+                var key = "ko" + i
                 co.yield(function (notify) {
-                    db.set("ko" + i, "this is value " + i, function (e) {
+                    db.set(key, "this is value " + i, function (e) {
                         if (e) {
                             notify.error(e)
                         } else {
@@ -17,8 +18,19 @@ coroutine.go(function (co) {
                         }
                     })
                 })
+                if (i % 3 == 1) {
+                    co.yield(function (notify) {
+                        db.delete(key, function (e) {
+                            if (e) {
+                                notify.error(e)
+                            } else {
+                                notify.value()
+                            }
+                        })
+                    })
+                }
                 var exists = co.yield(function (notify) {
-                    db.has("ko" + i, function (ret, e) {
+                    db.has(key, function (ret, e) {
                         if (ret === undefined) {
                             notify.error(e)
                         } else {
@@ -26,9 +38,9 @@ coroutine.go(function (co) {
                         }
                     })
                 })
-                console.log("ko" + i, exists)
+                console.log(key, exists)
                 var val = co.yield(function (notify) {
-                    db.getString("ko" + i, function (ret, e) {
+                    db.getString(key, function (ret, e) {
                         if (e) {
                             notify.error(e)
                         } else {
@@ -36,7 +48,7 @@ coroutine.go(function (co) {
                         }
                     })
                 })
-                console.log('-------read', val)
+                console.log('read ' + i + ':', val)
             }
         }
         finally {

@@ -57,11 +57,13 @@ declare namespace deps {
     export function db_set_sync(db: DB, k0: string, k1: string, data: Uint8Array | ArrayBuffer | string, buf: Uint8Array): void
     export function db_get_sync(db: DB, k0: string, k1: string, s: boolean): Uint8Array | string | undefined
     export function db_has_sync(db: DB, k0: string, k1: string): boolean
+    export function db_delete_sync(db: DB, k0: string, k1: string): void
     export function db_info(db: DB): any
 
     export function db_set(db: DB, k0: string, k1: string, data: Uint8Array | ArrayBuffer | string, buf: Uint8Array): void
     export function db_get(db: DB, k0: string, k1: string, s: boolean): void
     export function db_has(db: DB, k0: string, k1: string): void
+    export function db_delete(db: DB, k0: string, k1: string): void
 }
 
 export const Seek = deps.Seek
@@ -289,7 +291,7 @@ const dbDevices = [false, false, false]
 
 interface DBTask {
     next?: DBTask
-    evt: 0 | 1 | 2
+    evt: 0 | 1 | 2 | 3
     k0: string
     k1: string
 
@@ -330,7 +332,8 @@ export class DB {
             const cb = front.cb
             if (cb) {
                 switch (evt) {
-                    case 0: //set
+                    case 0: // set
+                    case 3: // delete
                         cb(e)
                         break
                     case 1: // has
@@ -432,6 +435,17 @@ export class DB {
         const k1 = `/1.${key}`
         return deps.db_has_sync(this.db_, k0, k1)
     }
+    deleteSync(key: string): void {
+        if (this.close_) {
+            throw new Error("db already closed")
+        } else if (this.front_) {
+            throw new Error("db busy")
+        }
+        key = deps.key_encode(key)
+        const k0 = `/0.${key}`
+        const k1 = `/1.${key}`
+        deps.db_delete_sync(this.db_, k0, k1)
+    }
     info() {
         if (this.close_) {
             throw new Error("db already closed")
@@ -451,6 +465,9 @@ export class DB {
                 break
             case 2: // get
                 deps.db_get(this.db_, next.k0, next.k1, next.s!)
+                break
+            case 3:// delete
+                deps.db_delete(this.db_, next.k0, next.k1)
                 break
             default:
                 throw new Error(`unknow task ${next.evt}`);
@@ -511,5 +528,14 @@ export class DB {
     getString(key: string, cb?: (data?: Uint8Array, e?: any) => void): void {
         this._get(key, true, cb)
     }
+    delete(key: string, cb?: (e?: any) => void): void {
+        if (this.close_) {
+            throw new Error("db already closed")
+        }
+        key = deps.key_encode(key)
+        const k0 = `/0.${key}`
+        const k1 = `/1.${key}`
 
+        this._task({ evt: 3, k0: k0, k1: k1, cb: cb })
+    }
 }

@@ -538,10 +538,11 @@ static void iotjs_mtd_db_handler(evutil_socket_t fd, short events, void *args)
     {
         switch (out->evt)
         {
-        case 0:
+        case 0: // set
+        case 3: // delete
             duk_call(ctx, 1);
             break;
-        case 1:
+        case 1: // has
             if (out->ok == 2)
             {
                 duk_call(ctx, 1);
@@ -588,7 +589,7 @@ static void iotjs_mtd_db_handler(evutil_socket_t fd, short events, void *args)
                 }
             }
             break;
-            // case 2:
+            // case 2: // get
         default:
             if (out->exists)
             {
@@ -1227,6 +1228,28 @@ static duk_ret_t native_db_get_sync(duk_context *ctx)
     }
     return 1;
 }
+static duk_ret_t native_db_delete_sync(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
+    const char *k0 = duk_require_string(ctx, 1);
+    const char *k1 = duk_require_string(ctx, 2);
+
+    iotjs_mtd_db_t *db = finalizer->p;
+
+    s32_t ok = SPIFFS_remove(db->fs, k0);
+    if (ok < 0 && ok != SPIFFS_ERR_NOT_FOUND)
+    {
+        int err = SPIFFS_errno(db->fs);
+        duk_error(ctx, DUK_ERR_ERROR, "SPIFFS_remove fail %d", err);
+    }
+    ok = SPIFFS_remove(db->fs, k1);
+    if (ok < 0 && ok != SPIFFS_ERR_NOT_FOUND)
+    {
+        int err = SPIFFS_errno(db->fs);
+        duk_error(ctx, DUK_ERR_ERROR, "SPIFFS_remove fail %d", err);
+    }
+    return 0;
+}
 static void async_db_get_do(vm_job_t *job)
 {
     async_db_get_t *in = job->in;
@@ -1307,6 +1330,52 @@ static duk_ret_t native_db_get(duk_context *ctx)
 
     p->job = job;
     vm_must_run_job(ctx, job, async_db_get);
+    return 0;
+}
+static void async_db_delete_do(vm_job_t *job)
+{
+    async_db_has_t *in = job->in;
+    async_db_out_t *out = job->out;
+    iotjs_mtd_db_t *db = in->db;
+
+    s32_t ok = SPIFFS_remove(db->fs, in->k0);
+    if (ok < 0 && ok != SPIFFS_ERR_NOT_FOUND)
+    {
+        out->err = SPIFFS_errno(db->fs);
+        out->emsg = "SPIFFS_remove fail %d";
+    }
+    ok = SPIFFS_remove(db->fs, in->k1);
+    if (ok < 0 && ok != SPIFFS_ERR_NOT_FOUND)
+    {
+        out->err = SPIFFS_errno(db->fs);
+        out->emsg = "SPIFFS_remove fail %d";
+    }
+    out->ok = 1;
+}
+static void async_db_delete(vm_job_t *job)
+{
+    async_db_has_t *in = job->in;
+    async_db_delete_do(job);
+    event_active(in->db->ev, 0, 0);
+}
+static duk_ret_t native_db_delete(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
+    iotjs_mtd_db_t *p = finalizer->p;
+    const char *k0 = duk_require_string(ctx, 1);
+    const char *k1 = duk_require_string(ctx, 2);
+
+    vm_job_t *job = vm_new_job(ctx, sizeof(async_db_has_t), sizeof(async_db_out_t));
+    async_db_has_t *in = job->in;
+    in->db = p;
+    in->k0 = k0;
+    in->k1 = k1;
+
+    async_db_out_t *out = job->out;
+    out->evt = 3;
+
+    p->job = job;
+    vm_must_run_job(ctx, job, async_db_delete);
     return 0;
 }
 static duk_ret_t native_db_info(duk_context *ctx)
@@ -1398,6 +1467,9 @@ duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "db_has_sync", 11);
         duk_push_c_lightfunc(ctx, native_db_get_sync, 4, 4, 0);
         duk_put_prop_lstring(ctx, -2, "db_get_sync", 11);
+        duk_push_c_lightfunc(ctx, native_db_delete_sync, 3, 3, 0);
+        duk_put_prop_lstring(ctx, -2, "db_delete_sync", 14);
+
         duk_push_c_lightfunc(ctx, native_db_info, 1, 1, 0);
         duk_put_prop_lstring(ctx, -2, "db_info", 7);
         duk_push_c_lightfunc(ctx, native_db_set, 5, 5, 0);
@@ -1406,6 +1478,8 @@ duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "db_has", 6);
         duk_push_c_lightfunc(ctx, native_db_get, 4, 4, 0);
         duk_put_prop_lstring(ctx, -2, "db_get", 6);
+        duk_push_c_lightfunc(ctx, native_db_delete, 3, 3, 0);
+        duk_put_prop_lstring(ctx, -2, "db_delete", 9);
     }
     duk_call(ctx, 3);
     return 0;
