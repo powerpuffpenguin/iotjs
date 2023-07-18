@@ -938,10 +938,30 @@ declare module "iotjs/mtd" {
         getSync(key: string): undefined | Uint8Array
         hasSync(key: string): boolean
         deleteSync(key: string): void
+        /**
+         * 遍歷節點如果 cb 返回 false，則停止遍歷
+         * @param cb 
+         */
+        keysSync(cb: (key: string) => boolean): void
+        /**
+         * 遍歷節點如果 cb 返回 false，則停止遍歷
+         * @param cb 
+         */
+        foreachSync(cb: (key: string, data: Uint8Array) => boolean): void
 
         set(key: string, data: Uint8Array | ArrayBuffer, cb?: (e?: any) => void): void
         get(key: string, cb?: (data?: Uint8Array, e?: any) => void): void
         has(key: string, cb?: (exists?: boolean, e?: any) => void): void
         delete(key: string, cb?: (e?: any) => void): void
+        /**
+         * 遍歷節點如果 cb 返回 false，則停止遍歷
+         * @param cb 
+         */
+        keys(cb: (key: string) => boolean): void
+        /**
+         * 遍歷節點如果 cb 返回 false，則停止遍歷
+         * @param cb 
+         */
+        foreach(cb: (key: string, data: Uint8Array) => boolean): void
     }
 }
