@@ -873,7 +873,8 @@ declare module "iotjs/mtd" {
         oobsize: number
     }
     /**
-     * 用於打開一個 mtd 分區，以進行讀寫數據
+     * 用於打開一個 mtd 分區，以進行讀寫數據，
+     * 同步和異步讀寫函數不應該混用，如果調用同步函數的同時有異步函數未完成將拋出異常
      */
     export class File {
         /**
@@ -924,6 +925,8 @@ declare module "iotjs/mtd" {
     /**
      * 支持 api nor，雖然 nand 也可以但，其寫入效率偏低，因爲 nand 只能以塊寫入不支持寫入 byte，
      * 故在寫入 nand 時爲了不破壞數據，需要先讀取原塊數據進行覆蓋之後在以整塊數據寫入
+     * 
+     * 同步和異步讀寫函數不應該混用，如果調用同步函數的同時有異步函數未完成將拋出異常
      */
     export class DB {
         /**

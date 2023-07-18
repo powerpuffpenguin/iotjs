@@ -59,9 +59,6 @@ declare namespace deps {
     export function db_has_sync(db: DB, k0: string, k1: string): boolean
     export function db_info(db: DB): any
 
-    export function db_lock(db: DB): void
-    export function db_unlock(db: DB): void
-
     export function db_set(db: DB, k0: string, k1: string, data: Uint8Array | ArrayBuffer | string, buf: Uint8Array): void
     export function db_get(db: DB, k0: string, k1: string, s: boolean): void
     export function db_has(db: DB, k0: string, k1: string): void
@@ -181,24 +178,32 @@ export class File {
     seekSync(offset: number, whence: deps.Seek) {
         if (this.close_) {
             throw new Error("mtd already closed")
+        } else if (this.front_) {
+            throw new Error("mtd busy")
         }
         return deps.seekSync(this.fd_, offset, whence)
     }
     eraseSync(offset: number, size: number): void {
         if (this.close_) {
             throw new Error("mtd already closed")
+        } else if (this.front_) {
+            throw new Error("mtd busy")
         }
         return deps.eraseSync(this.fd_, offset, size)
     }
     readSync(data: Uint8Array): number {
         if (this.close_) {
             throw new Error("mtd already closed")
+        } else if (this.front_) {
+            throw new Error("mtd busy")
         }
         return deps.readSync(this.fd_, data)
     }
     writeSync(data: Uint8Array): number {
         if (this.close_) {
             throw new Error("mtd already closed")
+        } else if (this.front_) {
+            throw new Error("mtd busy")
         }
         return deps.writeSync(this.fd_, data)
     }
@@ -303,7 +308,7 @@ export class DB {
         for (let i = 0; i < dbDevices.length; i++) {
             if (!dbDevices[i]) {
                 this.db_ = deps.db(path, i, (evt, ret, e) => {
-                    console.log(evt, ret, e)
+                    this._onEvt(evt, ret, e)
                 })
                 dbDevices[i] = true
                 this.device_ = i
@@ -386,6 +391,8 @@ export class DB {
     setSync(key: string, data: Uint8Array | ArrayBuffer | string): void {
         if (this.close_) {
             throw new Error("db already closed")
+        } else if (this.front_) {
+            throw new Error("db busy")
         }
         const len = deps.len(data)
         if (len > 4294967295 - 4 - 8) {
@@ -395,27 +402,18 @@ export class DB {
         key = deps.key_encode(key)
         const k0 = `/0.${key}`
         const k1 = `/1.${key}`
-        deps.db_lock(this.db_)
-        try {
-            deps.db_set_sync(this.db_, k0, k1, data, buf)
-        } finally {
-            deps.db_unlock(this.db_)
-        }
+        deps.db_set_sync(this.db_, k0, k1, data, buf)
     }
     private _getSync(key: string, s: boolean) {
         if (this.close_) {
             throw new Error("db already closed")
+        } else if (this.front_) {
+            throw new Error("db busy")
         }
         key = deps.key_encode(key)
         const k0 = `/0.${key}`
         const k1 = `/1.${key}`
-
-        deps.db_lock(this.db_)
-        try {
-            return deps.db_get_sync(this.db_, k0, k1, s)
-        } finally {
-            deps.db_unlock(this.db_)
-        }
+        return deps.db_get_sync(this.db_, k0, k1, s)
     }
     getSync(key: string) {
         return this._getSync(key, false)
@@ -426,16 +424,13 @@ export class DB {
     hasSync(key: string): boolean {
         if (this.close_) {
             throw new Error("db already closed")
+        } else if (this.front_) {
+            throw new Error("db busy")
         }
         key = deps.key_encode(key)
         const k0 = `/0.${key}`
         const k1 = `/1.${key}`
-        deps.db_lock(this.db_)
-        try {
-            return deps.db_has_sync(this.db_, k0, k1)
-        } finally {
-            deps.db_unlock(this.db_)
-        }
+        return deps.db_has_sync(this.db_, k0, k1)
     }
     info() {
         if (this.close_) {

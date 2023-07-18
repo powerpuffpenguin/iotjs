@@ -54,6 +54,7 @@ typedef struct
 {
     ssize_t ret;
     int err;
+    duk_uint8_t evt;
 } async_out_t;
 typedef struct
 {
@@ -87,7 +88,7 @@ static void iotjs_mtd_fd_handler(evutil_socket_t fd, short events, void *args)
     async_out_t *out = job->out;
     vm_restore(ctx, VM_SNAPSHOT_MTD, p, 0);
     duk_pop(ctx);
-    duk_push_number(ctx, events);
+    duk_push_number(ctx, out->evt);
     if (out->ret == -1)
     {
         duk_push_undefined(ctx);
@@ -317,6 +318,8 @@ static duk_ret_t native_seek(duk_context *ctx)
     in->mtd = p;
     in->offset = offset;
     in->whence = whence;
+    async_out_t *out = job->out;
+    out->evt = 0;
 
     p->job = job;
     vm_must_run_job(ctx, job, async_seek);
@@ -348,6 +351,8 @@ static duk_ret_t native_erase(duk_context *ctx)
     in->mtd = p;
     in->start = start;
     in->length = length;
+    async_out_t *out = job->out;
+    out->evt = 1;
 
     p->job = job;
     vm_must_run_job(ctx, job, async_erase);
@@ -394,6 +399,8 @@ static duk_ret_t native_read(duk_context *ctx)
     in->mtd = p;
     in->sz = sz;
     in->buf = buf;
+    async_out_t *out = job->out;
+    out->evt = 2;
 
     p->job = job;
     vm_must_run_job(ctx, job, async_read);
@@ -416,6 +423,8 @@ static duk_ret_t native_write(duk_context *ctx)
     in->mtd = p;
     in->sz = sz;
     in->buf = buf;
+    async_out_t *out = job->out;
+    out->evt = 3;
 
     p->job = job;
     vm_must_run_job(ctx, job, async_write);
@@ -428,7 +437,6 @@ typedef struct
     duk_uint8_t state;
     struct event *ev;
     vm_job_t *job;
-    pthread_mutex_t mutex;
 
     spiffs *fs;
     u8_t *buf;
@@ -452,15 +460,60 @@ static void iotjs_mtd_db_free(void *ptr)
     {
         close(p->fd);
     }
-    if (p->state & 0x02)
-    {
-        pthread_mutex_destroy(&p->mutex);
-    }
     p->state = 0;
     if (p->ev)
     {
         event_free(p->ev);
     }
+}
+typedef struct
+{
+    iotjs_mtd_db_t *db;
+    const char *k0;
+    const char *k1;
+    const void *data;
+    duk_size_t sz_data;
+    duk_size_t sz;
+    void *buf;
+} async_db_set_t;
+typedef struct
+{
+    iotjs_mtd_db_t *db;
+    const char *k0;
+    const char *k1;
+} async_db_has_t;
+typedef struct
+{
+    iotjs_mtd_db_t *db;
+    const char *k0;
+    const char *k1;
+    duk_bool_t s;
+} async_db_get_t;
+typedef struct
+{
+    duk_uint8_t evt;
+    duk_uint8_t ok;
+    int err;
+    const char *emsg;
+    union
+    {
+        duk_uint8_t exists;
+        void *buf;
+    };
+    duk_size_t sz;
+} async_db_out_t;
+static duk_ret_t iotjs_mtd_db_cb_get(duk_context *ctx)
+{
+    async_db_out_t *out = duk_require_pointer(ctx, 0);
+    duk_bool_t s = duk_require_boolean(ctx, 1);
+    duk_pop_2(ctx);
+    void *dst = duk_push_buffer(ctx, out->sz, 0);
+    memcpy(dst, out->buf, out->sz);
+    if (s)
+    {
+        duk_buffer_to_string(ctx, -1);
+    }
+    return 1;
 }
 static void iotjs_mtd_db_handler(evutil_socket_t fd, short events, void *args)
 {
@@ -468,6 +521,103 @@ static void iotjs_mtd_db_handler(evutil_socket_t fd, short events, void *args)
     {
         return;
     }
+    iotjs_mtd_db_t *p = args;
+    vm_job_t *job = p->job;
+    if (!job)
+    {
+        return;
+    }
+    p->job = NULL;
+    duk_context *ctx = job->vm->ctx;
+
+    async_db_out_t *out = job->out;
+    vm_restore(ctx, VM_SNAPSHOT_MTD_KV, p, 0);
+    duk_pop(ctx);
+    duk_push_number(ctx, out->evt);
+    if (out->ok)
+    {
+        switch (out->evt)
+        {
+        case 0:
+            duk_call(ctx, 1);
+            break;
+        case 1:
+            if (out->ok == 2)
+            {
+                duk_call(ctx, 1);
+            }
+            else
+            {
+                async_db_get_t *in = job->in;
+                if (out->sz)
+                {
+                    duk_push_c_lightfunc(ctx, iotjs_mtd_db_cb_get, 2, 2, 0);
+                    duk_push_pointer(ctx, out);
+                    if (in->s)
+                    {
+                        duk_push_true(ctx);
+                    }
+                    else
+                    {
+                        duk_push_false(ctx);
+                    }
+                    const duk_int_t ret = duk_pcall(ctx, 2);
+                    vm_free(out->buf);
+                    if (DUK_EXEC_SUCCESS == ret)
+                    {
+                        duk_call(ctx, 2);
+                    }
+                    else
+                    {
+                        duk_push_undefined(ctx);
+                        duk_swap_top(ctx, -2);
+                        duk_call(ctx, 3);
+                    }
+                }
+                else
+                {
+                    if (in->s)
+                    {
+                        duk_push_lstring(ctx, "", 0);
+                    }
+                    else
+                    {
+                        duk_push_buffer(ctx, 0, 0);
+                    }
+                    duk_call(ctx, 2);
+                }
+            }
+            break;
+            // case 2:
+        default:
+            if (out->exists)
+            {
+                duk_push_true(ctx);
+            }
+            else
+            {
+                duk_push_false(ctx);
+            }
+            duk_call(ctx, 2);
+            break;
+        }
+    }
+    else
+    {
+        duk_push_undefined(ctx);
+        if (out->err)
+        {
+            duk_push_error_object(ctx, DUK_ERR_ERROR, out->emsg, out->err);
+        }
+        else
+        {
+            duk_push_error_object(ctx, DUK_ERR_ERROR, out->emsg);
+        }
+        duk_push_error_object(ctx, DUK_ERR_ERROR, strerror(out->err));
+        duk_call(ctx, 3);
+    }
+    duk_pop(ctx);
+    vm_free(job);
 }
 static duk_ret_t native_len(duk_context *ctx)
 {
@@ -524,12 +674,6 @@ static duk_ret_t native_db(duk_context *ctx)
         vm_finalizer_free(ctx, -1, iotjs_mtd_db_free);
         duk_error(ctx, DUK_ERR_ERROR, strerror(err));
     }
-    if (pthread_mutex_init(&p->mutex, NULL))
-    {
-        vm_finalizer_free(ctx, -1, iotjs_mtd_db_free);
-        duk_error(ctx, DUK_ERR_ERROR, "pthread_mutex_init error");
-    }
-    p->state |= 0x2;
 
     vm_context_t *vm = vm_get_context(ctx);
     p->ev = event_new(vm->eb, -1, EV_PERSIST | EV_TIMEOUT, iotjs_mtd_db_handler, p);
@@ -810,6 +954,120 @@ static duk_ret_t native_db_set_sync(duk_context *ctx)
     }
     return 0;
 }
+
+static void async_db_set_do(vm_job_t *job)
+{
+    async_db_set_t *in = job->in;
+    async_db_out_t *out = job->out;
+    iotjs_mtd_db_t *db = in->db;
+
+    const char *emsg;
+    uint64_t v0 = 0;
+    emsg = spiffs_fs_get(db->fs, in->k0, &v0, 0, 0);
+    if (emsg)
+    {
+        out->emsg = emsg;
+        return;
+    }
+    uint64_t v1 = 0;
+    emsg = spiffs_fs_get(db->fs, in->k1, &v1, 0, 0);
+    if (emsg)
+    {
+        out->emsg = emsg;
+        return;
+    }
+    uint64_t version;
+    const char *k;
+    const char *rm;
+    if (v0 < v1)
+    {
+        k = in->k0;
+        rm = in->k1;
+        version = v1 + 1;
+    }
+    else
+    {
+        k = in->k1;
+        rm = in->k0;
+        version = v0 + 1;
+    }
+
+    duk_size_t sz_data = in->sz_data;
+    const u8_t *data = in->data;
+    u8_t *buf = in->buf;
+    iotjs_little_endian.put_uint32(buf, sz_data);
+    memcpy(buf + 4, data, sz_data);
+    iotjs_little_endian.put_uint64(buf + 4 + sz_data, version);
+
+    s32_t ok = SPIFFS_remove(db->fs, k);
+    if (ok < 0 && ok != SPIFFS_ERR_NOT_FOUND)
+    {
+        out->err = SPIFFS_errno(db->fs);
+        out->emsg = "SPIFFS_remove fail %d";
+        return;
+    }
+    spiffs_file fd = SPIFFS_open(db->fs, k, SPIFFS_CREAT | SPIFFS_TRUNC | SPIFFS_RDWR, 0);
+    if (fd < 0)
+    {
+        out->err = SPIFFS_errno(db->fs);
+        out->emsg = "SPIFFS_open fail %d";
+    }
+    if (SPIFFS_write(db->fs, fd, buf, in->sz) != in->sz)
+    {
+        out->err = SPIFFS_errno(db->fs);
+        out->emsg = "SPIFFS_write fail %d";
+        SPIFFS_close(db->fs, fd);
+    }
+    else
+    {
+        // success
+        SPIFFS_remove(db->fs, rm);
+        SPIFFS_close(db->fs, fd);
+        out->ok = 1;
+    }
+}
+static void async_db_set(vm_job_t *job)
+{
+    async_db_set_t *in = job->in;
+    async_db_set_do(job);
+    event_active(in->db->ev, 0, 0);
+}
+static duk_ret_t native_db_set(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
+    iotjs_mtd_db_t *p = finalizer->p;
+    const char *k0 = duk_require_string(ctx, 1);
+    const char *k1 = duk_require_string(ctx, 2);
+    duk_size_t sz_data;
+    const void *data;
+    if (duk_is_string(ctx, 3))
+    {
+        data = duk_require_lstring(ctx, 3, &sz_data);
+    }
+    else
+    {
+        data = duk_require_buffer_data(ctx, 3, &sz_data);
+    }
+    duk_size_t sz;
+    void *buf = duk_require_buffer_data(ctx, 4, &sz);
+
+    vm_job_t *job = vm_new_job(ctx, sizeof(async_db_set_t), sizeof(async_db_out_t));
+    async_db_set_t *in = job->in;
+    in->db = p;
+    in->k0 = k0;
+    in->k1 = k1;
+    in->data = data;
+    in->sz_data = sz_data;
+    in->buf = buf;
+    in->sz = sz;
+
+    async_db_out_t *out = job->out;
+    out->evt = 0;
+
+    p->job = job;
+    vm_must_run_job(ctx, job, async_db_set);
+    return 0;
+}
 static duk_ret_t native_db_has_sync(duk_context *ctx)
 {
     finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
@@ -844,6 +1102,56 @@ static duk_ret_t native_db_has_sync(duk_context *ctx)
         duk_push_false(ctx);
     }
     return 1;
+}
+static void async_db_has_do(vm_job_t *job)
+{
+    async_db_has_t *in = job->in;
+    async_db_out_t *out = job->out;
+    iotjs_mtd_db_t *db = in->db;
+
+    const char *emsg;
+    uint64_t v0 = 0;
+    emsg = spiffs_fs_get(db->fs, in->k0, &v0, 0, 0);
+    if (emsg)
+    {
+        out->emsg = emsg;
+        return;
+    }
+    uint64_t v1 = 0;
+    emsg = spiffs_fs_get(db->fs, in->k1, &v1, 0, 0);
+    if (emsg)
+    {
+        out->emsg = emsg;
+        return;
+    }
+    out->exists = v0 || v1 ? 1 : 0;
+    out->ok = 1;
+}
+static void async_db_has(vm_job_t *job)
+{
+    async_db_has_t *in = job->in;
+    async_db_has_do(job);
+    event_active(in->db->ev, 0, 0);
+}
+static duk_ret_t native_db_has(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
+    iotjs_mtd_db_t *p = finalizer->p;
+    const char *k0 = duk_require_string(ctx, 1);
+    const char *k1 = duk_require_string(ctx, 2);
+
+    vm_job_t *job = vm_new_job(ctx, sizeof(async_db_has_t), sizeof(async_db_out_t));
+    async_db_has_t *in = job->in;
+    in->db = p;
+    in->k0 = k0;
+    in->k1 = k1;
+
+    async_db_out_t *out = job->out;
+    out->evt = 2;
+
+    p->job = job;
+    vm_must_run_job(ctx, job, async_db_has);
+    return 0;
 }
 
 static duk_ret_t native_db_get_sync(duk_context *ctx)
@@ -919,6 +1227,88 @@ static duk_ret_t native_db_get_sync(duk_context *ctx)
     }
     return 1;
 }
+static void async_db_get_do(vm_job_t *job)
+{
+    async_db_get_t *in = job->in;
+    async_db_out_t *out = job->out;
+    iotjs_mtd_db_t *db = in->db;
+
+    const char *emsg;
+
+    uint64_t v0 = 0;
+    s32_t l0 = 0;
+    emsg = spiffs_fs_get(db->fs, in->k0, &v0, &l0, 0);
+    if (emsg)
+    {
+        out->emsg = emsg;
+        return;
+    }
+
+    uint64_t v1 = 0;
+    s32_t l1 = 0;
+    emsg = spiffs_fs_get(db->fs, in->k1, &v1, &l1, 0);
+    if (emsg)
+    {
+        out->emsg = emsg;
+        return;
+    }
+    if (!v0 && !v1)
+    {
+        out->ok = 2;
+        return;
+    }
+    const char *k;
+    if (v0 < v1)
+    {
+        k = in->k1;
+        out->sz = l1;
+    }
+    else
+    {
+        k = in->k0;
+        out->sz = l0;
+    }
+
+    if (out->sz)
+    {
+        out->buf = vm_malloc(out->sz);
+        emsg = spiffs_fs_get(db->fs, k, 0, 0, out->buf);
+        if (emsg)
+        {
+            out->emsg = emsg;
+            return;
+        }
+    }
+    out->ok = 1;
+}
+static void async_db_get(vm_job_t *job)
+{
+    async_db_has_t *in = job->in;
+    async_db_get_do(job);
+    event_active(in->db->ev, 0, 0);
+}
+static duk_ret_t native_db_get(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
+    iotjs_mtd_db_t *p = finalizer->p;
+    const char *k0 = duk_require_string(ctx, 1);
+    const char *k1 = duk_require_string(ctx, 2);
+    duk_bool_t s = duk_require_boolean(ctx, 3);
+
+    vm_job_t *job = vm_new_job(ctx, sizeof(async_db_get_t), sizeof(async_db_out_t));
+    async_db_get_t *in = job->in;
+    in->db = p;
+    in->k0 = k0;
+    in->k1 = k1;
+    in->s = s;
+
+    async_db_out_t *out = job->out;
+    out->evt = 1;
+
+    p->job = job;
+    vm_must_run_job(ctx, job, async_db_get);
+    return 0;
+}
 static duk_ret_t native_db_info(duk_context *ctx)
 {
     finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
@@ -939,20 +1329,7 @@ static duk_ret_t native_db_info(duk_context *ctx)
 
     return 1;
 }
-static duk_ret_t native_db_lock(duk_context *ctx)
-{
-    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
-    iotjs_mtd_db_t *db = finalizer->p;
-    pthread_mutex_lock(&db->mutex);
-    return 0;
-}
-static duk_ret_t native_db_unlock(duk_context *ctx)
-{
-    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
-    iotjs_mtd_db_t *db = finalizer->p;
-    pthread_mutex_unlock(&db->mutex);
-    return 0;
-}
+
 duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
 {
     duk_swap(ctx, 0, 1);
@@ -1023,10 +1400,12 @@ duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "db_get_sync", 11);
         duk_push_c_lightfunc(ctx, native_db_info, 1, 1, 0);
         duk_put_prop_lstring(ctx, -2, "db_info", 7);
-        duk_push_c_lightfunc(ctx, native_db_lock, 1, 1, 0);
-        duk_put_prop_lstring(ctx, -2, "db_lock", 7);
-        duk_push_c_lightfunc(ctx, native_db_unlock, 1, 1, 0);
-        duk_put_prop_lstring(ctx, -2, "db_unlock", 9);
+        duk_push_c_lightfunc(ctx, native_db_set, 5, 5, 0);
+        duk_put_prop_lstring(ctx, -2, "db_set", 6);
+        duk_push_c_lightfunc(ctx, native_db_has, 3, 3, 0);
+        duk_put_prop_lstring(ctx, -2, "db_has", 6);
+        duk_push_c_lightfunc(ctx, native_db_get, 4, 4, 0);
+        duk_put_prop_lstring(ctx, -2, "db_get", 6);
     }
     duk_call(ctx, 3);
     return 0;

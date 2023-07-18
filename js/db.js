@@ -1,5 +1,4 @@
 var mtd = require("iotjs/mtd")
-var hex = require("iotjs/encoding/hex")
 var last = Date.now()
 try {
     var path = "/dev/mtd5"
