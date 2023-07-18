@@ -19,6 +19,11 @@ IOTJS_SPIFFS_DEFINE(0)
 IOTJS_SPIFFS_DEFINE(1)
 IOTJS_SPIFFS_DEFINE(2)
 
+#define IOTJS_MTD_DB_KEYS_SET 0
+#define IOTJS_MTD_DB_KEYS_HAS 1
+#define IOTJS_MTD_DB_KEYS_GET 2
+#define IOTJS_MTD_DB_KEYS_DELETE 3
+
 typedef struct
 {
     int fd;
@@ -532,11 +537,11 @@ static void iotjs_mtd_db_handler(evutil_socket_t fd, short events, void *args)
     {
         switch (out->evt)
         {
-        case 0: // set
-        case 3: // delete
+        case IOTJS_MTD_DB_KEYS_SET:    // set
+        case IOTJS_MTD_DB_KEYS_DELETE: // delete
             duk_call(ctx, 1);
             break;
-        case 2: // get
+        case IOTJS_MTD_DB_KEYS_GET: // get
             if (out->ok == 2)
             {
                 duk_call(ctx, 1);
@@ -568,7 +573,7 @@ static void iotjs_mtd_db_handler(evutil_socket_t fd, short events, void *args)
                 }
             }
             break;
-            // case 1: // has
+            // case IOTJS_MTD_DB_KEYS_HAS: // has
         default:
             if (out->exists)
             {
@@ -1027,7 +1032,7 @@ static duk_ret_t native_db_set(duk_context *ctx)
     in->sz = sz;
 
     async_db_out_t *out = job->out;
-    out->evt = 0;
+    out->evt = IOTJS_MTD_DB_KEYS_SET;
 
     p->job = job;
     vm_must_run_job(ctx, job, async_db_set);
@@ -1112,7 +1117,7 @@ static duk_ret_t native_db_has(duk_context *ctx)
     in->k1 = k1;
 
     async_db_out_t *out = job->out;
-    out->evt = 1;
+    out->evt = IOTJS_MTD_DB_KEYS_HAS;
 
     p->job = job;
     vm_must_run_job(ctx, job, async_db_has);
@@ -1276,7 +1281,7 @@ static duk_ret_t native_db_get(duk_context *ctx)
     in->k1 = k1;
 
     async_db_out_t *out = job->out;
-    out->evt = 2;
+    out->evt = IOTJS_MTD_DB_KEYS_GET;
 
     p->job = job;
     vm_must_run_job(ctx, job, async_db_get);
@@ -1322,7 +1327,7 @@ static duk_ret_t native_db_delete(duk_context *ctx)
     in->k1 = k1;
 
     async_db_out_t *out = job->out;
-    out->evt = 3;
+    out->evt = IOTJS_MTD_DB_KEYS_DELETE;
 
     p->job = job;
     vm_must_run_job(ctx, job, async_db_delete);
