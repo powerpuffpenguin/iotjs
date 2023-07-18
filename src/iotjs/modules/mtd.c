@@ -487,7 +487,6 @@ typedef struct
     iotjs_mtd_db_t *db;
     const char *k0;
     const char *k1;
-    duk_bool_t s;
 } async_db_get_t;
 typedef struct
 {
@@ -505,14 +504,9 @@ typedef struct
 static duk_ret_t iotjs_mtd_db_cb_get(duk_context *ctx)
 {
     async_db_out_t *out = duk_require_pointer(ctx, 0);
-    duk_bool_t s = duk_require_boolean(ctx, 1);
-    duk_pop_2(ctx);
+    duk_pop(ctx);
     void *dst = duk_push_buffer(ctx, out->sz, 0);
     memcpy(dst, out->buf, out->sz);
-    if (s)
-    {
-        duk_buffer_to_string(ctx, -1);
-    }
     return 1;
 }
 static void iotjs_mtd_db_handler(evutil_socket_t fd, short events, void *args)
@@ -542,7 +536,7 @@ static void iotjs_mtd_db_handler(evutil_socket_t fd, short events, void *args)
         case 3: // delete
             duk_call(ctx, 1);
             break;
-        case 1: // has
+        case 2: // get
             if (out->ok == 2)
             {
                 duk_call(ctx, 1);
@@ -552,17 +546,9 @@ static void iotjs_mtd_db_handler(evutil_socket_t fd, short events, void *args)
                 async_db_get_t *in = job->in;
                 if (out->sz)
                 {
-                    duk_push_c_lightfunc(ctx, iotjs_mtd_db_cb_get, 2, 2, 0);
+                    duk_push_c_lightfunc(ctx, iotjs_mtd_db_cb_get, 1, 1, 0);
                     duk_push_pointer(ctx, out);
-                    if (in->s)
-                    {
-                        duk_push_true(ctx);
-                    }
-                    else
-                    {
-                        duk_push_false(ctx);
-                    }
-                    const duk_int_t ret = duk_pcall(ctx, 2);
+                    const duk_int_t ret = duk_pcall(ctx, 1);
                     vm_free(out->buf);
                     if (DUK_EXEC_SUCCESS == ret)
                     {
@@ -577,19 +563,12 @@ static void iotjs_mtd_db_handler(evutil_socket_t fd, short events, void *args)
                 }
                 else
                 {
-                    if (in->s)
-                    {
-                        duk_push_lstring(ctx, "", 0);
-                    }
-                    else
-                    {
-                        duk_push_buffer(ctx, 0, 0);
-                    }
+                    duk_push_buffer(ctx, 0, 0);
                     duk_call(ctx, 2);
                 }
             }
             break;
-            // case 2: // get
+            // case 1: // has
         default:
             if (out->exists)
             {
@@ -914,15 +893,8 @@ static duk_ret_t native_db_set_sync(duk_context *ctx)
     }
 
     duk_size_t sz_data;
-    const u8_t *data;
-    if (duk_is_string(ctx, 0))
-    {
-        data = duk_require_lstring(ctx, 0, &sz_data);
-    }
-    else
-    {
-        data = duk_require_buffer_data(ctx, 0, &sz_data);
-    }
+    const u8_t *data = duk_require_buffer_data(ctx, 0, &sz_data);
+
     duk_size_t sz;
     u8_t *buf = duk_require_buffer_data(ctx, 1, &sz);
     iotjs_little_endian.put_uint32(buf, sz_data);
@@ -1040,15 +1012,7 @@ static duk_ret_t native_db_set(duk_context *ctx)
     const char *k0 = duk_require_string(ctx, 1);
     const char *k1 = duk_require_string(ctx, 2);
     duk_size_t sz_data;
-    const void *data;
-    if (duk_is_string(ctx, 3))
-    {
-        data = duk_require_lstring(ctx, 3, &sz_data);
-    }
-    else
-    {
-        data = duk_require_buffer_data(ctx, 3, &sz_data);
-    }
+    const void *data = data = duk_require_buffer_data(ctx, 3, &sz_data);
     duk_size_t sz;
     void *buf = duk_require_buffer_data(ctx, 4, &sz);
 
@@ -1148,7 +1112,7 @@ static duk_ret_t native_db_has(duk_context *ctx)
     in->k1 = k1;
 
     async_db_out_t *out = job->out;
-    out->evt = 2;
+    out->evt = 1;
 
     p->job = job;
     vm_must_run_job(ctx, job, async_db_has);
@@ -1169,7 +1133,7 @@ static duk_ret_t native_db_get_sync(duk_context *ctx)
     emsg = spiffs_fs_get(fs, k0, &v0, &l0, 0);
     if (emsg)
     {
-        duk_pop_n(ctx, 4);
+        duk_pop_3(ctx);
         duk_error(ctx, DUK_ERR_ERROR, emsg);
     }
 
@@ -1179,11 +1143,10 @@ static duk_ret_t native_db_get_sync(duk_context *ctx)
     emsg = spiffs_fs_get(fs, k1, &v1, &l1, 0);
     if (emsg)
     {
-        duk_pop_n(ctx, 4);
+        duk_pop_3(ctx);
         duk_error(ctx, DUK_ERR_ERROR, emsg);
     }
-    duk_bool_t s = duk_require_boolean(ctx, 3);
-    duk_pop_n(ctx, 4);
+    duk_pop_3(ctx);
 
     if (!v0 && !v1)
     {
@@ -1210,21 +1173,10 @@ static duk_ret_t native_db_get_sync(duk_context *ctx)
         {
             duk_error(ctx, DUK_ERR_ERROR, emsg);
         }
-        if (s)
-        {
-            duk_buffer_to_string(ctx, -1);
-        }
     }
     else
     {
-        if (s)
-        {
-            duk_push_lstring(ctx, "", 0);
-        }
-        else
-        {
-            duk_push_buffer(ctx, 0, 0);
-        }
+        duk_push_buffer(ctx, 0, 0);
     }
     return 1;
 }
@@ -1316,17 +1268,15 @@ static duk_ret_t native_db_get(duk_context *ctx)
     iotjs_mtd_db_t *p = finalizer->p;
     const char *k0 = duk_require_string(ctx, 1);
     const char *k1 = duk_require_string(ctx, 2);
-    duk_bool_t s = duk_require_boolean(ctx, 3);
 
     vm_job_t *job = vm_new_job(ctx, sizeof(async_db_get_t), sizeof(async_db_out_t));
     async_db_get_t *in = job->in;
     in->db = p;
     in->k0 = k0;
     in->k1 = k1;
-    in->s = s;
 
     async_db_out_t *out = job->out;
-    out->evt = 1;
+    out->evt = 2;
 
     p->job = job;
     vm_must_run_job(ctx, job, async_db_get);
@@ -1465,7 +1415,7 @@ duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "db_set_sync", 11);
         duk_push_c_lightfunc(ctx, native_db_has_sync, 3, 3, 0);
         duk_put_prop_lstring(ctx, -2, "db_has_sync", 11);
-        duk_push_c_lightfunc(ctx, native_db_get_sync, 4, 4, 0);
+        duk_push_c_lightfunc(ctx, native_db_get_sync, 3, 3, 0);
         duk_put_prop_lstring(ctx, -2, "db_get_sync", 11);
         duk_push_c_lightfunc(ctx, native_db_delete_sync, 3, 3, 0);
         duk_put_prop_lstring(ctx, -2, "db_delete_sync", 14);
@@ -1476,7 +1426,7 @@ duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "db_set", 6);
         duk_push_c_lightfunc(ctx, native_db_has, 3, 3, 0);
         duk_put_prop_lstring(ctx, -2, "db_has", 6);
-        duk_push_c_lightfunc(ctx, native_db_get, 4, 4, 0);
+        duk_push_c_lightfunc(ctx, native_db_get, 3, 3, 0);
         duk_put_prop_lstring(ctx, -2, "db_get", 6);
         duk_push_c_lightfunc(ctx, native_db_delete, 3, 3, 0);
         duk_put_prop_lstring(ctx, -2, "db_delete", 9);

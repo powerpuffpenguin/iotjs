@@ -7,13 +7,13 @@ try {
         console.log(db.info())
         for (var i = 0; i < 12; i++) {
             var key = "ko" + i
-            db.setSync(key, "this is value " + i)
+            db.setSync(key, new TextEncoder().encode("this is value " + i))
             if (i % 3 == 1) {
                 db.deleteSync(key)
             }
             console.log(key, db.hasSync(key))
-            var val = db.getStringSync(key)
-            console.log('read ' + i + ':', val)
+            var val = db.getSync(key)
+            console.log('read ' + i + ':', val ? new TextDecoder().decode(val) : val)
         }
     } finally {
         db.close()

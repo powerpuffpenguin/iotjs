@@ -10,7 +10,7 @@ coroutine.go(function (co) {
             for (var i = 0; i < 12; i++) {
                 var key = "ko" + i
                 co.yield(function (notify) {
-                    db.set(key, "this is value " + i, function (e) {
+                    db.set(key, new TextEncoder().encode("this is value " + i), function (e) {
                         if (e) {
                             notify.error(e)
                         } else {
@@ -40,7 +40,7 @@ coroutine.go(function (co) {
                 })
                 console.log(key, exists)
                 var val = co.yield(function (notify) {
-                    db.getString(key, function (ret, e) {
+                    db.get(key, function (ret, e) {
                         if (e) {
                             notify.error(e)
                         } else {
@@ -48,7 +48,7 @@ coroutine.go(function (co) {
                         }
                     })
                 })
-                console.log('read ' + i + ':', val)
+                console.log('read ' + i + ':', val ? new TextDecoder().decode(val) : val)
             }
         }
         finally {

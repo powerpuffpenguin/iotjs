@@ -47,7 +47,6 @@ declare namespace deps {
         readonly __iotjs_mtd_db_hash: string
     }
     export function db(path: string, device: number, cb: (evt: number, ret?: any, e?: any) => void): DB
-    export function len(data: Uint8Array | ArrayBuffer | string): number
     /**
      * 關閉分區
      */
@@ -55,13 +54,13 @@ declare namespace deps {
     export function db_free(db: DB): void
     export function key_encode(v: any): string
     export function db_set_sync(db: DB, k0: string, k1: string, data: Uint8Array | ArrayBuffer | string, buf: Uint8Array): void
-    export function db_get_sync(db: DB, k0: string, k1: string, s: boolean): Uint8Array | string | undefined
+    export function db_get_sync(db: DB, k0: string, k1: string): Uint8Array | string | undefined
     export function db_has_sync(db: DB, k0: string, k1: string): boolean
     export function db_delete_sync(db: DB, k0: string, k1: string): void
     export function db_info(db: DB): any
 
     export function db_set(db: DB, k0: string, k1: string, data: Uint8Array | ArrayBuffer | string, buf: Uint8Array): void
-    export function db_get(db: DB, k0: string, k1: string, s: boolean): void
+    export function db_get(db: DB, k0: string, k1: string): void
     export function db_has(db: DB, k0: string, k1: string): void
     export function db_delete(db: DB, k0: string, k1: string): void
 }
@@ -295,8 +294,6 @@ interface DBTask {
     k0: string
     k1: string
 
-    s?: boolean
-
     data?: Uint8Array | ArrayBuffer | string
     buf?: Uint8Array
 
@@ -391,13 +388,13 @@ export class DB {
             deps.db_free(this.db_)
         }
     }
-    setSync(key: string, data: Uint8Array | ArrayBuffer | string): void {
+    setSync(key: string, data: Uint8Array | ArrayBuffer): void {
         if (this.close_) {
             throw new Error("db already closed")
         } else if (this.front_) {
             throw new Error("db busy")
         }
-        const len = deps.len(data)
+        const len = data.byteLength
         if (len > 4294967295 - 4 - 8) {
             throw new Error("data too long")
         }
@@ -407,7 +404,7 @@ export class DB {
         const k1 = `/1.${key}`
         deps.db_set_sync(this.db_, k0, k1, data, buf)
     }
-    private _getSync(key: string, s: boolean) {
+    getSync(key: string) {
         if (this.close_) {
             throw new Error("db already closed")
         } else if (this.front_) {
@@ -416,14 +413,9 @@ export class DB {
         key = deps.key_encode(key)
         const k0 = `/0.${key}`
         const k1 = `/1.${key}`
-        return deps.db_get_sync(this.db_, k0, k1, s)
+        return deps.db_get_sync(this.db_, k0, k1)
     }
-    getSync(key: string) {
-        return this._getSync(key, false)
-    }
-    getStringSync(key: string) {
-        return this._getSync(key, true)
-    }
+
     hasSync(key: string): boolean {
         if (this.close_) {
             throw new Error("db already closed")
@@ -464,7 +456,7 @@ export class DB {
                 deps.db_has(this.db_, next.k0, next.k1)
                 break
             case 2: // get
-                deps.db_get(this.db_, next.k0, next.k1, next.s!)
+                deps.db_get(this.db_, next.k0, next.k1)
                 break
             case 3:// delete
                 deps.db_delete(this.db_, next.k0, next.k1)
@@ -491,7 +483,7 @@ export class DB {
         if (this.close_) {
             throw new Error("db already closed")
         }
-        const len = deps.len(data)
+        const len = data.byteLength
         if (len > 4294967295 - 4 - 8) {
             throw new Error("data too long")
         }
@@ -512,7 +504,7 @@ export class DB {
 
         this._task({ evt: 1, k0: k0, k1: k1, cb: cb })
     }
-    private _get(key: string, s: boolean, cb?: (data?: Uint8Array, e?: any) => void) {
+    get(key: string, cb?: (data?: Uint8Array, e?: any) => void): void {
         if (this.close_) {
             throw new Error("db already closed")
         }
@@ -520,13 +512,7 @@ export class DB {
         const k0 = `/0.${key}`
         const k1 = `/1.${key}`
 
-        this._task({ evt: 2, k0: k0, k1: k1, s: s, cb: cb })
-    }
-    get(key: string, cb?: (data?: Uint8Array, e?: any) => void): void {
-        this._get(key, false, cb)
-    }
-    getString(key: string, cb?: (data?: Uint8Array, e?: any) => void): void {
-        this._get(key, true, cb)
+        this._task({ evt: 2, k0: k0, k1: k1, cb: cb })
     }
     delete(key: string, cb?: (e?: any) => void): void {
         if (this.close_) {
