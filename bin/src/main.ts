@@ -1,8 +1,8 @@
 import { Command, Parser } from "./flags";
 import { command as timer } from "./test/timer";
 import { command as fibonacci } from "./test/fibonacci";
-import { command as fs } from "./test/fs";
-import { command as dns } from "./test/dns";
+// import { command as fs } from "./test/fs";
+// import { command as dns } from "./test/dns";
 import { command as tcp } from "./test/tcp";
 import { command as co } from "./test/co";
 import { command as unit } from "./unit/command";
@@ -20,8 +20,8 @@ root.add(
     unit,
     timer,
     fibonacci,
-    fs,
-    dns,
+    // fs,
+    // dns,
     tcp,
     co,
 )

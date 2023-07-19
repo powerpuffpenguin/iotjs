@@ -121,6 +121,8 @@
     "memorypool.h": "c",
     "mep.h": "c",
     "__memory": "cpp",
-    "random": "cpp"
+    "random": "cpp",
+    "numeric": "c",
+    "future": "c"
   }
 }

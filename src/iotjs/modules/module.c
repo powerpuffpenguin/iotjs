@@ -5,6 +5,7 @@ void __iotjs_modules_init()
     vm_register_native("iotjs", native_iotjs_init);
     vm_register_native("iotjs/coroutine", native_iotjs_coroutine_init);
     vm_register_native("iotjs/encoding/hex", native_iotjs_encoding_hex_init);
+    vm_register_native("iotjs/encoding/base64", native_iotjs_encoding_base64_init);
     vm_register_native("iotjs/bytes", native_iotjs_bytes_init);
     vm_register_native("iotjs/mtd", native_iotjs_mtd_init);
 

@@ -74,6 +74,26 @@ typedef struct
     unsigned int length;
 } async_erase_t;
 
+typedef struct
+{
+    spiffs_DIR dir;
+    struct spiffs_dirent dirent;
+    duk_uint8_t ok;
+} iotjs_mtd_db_iterator_t;
+
+static void iotjs_mtd_db_iterator_free(void *ptr)
+{
+#ifdef VM_TRACE_FINALIZER
+    puts(" --------- iotjs_mtd_db_iterator_free");
+#endif
+    iotjs_mtd_db_iterator_t *p = ptr;
+    if (p->ok)
+    {
+        p->ok = 0;
+        SPIFFS_closedir(&p->dir);
+    }
+}
+
 static void iotjs_mtd_fd_handler(evutil_socket_t fd, short events, void *args)
 {
     if (events)
@@ -763,11 +783,11 @@ static duk_ret_t native_key_encode(duk_context *ctx)
     const void *src;
     if (duk_is_buffer_data(ctx, 0))
     {
-        src = duk_get_buffer_data(ctx, 0, &sz);
+        src = duk_require_buffer_data(ctx, 0, &sz);
     }
     else if (duk_is_string(ctx, 0))
     {
-        src = duk_get_lstring(ctx, 0, &sz);
+        src = duk_require_lstring(ctx, 0, &sz);
     }
     else
     {
@@ -784,6 +804,17 @@ static duk_ret_t native_key_encode(duk_context *ctx)
     {
         duk_push_lstring(ctx, "", 0);
     }
+    return 1;
+}
+static duk_ret_t native_key_decode(duk_context *ctx)
+{
+    duk_size_t sz;
+    const void *src = duk_require_lstring(ctx, 0, &sz);
+    unsigned int len = iotjs_base64.raw_url.decoded_len(sz);
+    // printf("decode sz=%d src=%.*s len=%d\r\n", sz, sz, src, len);
+    void *dst = duk_push_buffer(ctx, len, 0);
+    iotjs_base64.raw_url.decode(dst, src, sz);
+    duk_buffer_to_string(ctx, -1);
     return 1;
 }
 // 讀取數據
@@ -1354,6 +1385,101 @@ static duk_ret_t native_db_info(duk_context *ctx)
     return 1;
 }
 
+static duk_ret_t native_db_iterator(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
+    iotjs_mtd_db_t *db = finalizer->p;
+    duk_pop(ctx);
+
+    finalizer = vm_create_finalizer_n(ctx, sizeof(iotjs_mtd_db_iterator_t));
+    finalizer->free = iotjs_mtd_db_iterator_free;
+    iotjs_mtd_db_iterator_t *p = finalizer->p;
+    if (!SPIFFS_opendir(db->fs, "/", &p->dir))
+    {
+        duk_error(ctx, DUK_ERR_ERROR, "SPIFFS_opendir fail %d", SPIFFS_errno(db->fs));
+    }
+    return 1;
+}
+static duk_ret_t native_db_iterator_free(duk_context *ctx)
+{
+    vm_finalizer_free(ctx, 0, iotjs_mtd_db_iterator_free);
+    return 0;
+}
+static duk_ret_t native_db_iterator_foreach_sync(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_iterator_free);
+    duk_bool_t data = duk_require_boolean(ctx, 1);
+    duk_require_callable(ctx, 2);
+    duk_swap(ctx, 0, 2);
+    duk_pop_2(ctx);
+
+    iotjs_mtd_db_iterator_t *p = finalizer->p;
+    const char *emsg;
+    uint64_t v = 0;
+    while (1)
+    {
+        if (!SPIFFS_readdir(&p->dir, &p->dirent))
+        {
+            int err = SPIFFS_errno(p->dir.fs);
+            if (err == SPIFFS_ERR_NOT_FOUND)
+            {
+                break;
+            }
+            duk_error(ctx, DUK_ERR_ERROR, "SPIFFS_readdir fail %d", err);
+        }
+        if (p->dirent.type != 1 ||
+            p->dirent.name[0] != '/' ||
+            p->dirent.name[2] != '.' ||
+            (p->dirent.name[1] != '0' && p->dirent.name[1] != '1'))
+        {
+            continue;
+        }
+        v = 0;
+        if (data)
+        {
+        }
+        else
+        {
+            emsg = spiffs_fs_get(p->dir.fs, p->dirent.name, &v, 0, 0);
+            if (emsg)
+            {
+                duk_error(ctx, DUK_ERR_ERROR, emsg);
+            }
+
+            duk_dup_top(ctx);
+            duk_push_string(ctx, p->dirent.name);
+            duk_push_pointer(ctx, &v);
+            duk_call(ctx, 2);
+            duk_pop(ctx);
+        }
+    }
+    return 0;
+}
+static duk_ret_t native_db_key(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
+    iotjs_mtd_db_t *db = finalizer->p;
+    spiffs_DIR d;
+    if (!SPIFFS_opendir(db->fs, "/", &d))
+    {
+        duk_error(ctx, DUK_ERR_ERROR, "SPIFFS_opendir fail %d", SPIFFS_errno(db->fs));
+    }
+    struct spiffs_dirent e;
+    while (1)
+    {
+        if (!SPIFFS_readdir(&d, &e))
+        {
+            int err = SPIFFS_errno(db->fs);
+            if (err == SPIFFS_ERR_NOT_FOUND)
+            {
+                break;
+            }
+            duk_error(ctx, DUK_ERR_ERROR, "SPIFFS_readdir fail %d", err);
+        }
+        printf("name=%s size=%d type=%d\r\n", e.name, e.size, e.type);
+    }
+    return 0;
+}
 duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
 {
     duk_swap(ctx, 0, 1);
@@ -1415,6 +1541,8 @@ duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "db_free", 7);
         duk_push_c_lightfunc(ctx, native_key_encode, 1, 1, 0);
         duk_put_prop_lstring(ctx, -2, "key_encode", 10);
+        duk_push_c_lightfunc(ctx, native_key_decode, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "key_decode", 10);
 
         duk_push_c_lightfunc(ctx, native_db_set_sync, 5, 5, 0);
         duk_put_prop_lstring(ctx, -2, "db_set_sync", 11);
@@ -1435,6 +1563,16 @@ duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "db_get", 6);
         duk_push_c_lightfunc(ctx, native_db_delete, 3, 3, 0);
         duk_put_prop_lstring(ctx, -2, "db_delete", 9);
+
+        duk_push_c_lightfunc(ctx, native_db_iterator, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "db_iterator", 11);
+        duk_push_c_lightfunc(ctx, native_db_iterator_free, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "db_iterator_free", 16);
+        duk_push_c_lightfunc(ctx, native_db_iterator_foreach_sync, 3, 3, 0);
+        duk_put_prop_lstring(ctx, -2, "db_iterator_foreach_sync", 24);
+
+        duk_push_c_lightfunc(ctx, native_db_key, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "db_key", 6);
     }
     duk_call(ctx, 3);
     return 0;

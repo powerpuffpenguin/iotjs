@@ -98,10 +98,10 @@ void little_put_uint64(uint8_t *b, uint64_t v)
     b[1] = (uint8_t)(v >> 8);
     b[0] = (uint8_t)(v);
 }
-const char *encodeStd = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-const char *encodeURL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-char decodeStd[256];
-char decodeURL[256];
+const char *iotjs_base64_encodeStd = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const char *iotjs_base64_encodeURL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+char iotjs_base64_decode_std[256];
+char iotjs_base64_decode_url[256];
 void __iotjs_binary_init()
 {
     byte_order_t *little, *big;
@@ -136,28 +136,28 @@ void __iotjs_binary_init()
     little->put_uint64 = little_put_uint64;
 
     // base64
-    memset(decodeStd, 0xff, 256);
-    memset(decodeURL, 0xff, 256);
+    memset(iotjs_base64_decode_std, 0xff, 256);
+    memset(iotjs_base64_decode_url, 0xff, 256);
     for (uint8_t i = 0; i < 64; i++)
     {
-        decodeStd[encodeStd[i]] = i;
-        decodeURL[encodeURL[i]] = i;
+        iotjs_base64_decode_std[iotjs_base64_encodeStd[i]] = i;
+        iotjs_base64_decode_url[iotjs_base64_encodeURL[i]] = i;
     }
 }
 
-static unsigned int base64_encoded_len(unsigned int n)
+unsigned int base64_encoded_len(unsigned int n)
 {
     return (n + 2) / 3 * 4; // minimum # 4-char quanta, 3 bytes each
 }
-static unsigned int base64_encoded_len_no_padding(unsigned int n)
+unsigned int base64_encoded_len_no_padding(unsigned int n)
 {
     return (n * 8 + 5) / 6; // minimum # chars at 6 bits per char
 }
-static unsigned int base64_decoded_len(unsigned int n)
+unsigned int base64_decoded_len(unsigned int n)
 {
     return n / 4 * 3; // Padded base64 should always be a multiple of 4 characters in length.
 }
-static unsigned int base64_decoded_len_no_padding(unsigned int n)
+unsigned int base64_decoded_len_no_padding(unsigned int n)
 {
     return n % 4 == 1 ? 0 : n * 6 / 8; // Unpadded data may end with partial block of 2-3 characters.
 }
@@ -207,20 +207,21 @@ unsigned int iotjs_base64_encode(uint8_t *dst, const uint8_t *src, unsigned int 
 }
 static unsigned int base64_encode(uint8_t *dst, const uint8_t *src, unsigned int src_len)
 {
-    return iotjs_base64_encode(dst, src, src_len, '=', encodeStd);
+    return iotjs_base64_encode(dst, src, src_len, '=', iotjs_base64_encodeStd);
 }
 static unsigned int base64_encode_no_padding(uint8_t *dst, const uint8_t *src, unsigned int src_len)
 {
-    return iotjs_base64_encode(dst, src, src_len, 0, encodeStd);
+    return iotjs_base64_encode(dst, src, src_len, 0, iotjs_base64_encodeStd);
 }
 static unsigned int base64_url_encode(uint8_t *dst, const uint8_t *src, unsigned int src_len)
 {
-    return iotjs_base64_encode(dst, src, src_len, '=', encodeURL);
+    return iotjs_base64_encode(dst, src, src_len, '=', iotjs_base64_encodeURL);
 }
 static unsigned int base64_url_encode_no_padding(uint8_t *dst, const uint8_t *src, unsigned int src_len)
 {
-    return iotjs_base64_encode(dst, src, src_len, 0, encodeURL);
+    return iotjs_base64_encode(dst, src, src_len, 0, iotjs_base64_encodeURL);
 }
+
 unsigned int iotjs_base64_decode(uint8_t *dst, const uint8_t *src, unsigned int src_len, const uint8_t pading, const uint8_t *decode)
 {
     if (!src_len)
@@ -244,15 +245,17 @@ unsigned int iotjs_base64_decode(uint8_t *dst, const uint8_t *src, unsigned int 
     int ret = pading ? (src_len / 4 * 3) : (src_len * 6 / 8);
     if (ret && dst)
     {
+        ret = 0;
         uint8_t s[4];
         uint8_t j;
+        const uint8_t *p = dst;
         // 執行 n-1 次解碼
         unsigned int count = (pading ? src_len : src_len + 3) / 4;
         for (unsigned int i = 1; i < count; i++)
         {
             for (j = 0; j < 4; j++)
             {
-                s[j] = j < decode[src[j]];
+                s[j] = decode[src[j]];
                 if (s[j] == 0xff)
                 {
                     // 中途遇到填充 顯然不合法
@@ -266,6 +269,7 @@ unsigned int iotjs_base64_decode(uint8_t *dst, const uint8_t *src, unsigned int 
             dst += 3;
             src += 4;
             src_len -= 4;
+            ret += 3;
         }
         // 執行最後一次解碼，要考慮 填充字符或非填充情況下 src 長度不足 4
         if (pading)
@@ -288,17 +292,20 @@ unsigned int iotjs_base64_decode(uint8_t *dst, const uint8_t *src, unsigned int 
                 {
                     return 0;
                 }
+                ret++;
             }
-            else if (s[3] = 0xff) // 填充了一個字符
+            else if (s[3] == 0xff) // 填充了一個字符
             {
                 dst[0] = (s[0] << 2) | (s[1] >> 4);
                 dst[1] = (s[1] << 4) | (s[2] >> 2);
+                ret += 2;
             }
             else // 沒有填充字符
             {
                 dst[0] = (s[0] << 2) | (s[1] >> 4);
                 dst[1] = (s[1] << 4) | (s[2] >> 2);
                 dst[2] = (s[2] << 6) | (s[3]);
+                ret += 3;
             }
         }
         else
@@ -315,15 +322,18 @@ unsigned int iotjs_base64_decode(uint8_t *dst, const uint8_t *src, unsigned int 
             {
             case 2: // 需要填充兩個字符
                 dst[0] = (s[0] << 2) | (s[1] >> 4);
+                ret++;
                 break;
             case 3: // 需要填充一個字符
                 dst[0] = (s[0] << 2) | (s[1] >> 4);
                 dst[1] = (s[1] << 4) | (s[2] >> 2);
+                ret += 2;
                 break;
             case 4: // 不需要填充
                 dst[0] = (s[0] << 2) | (s[1] >> 4);
                 dst[1] = (s[1] << 4) | (s[2] >> 2);
                 dst[2] = (s[2] << 6) | (s[3]);
+                ret += 3;
                 break;
             }
         }
@@ -332,19 +342,19 @@ unsigned int iotjs_base64_decode(uint8_t *dst, const uint8_t *src, unsigned int 
 }
 static unsigned int base64_decode(uint8_t *dst, const uint8_t *src, unsigned int src_len)
 {
-    return src_len ? iotjs_base64_decode(dst, src, src_len, '=', decodeStd) : 0;
+    return src_len ? iotjs_base64_decode(dst, src, src_len, '=', iotjs_base64_decode_std) : 0;
 }
 static unsigned int base64_decode_no_padding(uint8_t *dst, const uint8_t *src, unsigned int src_len)
 {
-    return src_len ? iotjs_base64_decode(dst, src, src_len, 0, decodeStd) : 0;
+    return src_len ? iotjs_base64_decode(dst, src, src_len, 0, iotjs_base64_decode_std) : 0;
 }
 static unsigned int base64_url_decode(uint8_t *dst, const uint8_t *src, unsigned int src_len)
 {
-    return src_len ? iotjs_base64_decode(dst, src, src_len, '=', decodeURL) : 0;
+    return src_len ? iotjs_base64_decode(dst, src, src_len, '=', iotjs_base64_decode_url) : 0;
 }
 static unsigned int base64_url_decode_no_padding(uint8_t *dst, const uint8_t *src, unsigned int src_len)
 {
-    return src_len ? iotjs_base64_decode(dst, src, src_len, 0, decodeURL) : 0;
+    return src_len ? iotjs_base64_decode(dst, src, src_len, 0, iotjs_base64_decode_url) : 0;
 }
 base64_encodes_t iotjs_base64 = {
     .std = {

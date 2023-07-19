@@ -34,7 +34,10 @@ typedef struct
     iotjs_encode_t raw_url;
 } base64_encodes_t;
 extern base64_encodes_t iotjs_base64;
-
+extern const char *iotjs_base64_encodeStd;
+extern const char *iotjs_base64_encodeURL;
+extern char iotjs_base64_decode_std[256];
+extern char iotjs_base64_decode_url[256];
 // 將 src 使用 base64 編碼到 dst，
 // pading 是填充字符，如果爲0則不進行填充，
 // encode 是 64 字節的編碼值，標準算法時應該是 "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -46,6 +49,11 @@ unsigned int iotjs_base64_encode(uint8_t *dst, const uint8_t *src, unsigned int 
 // 成功返回 dst 被寫入字節數，你可以將 dst 設置爲 NULL 來計算 dst 需要被寫入的字節
 // 如果 src 不是合法的編碼值，將返回 0
 unsigned int iotjs_base64_decode(uint8_t *dst, const uint8_t *src, unsigned int src_len, const uint8_t pading, const uint8_t *decode);
+
+unsigned int base64_encoded_len(unsigned int n);
+unsigned int base64_encoded_len_no_padding(unsigned int n);
+unsigned int base64_decoded_len(unsigned int n);
+unsigned int base64_decoded_len_no_padding(unsigned int n);
 
 void __iotjs_binary_init();
 #endif

@@ -5,6 +5,7 @@ void __iotjs_modules_init();
 duk_ret_t native_iotjs_init(duk_context *ctx);
 duk_ret_t native_iotjs_coroutine_init(duk_context *ctx);
 duk_ret_t native_iotjs_encoding_hex_init(duk_context *ctx);
+duk_ret_t native_iotjs_encoding_base64_init(duk_context *ctx);
 
 duk_ret_t native_iotjs_crypto_md4_init(duk_context *ctx);
 duk_ret_t native_iotjs_crypto_md5_init(duk_context *ctx);

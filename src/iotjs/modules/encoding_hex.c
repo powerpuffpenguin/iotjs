@@ -1,7 +1,7 @@
 #include <iotjs/core/js.h>
 #include <iotjs/core/module.h>
 
-duk_ret_t native_iotjs_encoding_hex__encodeLen(duk_context *ctx)
+static duk_ret_t native_iotjs_encoding_hex__encodeLen(duk_context *ctx)
 {
     duk_uint_t v = duk_require_uint(ctx, 0);
     v *= 2;
@@ -9,7 +9,7 @@ duk_ret_t native_iotjs_encoding_hex__encodeLen(duk_context *ctx)
     duk_push_uint(ctx, v);
     return 1;
 }
-duk_ret_t native_iotjs_encoding_hex__encodeToString(duk_context *ctx)
+static duk_ret_t native_iotjs_encoding_hex__encodeToString(duk_context *ctx)
 {
     duk_size_t sz_src;
     duk_uint8_t *src = duk_require_buffer_data(ctx, 0, &sz_src);
@@ -37,7 +37,7 @@ duk_ret_t native_iotjs_encoding_hex__encodeToString(duk_context *ctx)
     duk_buffer_to_string(ctx, -1);
     return 1;
 }
-duk_ret_t native_iotjs_encoding_hex__encode(duk_context *ctx)
+static duk_ret_t native_iotjs_encoding_hex__encode(duk_context *ctx)
 {
     duk_size_t sz_dst, sz_src;
     duk_uint8_t *dst = duk_require_buffer_data(ctx, 0, &sz_dst);
@@ -66,7 +66,7 @@ duk_ret_t native_iotjs_encoding_hex__encode(duk_context *ctx)
     duk_push_number(ctx, j);
     return 1;
 }
-duk_ret_t native_iotjs_encoding_hex__decodedLen(duk_context *ctx)
+static duk_ret_t native_iotjs_encoding_hex__decodedLen(duk_context *ctx)
 {
     duk_uint_t v = duk_require_uint(ctx, 0);
     v /= 2;
@@ -74,7 +74,7 @@ duk_ret_t native_iotjs_encoding_hex__decodedLen(duk_context *ctx)
     duk_push_uint(ctx, v);
     return 1;
 }
-void native_iotjs_encoding_hex__decode_buffer(duk_context *ctx, duk_uint8_t *dst, duk_uint8_t *src, duk_size_t sz_src)
+static void native_iotjs_encoding_hex__decode_buffer(duk_context *ctx, duk_uint8_t *dst, duk_uint8_t *src, duk_size_t sz_src)
 {
     duk_size_t i = 0, j = 1;
     duk_uint8_t p, q, a, b;
@@ -99,7 +99,7 @@ void native_iotjs_encoding_hex__decode_buffer(duk_context *ctx, duk_uint8_t *dst
         i++;
     }
 }
-duk_ret_t native_iotjs_encoding_hex__decodeString(duk_context *ctx)
+static duk_ret_t native_iotjs_encoding_hex__decodeString(duk_context *ctx)
 {
     duk_size_t sz_src;
     duk_uint8_t *src = (duk_uint8_t *)duk_require_lstring(ctx, 0, &sz_src);
@@ -121,7 +121,7 @@ duk_ret_t native_iotjs_encoding_hex__decodeString(duk_context *ctx)
     }
     return 1;
 }
-duk_ret_t native_iotjs_encoding_hex__decode(duk_context *ctx)
+static duk_ret_t native_iotjs_encoding_hex__decode(duk_context *ctx)
 {
     duk_size_t sz_dst, sz_src;
     duk_uint8_t *dst = duk_require_buffer_data(ctx, 0, &sz_dst);

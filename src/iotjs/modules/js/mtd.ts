@@ -53,6 +53,7 @@ declare namespace deps {
     export function db_close(db: DB): void
     export function db_free(db: DB): void
     export function key_encode(v: any): string
+    export function key_decode(v: string): string
     export function db_set_sync(db: DB, k0: string, k1: string, data: Uint8Array | ArrayBuffer | string, buf: Uint8Array): void
     export function db_get_sync(db: DB, k0: string, k1: string): Uint8Array | string | undefined
     export function db_has_sync(db: DB, k0: string, k1: string): boolean
@@ -63,6 +64,16 @@ declare namespace deps {
     export function db_get(db: DB, k0: string, k1: string): void
     export function db_has(db: DB, k0: string, k1: string): void
     export function db_delete(db: DB, k0: string, k1: string): void
+
+    export class DBIterator {
+        readonly __iotjs_mtd_db_iterator_hash: string
+    }
+    export class Uint64 {
+        readonly __iotjs_mtd_db_uint64_hash: string
+    }
+    export function db_iterator(db: DB): DBIterator
+    export function db_iterator_free(iter: DBIterator): void
+    export function db_iterator_foreach_sync(iter: DBIterator, data: boolean, cb: (key: string, uint64: Uint64, data: Uint8Array | undefined) => boolean): boolean
 }
 
 export const Seek = deps.Seek
@@ -437,6 +448,35 @@ export class DB {
         const k0 = `/0.${key}`
         const k1 = `/1.${key}`
         deps.db_delete_sync(this.db_, k0, k1)
+    }
+    private _foreachSync(data: boolean, cb: Function) {
+        if (this.close_) {
+            throw new Error("db already closed")
+        } else if (this.front_) {
+            throw new Error("db busy")
+        }
+        const iter = deps.db_iterator(this.db_)
+        const record: Record<string, Array<{
+            name: string,
+            version: deps.Uint64,
+            value?: Uint8Array
+        }>> = {}
+        try {
+            deps.db_iterator_foreach_sync(iter, data, (key, version, value) => {
+                let name = key.substring(3)
+                name = deps.key_decode(name)
+                console.log(key, name)
+                return false
+            })
+        } finally {
+            deps.db_iterator_free(iter)
+        }
+    }
+    keysSync(cb: (key: string) => boolean) {
+        this._foreachSync(false, cb)
+    }
+    foreachSync(cb: (key: string, data: Uint8Array) => boolean): void {
+        this._foreachSync(true, cb)
     }
     info() {
         if (this.close_) {

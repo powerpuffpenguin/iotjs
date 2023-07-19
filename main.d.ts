@@ -156,6 +156,20 @@ declare module "iotjs/encoding/hex" {
     export function decodeString(s: string): Uint8Array;
     export function decode(dst: BufferData, src: BufferData): number
 }
+declare module "iotjs/encoding/base64" {
+    export interface Encoding {
+        encodedLen(len: number): number
+        encode(data: any): Uint8Array
+        encodeToString(data: any): string
+        decodedLen(len: number): number
+        decode(src: string | Uint8Array | ArrayBuffer): Uint8Array
+        decodeToString(src: string | Uint8Array | ArrayBuffer): string
+    }
+    export const std: Encoding
+    export const rawSTD: Encoding
+    export const url: Encoding
+    export const rawURL: Encoding
+}
 declare module "iotjs/hash" {
     import { BufferData } from "iotjs";
     import { Writer } from "iotjs/io";
@@ -939,12 +953,12 @@ declare module "iotjs/mtd" {
         hasSync(key: string): boolean
         deleteSync(key: string): void
         /**
-         * 遍歷節點如果 cb 返回 false，則停止遍歷
+         * 遍歷節點如果 cb 返回 true 表示找到數據，則停止遍歷
          * @param cb 
          */
         keysSync(cb: (key: string) => boolean): void
         /**
-         * 遍歷節點如果 cb 返回 false，則停止遍歷
+         * 遍歷節點如果 cb 返回 true 表示找到數據，則停止遍歷
          * @param cb 
          */
         foreachSync(cb: (key: string, data: Uint8Array) => boolean): void
@@ -954,12 +968,12 @@ declare module "iotjs/mtd" {
         has(key: string, cb?: (exists?: boolean, e?: any) => void): void
         delete(key: string, cb?: (e?: any) => void): void
         /**
-         * 遍歷節點如果 cb 返回 false，則停止遍歷
+         * 遍歷節點如果 cb 返回 true 表示找到數據，則停止遍歷
          * @param cb 
          */
         keys(cb: (key: string) => boolean): void
         /**
-         * 遍歷節點如果 cb 返回 false，則停止遍歷
+         * 遍歷節點如果 cb 返回 true 表示找到數據，則停止遍歷
          * @param cb 
          */
         foreach(cb: (key: string, data: Uint8Array) => boolean): void

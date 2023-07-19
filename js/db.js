@@ -16,11 +16,11 @@ try {
             console.log('read ' + i + ':', val ? new TextDecoder().decode(val) : val)
         }
         db.keysSync(function (key) {
-            console.log("*", key)
+            // console.log("*", key)
         })
-        db.foreachSync(function (key, data) {
-            console.log("-", key + "=" + new TextDecoder().decode(data))
-        })
+        // db.foreachSync(function (key, data) {
+        //     console.log("-", key + "=" + new TextDecoder().decode(data))
+        // })
     } finally {
         db.close()
     }
