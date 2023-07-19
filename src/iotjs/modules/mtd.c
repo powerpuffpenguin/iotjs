@@ -1423,6 +1423,7 @@ static duk_ret_t native_db_iterator_foreach_sync(duk_context *ctx)
             int err = SPIFFS_errno(p->dir.fs);
             if (err == SPIFFS_ERR_NOT_FOUND)
             {
+                duk_push_false(ctx);
                 break;
             }
             duk_error(ctx, DUK_ERR_ERROR, "SPIFFS_readdir fail %d", err);
@@ -1448,12 +1449,17 @@ static duk_ret_t native_db_iterator_foreach_sync(duk_context *ctx)
 
             duk_dup_top(ctx);
             duk_push_string(ctx, p->dirent.name);
-            duk_push_pointer(ctx, &v);
-            duk_call(ctx, 2);
+            duk_push_number(ctx, v >> 32);
+            duk_push_number(ctx, v & 0xffffffff);
+            duk_call(ctx, 3);
+            if (duk_require_boolean(ctx, -1))
+            {
+                break;
+            }
             duk_pop(ctx);
         }
     }
-    return 0;
+    return 1;
 }
 static duk_ret_t native_db_key(duk_context *ctx)
 {

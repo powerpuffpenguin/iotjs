@@ -68,12 +68,9 @@ declare namespace deps {
     export class DBIterator {
         readonly __iotjs_mtd_db_iterator_hash: string
     }
-    export class Uint64 {
-        readonly __iotjs_mtd_db_uint64_hash: string
-    }
     export function db_iterator(db: DB): DBIterator
     export function db_iterator_free(iter: DBIterator): void
-    export function db_iterator_foreach_sync(iter: DBIterator, data: boolean, cb: (key: string, uint64: Uint64, data: Uint8Array | undefined) => boolean): boolean
+    export function db_iterator_foreach_sync(iter: DBIterator, data: boolean, cb: (key: string, high: number, low: number, data?: Uint8Array) => boolean): boolean
 }
 
 export const Seek = deps.Seek
@@ -456,18 +453,48 @@ export class DB {
             throw new Error("db busy")
         }
         const iter = deps.db_iterator(this.db_)
-        const record: Record<string, Array<{
-            name: string,
-            version: deps.Uint64,
-            value?: Uint8Array
-        }>> = {}
+        const record: Record<string, {
+            ok?: boolean
+            v?: { high: number, low: number, value?: Uint8Array }
+        }> = {}
         try {
-            deps.db_iterator_foreach_sync(iter, data, (key, version, value) => {
-                let name = key.substring(3)
-                name = deps.key_decode(name)
-                console.log(key, name)
+            const found = deps.db_iterator_foreach_sync(iter, data, (key, high, low, value) => {
+                const name = deps.key_decode(key.substring(3))
+                const o = record[name]
+                if (o) {
+                    if (o.ok) {
+                        return false
+                    }
+                    o.ok = true
+                    const v = (high > o.v!.high) || (high == o.v!.high && low > o.v!.low) ? value : o.v!.value
+                    return cb(name, v!)
+                } else {
+                    if (data) {
+                        record[name] = {
+                            v: { high: high, low: low, value: value }
+                        }
+                    } else {
+                        record[name] = {
+                            ok: true,
+                        }
+                        return cb(name) ? true : false
+                    }
+                }
                 return false
             })
+            if (found) {
+                return
+            }
+            for (const name in record) {
+                const o = record[name]
+                if (o.ok) {
+                    continue
+                }
+                const found = data ? cb(name, o.v!.value) : cb(name)
+                if (found) {
+                    break
+                }
+            }
         } finally {
             deps.db_iterator_free(iter)
         }
