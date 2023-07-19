@@ -157,12 +157,40 @@ declare module "iotjs/encoding/hex" {
     export function decode(dst: BufferData, src: BufferData): number
 }
 declare module "iotjs/encoding/base64" {
-    export interface Encoding {
+    /**
+     * 實現了 base64 算法
+     */
+    export class Encoding {
+        /**
+         * 
+         * @param encoder base64 算法使用的 64個 字符
+         * @param padding 填充字符，如果字符串長度大於0則去第一個字符
+         * @param decoder 解碼時使用到的 256 個索引，如果不設置自動計算索引
+         */
+        constructor(readonly encoder: string, padding?: any, decoder?: Uint8Array)
+        /**
+         * 返回編碼 len 長度需要的緩衝區大小
+         */
         encodedLen(len: number): number
+        /**
+         * 編碼
+         */
         encode(data: any): Uint8Array
+        /**
+         * 編碼並將結果轉爲字符串
+         */
         encodeToString(data: any): string
+        /**
+         * 返回解碼 len 長度可能需要的緩衝區大小
+         */
         decodedLen(len: number): number
+        /**
+         * 解碼
+         */
         decode(src: string | Uint8Array | ArrayBuffer): Uint8Array
+        /**
+         * 解碼並將結果轉爲字符串
+         */
         decodeToString(src: string | Uint8Array | ArrayBuffer): string
     }
     export const std: Encoding

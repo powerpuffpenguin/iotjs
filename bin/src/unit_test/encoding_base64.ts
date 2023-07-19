@@ -69,12 +69,6 @@ const encodingTests: Array<encodingTest> = [
     { name: "raw std", enc: base64.rawSTD, conv: rawRef },
     { name: "raw url", enc: base64.rawURL, conv: rawURLRef },
 ]
-const bigtest: testpair = makepair(
-    "Twas brillig, and the slithy toves",
-    "VHdhcyBicmlsbGlnLCBhbmQgdGhlIHNsaXRoeSB0b3Zlcw==",
-)
-
-
 const m = test.module("iotjs/encoding/base64")
 m.test("TestEncode", (assert) => {
     for (const p of pairs) {
