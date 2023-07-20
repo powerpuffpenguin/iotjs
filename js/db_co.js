@@ -50,6 +50,18 @@ coroutine.go(function (co) {
                 })
                 console.log('read ' + i + ':', val ? new TextDecoder().decode(val) : val)
             }
+            co.yield(function (notify) {
+                db.keys(function (finish, key, e) {
+                    if (finish) {
+                        notify.value()
+                        return
+                    } else if (key === undefined) {
+                        notify.error(e)
+                        return
+                    }
+                    console.log("*", key)
+                })
+            })
         }
         finally {
             db.close()

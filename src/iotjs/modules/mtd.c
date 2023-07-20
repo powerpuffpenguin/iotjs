@@ -793,7 +793,7 @@ static duk_ret_t native_key_encode(duk_context *ctx)
     {
         src = duk_safe_to_lstring(ctx, 0, &sz);
     }
-    if (sz)
+    if (sz > 0 && sz < 22)
     {
         unsigned int len = iotjs_base64.raw_url.encoded_len(sz);
         void *dst = duk_push_buffer(ctx, len, 0);
@@ -802,7 +802,7 @@ static duk_ret_t native_key_encode(duk_context *ctx)
     }
     else
     {
-        duk_push_lstring(ctx, "", 0);
+        duk_error(ctx, DUK_ERR_ERROR, "db key invalid");
     }
     return 1;
 }
@@ -838,6 +838,10 @@ static const char *spiffs_fs_get(spiffs *fs, const char *path, uint64_t *version
         SPIFFS_close(fs, fd);
         return "stat SPIFFS fail";
     }
+    if (s.size < 4 + 8)
+    {
+        return 0;
+    }
 
     uint8_t buf[8];
     s32_t x = SPIFFS_read(fs, fd, buf, 4);
@@ -847,14 +851,16 @@ static const char *spiffs_fs_get(spiffs *fs, const char *path, uint64_t *version
         return "read SPIFFS short";
     }
     s32_t sz = iotjs_little_endian.uint32(buf);
-    if (s.size != sz + 4 + 8)
+    if (s.size - 12 != sz)
     {
         SPIFFS_close(fs, fd);
-        return "data corruption";
+        // return "data corruption";
+        return 0;
     }
     if (cp)
     {
-        if (SPIFFS_read(fs, fd, cp, sz) != sz)
+        int x = SPIFFS_read(fs, fd, cp, sz);
+        if (x != sz)
         {
             SPIFFS_close(fs, fd);
             return "read SPIFFS short";
@@ -868,7 +874,8 @@ static const char *spiffs_fs_get(spiffs *fs, const char *path, uint64_t *version
             return "lseek SPIFFS fail";
         }
     }
-    if (SPIFFS_read(fs, fd, buf, 8) != 8)
+    x = SPIFFS_read(fs, fd, buf, 8);
+    if (x != 8)
     {
         SPIFFS_close(fs, fd);
         return "read SPIFFS short";

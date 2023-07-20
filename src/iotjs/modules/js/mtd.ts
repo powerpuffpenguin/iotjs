@@ -71,6 +71,7 @@ declare namespace deps {
     export function db_iterator(db: DB): DBIterator
     export function db_iterator_free(iter: DBIterator): void
     export function db_iterator_foreach_sync(iter: DBIterator, data: boolean, cb: (key: string, high: number, low: number, data?: Uint8Array) => boolean): boolean
+    export function db_iterator_foreach(iter: DBIterator, data: boolean): boolean
 }
 
 export const Seek = deps.Seek
@@ -298,14 +299,24 @@ const dbDevices = [false, false, false]
 
 interface DBTask {
     next?: DBTask
-    evt: 0 | 1 | 2 | 3
-    k0: string
-    k1: string
+    /**
+     * * 0 set
+     * * 1 has
+     * * 2 get
+     * * 3 delete
+     * * 4 foreach
+     */
+    evt: 0 | 1 | 2 | 3 | 4
+    k0?: string
+    k1?: string
 
     data?: Uint8Array | ArrayBuffer | string
     buf?: Uint8Array
 
-    cb?: (ret?: any, e?: any) => void
+    cb?: Function
+
+    iter?: deps.DBIterator
+    cp?: boolean
 }
 export class DB {
     private device_: number
@@ -344,6 +355,19 @@ export class DB {
                     case 1: // has
                     case 2: // get
                         cb(ret, e)
+                        break
+                    case 4: // foreach
+                        if (!cb(ret, e)) { // 還需要繼續調用
+                            // 放到隊列尾端
+                            if (next) {
+                                front.next = undefined
+                                this.back_!.next = front
+                            } else {
+                                next = front
+                                this.back_ = next
+                                this.front_ = next
+                            }
+                        }
                         break
                 }
             }
@@ -403,7 +427,7 @@ export class DB {
             throw new Error("db busy")
         }
         const len = data.byteLength
-        if (len > 4294967295 - 4 - 8) {
+        if (len > 2147483647 - 4 - 8) {
             throw new Error("data too long")
         }
         const buf = new Uint8Array(len + 4 + 8) // len:4 + data + version:8
@@ -446,7 +470,7 @@ export class DB {
         const k1 = `/1.${key}`
         deps.db_delete_sync(this.db_, k0, k1)
     }
-    private _foreachSync(data: boolean, cb: Function) {
+    private _foreachSync(cp: boolean, cb: Function) {
         if (this.close_) {
             throw new Error("db already closed")
         } else if (this.front_) {
@@ -458,7 +482,7 @@ export class DB {
             v?: { high: number, low: number, value?: Uint8Array }
         }> = {}
         try {
-            const found = deps.db_iterator_foreach_sync(iter, data, (key, high, low, value) => {
+            const found = deps.db_iterator_foreach_sync(iter, cp, (key, high, low, value) => {
                 const name = deps.key_decode(key.substring(3))
                 const o = record[name]
                 if (o) {
@@ -470,7 +494,7 @@ export class DB {
                     o.v = undefined
                     return cb(name, v!) ? true : false
                 } else {
-                    if (data) {
+                    if (cp) {
                         record[name] = {
                             v: { high: high, low: low, value: value }
                         }
@@ -491,7 +515,7 @@ export class DB {
                 if (o.ok) {
                     continue
                 }
-                const found = data ? cb(name, o.v!.value) : cb(name)
+                const found = cp ? cb(name, o.v!.value) : cb(name)
                 if (found) {
                     break
                 }
@@ -518,19 +542,22 @@ export class DB {
     private _do(next: DBTask) {
         switch (next.evt) {
             case 0:// set
-                deps.db_set(this.db_, next.k0, next.k1, next.data!, next.buf!)
+                deps.db_set(this.db_, next.k0!, next.k1!, next.data!, next.buf!)
                 break
             case 1:// has
-                deps.db_has(this.db_, next.k0, next.k1)
+                deps.db_has(this.db_, next.k0!, next.k1!)
                 break
             case 2: // get
-                deps.db_get(this.db_, next.k0, next.k1)
+                deps.db_get(this.db_, next.k0!, next.k1!)
                 break
             case 3:// delete
-                deps.db_delete(this.db_, next.k0, next.k1)
+                deps.db_delete(this.db_, next.k0!, next.k1!)
+                break
+            case 4: // foreach
+                deps.db_iterator_foreach(next.iter!, next.cp!)
                 break
             default:
-                throw new Error(`unknow task ${next.evt}`);
+                throw new Error(`unknow task ${next.evt}`)
         }
     }
     private _task(next: DBTask) {
@@ -552,7 +579,7 @@ export class DB {
             throw new Error("db already closed")
         }
         const len = data.byteLength
-        if (len > 4294967295 - 4 - 8) {
+        if (len > 2147483647 - 4 - 8) {
             throw new Error("data too long")
         }
         const buf = new Uint8Array(len + 4 + 8) // len:4 + data + version:8
@@ -591,5 +618,90 @@ export class DB {
         const k1 = `/1.${key}`
 
         this._task({ evt: 3, k0: k0, k1: k1, cb: cb })
+    }
+    private _foreach(cp: boolean, cb: Function) {
+        if (this.close_) {
+            throw new Error("db already closed")
+        }
+        const iter = deps.db_iterator(this.db_)
+        const record: Record<string, {
+            ok?: boolean
+            v?: { high: number, low: number, value?: Uint8Array }
+        }> = {}
+        this._task({
+            evt: 4,
+            iter: iter,
+            cp: cp,
+            cb: (ret?: {
+                finish: boolean,
+                key?: string,
+                high?: number,
+                low?: number,
+                value?: Uint8Array
+            }, e?: any) => {
+                if (ret) {
+                    if (ret.finish) {
+                        for (const name in record) {
+                            const o = record[name]
+                            if (o.ok) {
+                                continue
+                            }
+                            const found = cp ? cb(false, name, o.v!.value) : cb(false, name)
+                            if (found) {
+                                deps.db_iterator_free(iter)
+                                return
+                            }
+                        }
+                        deps.db_iterator_free(iter)
+                        cb(true)
+                    } else {
+                        const name = deps.key_decode(ret.key!.substring(3))
+                        const o = record[name]
+                        if (o) {
+                            if (o.ok) {
+                                return false
+                            }
+                            o.ok = true
+                            const v = (ret.high! > o.v!.high) || (ret.high! == o.v!.high && ret.low! > o.v!.low) ? ret.value : o.v!.value
+                            o.v = undefined
+                            const found = cb(false, name, v!) ? true : false
+                            if (found) {
+                                deps.db_iterator_free(iter)
+                            }
+                            return found
+                        } else {
+                            if (cp) {
+                                record[name] = {
+                                    v: { high: ret.high!, low: ret.low!, value: ret.value }
+                                }
+                            } else {
+                                record[name] = {
+                                    ok: true,
+                                }
+                                const found = cb(false, name) ? true : false
+                                if (found) {
+                                    deps.db_iterator_free(iter)
+                                }
+                                return found
+                            }
+                        }
+                        return false
+                    }
+                } else {
+                    deps.db_iterator_free(iter)
+                    if (cp) {
+                        cb(undefined, undefined, undefined, e)
+                    } else {
+                        cb(undefined, undefined, e)
+                    }
+                }
+            },
+        })
+    }
+    keys(cb: (finish?: boolean, key?: string, e?: any) => boolean): void {
+        this._foreach(false, cb)
+    }
+    foreach(cb: (finish?: boolean, key?: string, data?: Uint8Array, e?: any) => boolean): void {
+        this._foreach(true, cb)
     }
 }

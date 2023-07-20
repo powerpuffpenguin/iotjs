@@ -976,7 +976,12 @@ declare module "iotjs/mtd" {
          */
         constructor(readonly path: string) {
         }
-        setSync(key: string, data: Uint8Array | ArrayBuffer): void
+        /**
+         * 設置一組 key value
+         * @param key 最大長度是 21 字節
+         * @param value  最大長度是 2147483647-12 字節
+         */
+        setSync(key: string, value: Uint8Array | ArrayBuffer): void
         getSync(key: string): undefined | Uint8Array
         hasSync(key: string): boolean
         deleteSync(key: string): void
@@ -990,7 +995,11 @@ declare module "iotjs/mtd" {
          * @param cb 
          */
         foreachSync(cb: (key: string, data: Uint8Array) => boolean): void
-
+        /**
+         * 設置一組 key value
+         * @param key 最大長度是 21 字節
+         * @param value  最大長度是 2147483647-12 字節
+         */
         set(key: string, data: Uint8Array | ArrayBuffer, cb?: (e?: any) => void): void
         get(key: string, cb?: (data?: Uint8Array, e?: any) => void): void
         has(key: string, cb?: (exists?: boolean, e?: any) => void): void
@@ -999,11 +1008,11 @@ declare module "iotjs/mtd" {
          * 遍歷節點如果 cb 返回 true 表示找到數據，則停止遍歷
          * @param cb 
          */
-        keys(cb: (key: string) => boolean): void
+        keys(cb: (finish?: boolean, key?: string, e?: any) => boolean): void
         /**
          * 遍歷節點如果 cb 返回 true 表示找到數據，則停止遍歷
          * @param cb 
          */
-        foreach(cb: (key: string, data: Uint8Array) => boolean): void
+        foreach(cb: (finish?: boolean, key?: string, data?: Uint8Array, e?: any) => boolean): void
     }
 }
