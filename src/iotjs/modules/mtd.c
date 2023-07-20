@@ -23,6 +23,7 @@ IOTJS_SPIFFS_DEFINE(2)
 #define IOTJS_MTD_DB_KEYS_HAS 1
 #define IOTJS_MTD_DB_KEYS_GET 2
 #define IOTJS_MTD_DB_KEYS_DELETE 3
+#define IOTJS_MTD_DB_KEYS_FOREACH 4
 
 typedef struct
 {
@@ -526,6 +527,15 @@ typedef struct
     };
     duk_size_t sz;
 } async_db_out_t;
+typedef struct
+{
+    iotjs_mtd_db_t *db;
+    iotjs_mtd_db_iterator_t *iter;
+    duk_bool_t cp;
+
+    uint64_t version;
+    const char *name;
+} async_db_foreach_t;
 static duk_ret_t iotjs_mtd_db_cb_get(duk_context *ctx)
 {
     async_db_out_t *out = duk_require_pointer(ctx, 0);
@@ -550,12 +560,13 @@ static void iotjs_mtd_db_handler(evutil_socket_t fd, short events, void *args)
     duk_context *ctx = job->vm->ctx;
 
     async_db_out_t *out = job->out;
+    duk_uint8_t evt = out->evt;
     vm_restore(ctx, VM_SNAPSHOT_MTD_KV, p, 0);
     duk_pop(ctx);
-    duk_push_number(ctx, out->evt);
+    duk_push_number(ctx, evt);
     if (out->ok)
     {
-        switch (out->evt)
+        switch (evt)
         {
         case IOTJS_MTD_DB_KEYS_SET:    // set
         case IOTJS_MTD_DB_KEYS_DELETE: // delete
@@ -593,6 +604,42 @@ static void iotjs_mtd_db_handler(evutil_socket_t fd, short events, void *args)
                 }
             }
             break;
+        case IOTJS_MTD_DB_KEYS_FOREACH:
+            duk_push_object(ctx);
+            if (out->ok == 2)
+            {
+                duk_push_true(ctx);
+                duk_put_prop_lstring(ctx, -2, "finish", 6);
+            }
+            else
+            {
+                async_db_foreach_t *in = job->in;
+                duk_push_false(ctx);
+                duk_put_prop_lstring(ctx, -2, "finish", 6);
+                duk_push_string(ctx, in->name);
+                duk_put_prop_lstring(ctx, -2, "key", 3);
+                duk_push_number(ctx, in->version >> 32);
+                duk_put_prop_lstring(ctx, -2, "high", 4);
+                duk_push_number(ctx, in->version & 0xffffffff);
+                duk_put_prop_lstring(ctx, -2, "low", 3);
+                if (in->cp)
+                {
+                    if (out->sz)
+                    {
+                        void *dst = duk_push_buffer(ctx, out->sz, 0);
+                        memcpy(dst, out->buf, out->sz);
+                        vm_free(out->buf);
+                        out->buf = 0;
+                    }
+                    else
+                    {
+                        duk_push_buffer(ctx, 0, 0);
+                    }
+                    duk_put_prop_lstring(ctx, -2, "value", 5);
+                }
+            }
+            duk_call(ctx, 2);
+            break;
             // case IOTJS_MTD_DB_KEYS_HAS: // has
         default:
             if (out->exists)
@@ -622,7 +669,10 @@ static void iotjs_mtd_db_handler(evutil_socket_t fd, short events, void *args)
         duk_call(ctx, 3);
     }
     duk_pop(ctx);
-    vm_free(job);
+    if (evt != IOTJS_MTD_DB_KEYS_FOREACH)
+    {
+        vm_free(job);
+    }
 }
 static duk_ret_t native_len(duk_context *ctx)
 {
@@ -1427,7 +1477,7 @@ static duk_ret_t native_db_iterator_foreach_sync(duk_context *ctx)
     {
         if (!SPIFFS_readdir(&p->dir, &p->dirent))
         {
-            int err = SPIFFS_errno(p->dir.fs);
+            s32_t err = SPIFFS_errno(p->dir.fs);
             if (err == SPIFFS_ERR_NOT_FOUND)
             {
                 duk_push_false(ctx);
@@ -1498,29 +1548,157 @@ static duk_ret_t native_db_iterator_foreach_sync(duk_context *ctx)
     }
     return 1;
 }
-static duk_ret_t native_db_key(duk_context *ctx)
+static void db_iterator_job_free(void *arg)
+{
+#ifdef VM_TRACE_FINALIZER
+    puts(" --------- db_iterator_job_free");
+#endif
+    if (!arg)
+    {
+        return;
+    }
+    vm_job_t *p = arg;
+    async_db_out_t *out = p->out;
+    if (out->buf)
+    {
+        vm_free(out->buf);
+    }
+    vm_free(p);
+}
+static duk_ret_t native_db_iterator_job(duk_context *ctx)
 {
     finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
     iotjs_mtd_db_t *db = finalizer->p;
-    spiffs_DIR d;
-    if (!SPIFFS_opendir(db->fs, "/", &d))
-    {
-        duk_error(ctx, DUK_ERR_ERROR, "SPIFFS_opendir fail %d", SPIFFS_errno(db->fs));
-    }
-    struct spiffs_dirent e;
+    finalizer = vm_require_finalizer(ctx, 1, iotjs_mtd_db_iterator_free);
+    iotjs_mtd_db_iterator_t *iter = finalizer->p;
+    duk_bool_t cp = duk_require_boolean(ctx, 2);
+    duk_pop_2(ctx);
+
+    finalizer = vm_create_finalizer(ctx);
+    finalizer->free = db_iterator_job_free;
+    vm_job_t *job = vm_new_job(ctx, sizeof(async_db_foreach_t), sizeof(async_db_out_t));
+    finalizer->p = job;
+    async_db_foreach_t *in = job->in;
+    in->db = db;
+    in->iter = iter;
+    in->cp = cp;
+    async_db_out_t *out = job->out;
+    out->evt = IOTJS_MTD_DB_KEYS_FOREACH;
+    return 1;
+}
+static duk_ret_t native_db_iterator_job_free(duk_context *ctx)
+{
+    vm_finalizer_free(ctx, 0, db_iterator_job_free);
+    return 0;
+}
+static void async_db_foreach_do(vm_job_t *job)
+{
+    const char *emsg;
+    uint64_t v = 0;
+    async_db_foreach_t *in = job->in;
+    iotjs_mtd_db_iterator_t *iter = in->iter;
+    async_db_out_t *out = job->out;
+    iotjs_mtd_db_t *db = in->db;
     while (1)
     {
-        if (!SPIFFS_readdir(&d, &e))
+        if (!SPIFFS_readdir(&iter->dir, &iter->dirent))
         {
-            int err = SPIFFS_errno(db->fs);
+            s32_t err = SPIFFS_errno(db->fs);
             if (err == SPIFFS_ERR_NOT_FOUND)
             {
-                break;
+                out->ok = 2;
             }
-            duk_error(ctx, DUK_ERR_ERROR, "SPIFFS_readdir fail %d", err);
+            else
+            {
+                out->err = err;
+                out->emsg = "SPIFFS_readdir fail %d";
+            }
+            return;
         }
-        printf("name=%s size=%d type=%d\r\n", e.name, e.size, e.type);
+        if (iter->dirent.type != 1 ||
+            iter->dirent.name[0] != '/' ||
+            iter->dirent.name[2] != '.' ||
+            (iter->dirent.name[1] != '0' && iter->dirent.name[1] != '1'))
+        {
+            continue;
+        }
+
+        v = 0;
+        if (in->cp)
+        {
+            s32_t l;
+            emsg = spiffs_fs_get(iter->dir.fs, iter->dirent.name, &v, &l, 0);
+            if (emsg)
+            {
+                out->emsg = emsg;
+                return;
+            }
+            if (l)
+            {
+                void *dst = vm_malloc(l);
+                if (!dst)
+                {
+                    out->emsg = "malloc fail";
+                    return;
+                }
+                emsg = spiffs_fs_get(iter->dir.fs, iter->dirent.name, 0, 0, dst);
+                if (emsg)
+                {
+                    vm_free(dst);
+                    out->emsg = emsg;
+                    return;
+                }
+                out->buf = dst;
+                out->sz = l;
+            }
+            else
+            {
+                out->buf = 0;
+                out->sz = 0;
+            }
+            out->ok = 1;
+            in->version = v;
+            in->name = iter->dirent.name;
+            return;
+        }
+        else
+        {
+            emsg = spiffs_fs_get(iter->dir.fs, iter->dirent.name, &v, 0, 0);
+            if (emsg)
+            {
+                out->emsg = emsg;
+                return;
+            }
+
+            out->ok = 1;
+            in->version = v;
+            in->name = iter->dirent.name;
+            return;
+        }
     }
+}
+static void async_db_foreach(vm_job_t *job)
+{
+    async_db_foreach_t *in = job->in;
+    async_db_out_t *out = job->out;
+    out->ok = 0;
+    out->err = 0;
+    out->emsg = 0;
+
+    in->version = 0;
+    in->name = 0;
+
+    async_db_foreach_do(job);
+    event_active(in->db->ev, 0, 0);
+}
+static duk_ret_t native_db_iterator_foreach(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, db_iterator_job_free);
+    vm_job_t *job = finalizer->p;
+    async_db_foreach_t *in = job->in;
+    in->db->job = job;
+
+    vm_must_run_job(ctx, job, async_db_foreach);
     return 0;
 }
 duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
@@ -1613,9 +1791,12 @@ duk_ret_t native_iotjs_mtd_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "db_iterator_free", 16);
         duk_push_c_lightfunc(ctx, native_db_iterator_foreach_sync, 3, 3, 0);
         duk_put_prop_lstring(ctx, -2, "db_iterator_foreach_sync", 24);
-
-        duk_push_c_lightfunc(ctx, native_db_key, 1, 1, 0);
-        duk_put_prop_lstring(ctx, -2, "db_key", 6);
+        duk_push_c_lightfunc(ctx, native_db_iterator_job, 3, 3, 0);
+        duk_put_prop_lstring(ctx, -2, "db_iterator_foreach_job", 23);
+        duk_push_c_lightfunc(ctx, native_db_iterator_job_free, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "db_iterator_foreach_job_free", 28);
+        duk_push_c_lightfunc(ctx, native_db_iterator_foreach, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "db_iterator_foreach", 19);
     }
     duk_call(ctx, 3);
     return 0;

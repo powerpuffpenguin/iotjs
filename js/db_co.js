@@ -54,12 +54,22 @@ coroutine.go(function (co) {
                 db.keys(function (finish, key, e) {
                     if (finish) {
                         notify.value()
-                        return
                     } else if (key === undefined) {
                         notify.error(e)
-                        return
+                    } else {
+                        console.log("*", key)
                     }
-                    console.log("*", key)
+                })
+            })
+            co.yield(function (notify) {
+                db.foreach(function (finish, key, data, e) {
+                    if (finish) {
+                        notify.value()
+                    } else if (key === undefined) {
+                        notify.error(e)
+                    } else {
+                        console.log("-", key + "=" + new TextDecoder().decode(data))
+                    }
                 })
             })
         }

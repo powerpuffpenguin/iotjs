@@ -36,7 +36,6 @@ typedef struct
     }                                                                       \
     static s32_t __iotjs_spiffs_erase##x(u32_t addr, u32_t size)            \
     {                                                                       \
-        printf("------------------erase addr=%d size=%d\r\n", addr, size);  \
         erase_info_t ei;                                                    \
         ei.start = addr;                                                    \
         ei.length = size;                                                   \

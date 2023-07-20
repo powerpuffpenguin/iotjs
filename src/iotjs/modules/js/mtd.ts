@@ -68,10 +68,15 @@ declare namespace deps {
     export class DBIterator {
         readonly __iotjs_mtd_db_iterator_hash: string
     }
+    export class DBForeach {
+        readonly __iotjs_mtd_db_iterator_foreach_hash: string
+    }
     export function db_iterator(db: DB): DBIterator
     export function db_iterator_free(iter: DBIterator): void
     export function db_iterator_foreach_sync(iter: DBIterator, data: boolean, cb: (key: string, high: number, low: number, data?: Uint8Array) => boolean): boolean
-    export function db_iterator_foreach(iter: DBIterator, data: boolean): boolean
+    export function db_iterator_foreach_job(db: DB, iter: DBIterator, cp: boolean): DBForeach
+    export function db_iterator_foreach_job_free(job: DBForeach): void
+    export function db_iterator_foreach(job: DBForeach): boolean
 }
 
 export const Seek = deps.Seek
@@ -315,8 +320,7 @@ interface DBTask {
 
     cb?: Function
 
-    iter?: deps.DBIterator
-    cp?: boolean
+    job?: deps.DBForeach
 }
 export class DB {
     private device_: number
@@ -519,6 +523,9 @@ export class DB {
                 if (found) {
                     break
                 }
+                if (cp) {
+                    o.v = undefined
+                }
             }
         } finally {
             deps.db_iterator_free(iter)
@@ -554,7 +561,7 @@ export class DB {
                 deps.db_delete(this.db_, next.k0!, next.k1!)
                 break
             case 4: // foreach
-                deps.db_iterator_foreach(next.iter!, next.cp!)
+                deps.db_iterator_foreach(next.job!)
                 break
             default:
                 throw new Error(`unknow task ${next.evt}`)
@@ -624,14 +631,14 @@ export class DB {
             throw new Error("db already closed")
         }
         const iter = deps.db_iterator(this.db_)
+        const job = deps.db_iterator_foreach_job(this.db_, iter, cp)
         const record: Record<string, {
             ok?: boolean
             v?: { high: number, low: number, value?: Uint8Array }
         }> = {}
         this._task({
             evt: 4,
-            iter: iter,
-            cp: cp,
+            job: job,
             cb: (ret?: {
                 finish: boolean,
                 key?: string,
@@ -648,12 +655,18 @@ export class DB {
                             }
                             const found = cp ? cb(false, name, o.v!.value) : cb(false, name)
                             if (found) {
+                                deps.db_iterator_foreach_job_free(job)
                                 deps.db_iterator_free(iter)
-                                return
+                                return found
+                            }
+                            if (cp) {
+                                o.v = undefined
                             }
                         }
+                        deps.db_iterator_foreach_job_free(job)
                         deps.db_iterator_free(iter)
                         cb(true)
+                        return true
                     } else {
                         const name = deps.key_decode(ret.key!.substring(3))
                         const o = record[name]
@@ -666,6 +679,7 @@ export class DB {
                             o.v = undefined
                             const found = cb(false, name, v!) ? true : false
                             if (found) {
+                                deps.db_iterator_foreach_job_free(job)
                                 deps.db_iterator_free(iter)
                             }
                             return found
@@ -680,6 +694,7 @@ export class DB {
                                 }
                                 const found = cb(false, name) ? true : false
                                 if (found) {
+                                    deps.db_iterator_foreach_job_free(job)
                                     deps.db_iterator_free(iter)
                                 }
                                 return found
@@ -688,12 +703,17 @@ export class DB {
                         return false
                     }
                 } else {
-                    deps.db_iterator_free(iter)
-                    if (cp) {
-                        cb(undefined, undefined, undefined, e)
-                    } else {
-                        cb(undefined, undefined, e)
+                    try {
+                        if (cp) {
+                            cb(undefined, undefined, undefined, e)
+                        } else {
+                            cb(undefined, undefined, e)
+                        }
+                    } finally {
+                        deps.db_iterator_foreach_job_free(job)
+                        deps.db_iterator_free(iter)
                     }
+                    return true
                 }
             },
         })
