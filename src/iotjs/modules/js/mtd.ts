@@ -467,7 +467,8 @@ export class DB {
                     }
                     o.ok = true
                     const v = (high > o.v!.high) || (high == o.v!.high && low > o.v!.low) ? value : o.v!.value
-                    return cb(name, v!)
+                    o.v = undefined
+                    return cb(name, v!) ? true : false
                 } else {
                     if (data) {
                         record[name] = {

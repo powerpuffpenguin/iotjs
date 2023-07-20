@@ -1438,6 +1438,36 @@ static duk_ret_t native_db_iterator_foreach_sync(duk_context *ctx)
         v = 0;
         if (data)
         {
+            s32_t l;
+            emsg = spiffs_fs_get(p->dir.fs, p->dirent.name, &v, &l, 0);
+            if (emsg)
+            {
+                duk_error(ctx, DUK_ERR_ERROR, emsg);
+            }
+            duk_dup_top(ctx);
+            duk_push_string(ctx, p->dirent.name);
+            duk_push_number(ctx, v >> 32);
+            duk_push_number(ctx, v & 0xffffffff);
+            if (l)
+            {
+                void *dst = duk_push_buffer(ctx, l, 0);
+                emsg = spiffs_fs_get(p->dir.fs, p->dirent.name, 0, 0, dst);
+                if (emsg)
+                {
+                    duk_pop_3(ctx);
+                    duk_error(ctx, DUK_ERR_ERROR, emsg);
+                }
+            }
+            else
+            {
+                duk_push_buffer(ctx, 0, 0);
+            }
+            duk_call(ctx, 4);
+            if (duk_require_boolean(ctx, -1))
+            {
+                break;
+            }
+            duk_pop(ctx);
         }
         else
         {
