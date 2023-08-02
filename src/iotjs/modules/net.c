@@ -478,7 +478,7 @@ static duk_ret_t native_tcp_get_buffer(duk_context *ctx)
     }
     return 1;
 }
-duk_ret_t native_tcp_set_timeout(duk_context *ctx)
+static duk_ret_t native_tcp_set_timeout(duk_context *ctx)
 {
     finalizer_t *finalizer = vm_require_finalizer(ctx, 0, tcp_connection_free);
     tcp_connection_t *p = finalizer->p;
@@ -527,6 +527,23 @@ duk_ret_t native_tcp_set_timeout(duk_context *ctx)
     return 0;
 }
 
+static duk_ret_t native_tcp_set_priority(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, tcp_connection_free);
+    tcp_connection_t *p = finalizer->p;
+    duk_int_t v = duk_require_int(ctx, 1);
+    bufferevent_priority_set(p->bev, v);
+    return 0;
+}
+static duk_ret_t native_tcp_get_priority(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, tcp_connection_free);
+    tcp_connection_t *p = finalizer->p;
+    duk_pop(ctx);
+    int v = bufferevent_get_priority(p->bev);
+    duk_push_number(ctx, v);
+    return 1;
+}
 duk_ret_t native_iotjs_net_init(duk_context *ctx)
 {
     duk_swap(ctx, 0, 1);
@@ -565,6 +582,11 @@ duk_ret_t native_iotjs_net_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "tcp_getBuffer", 13);
         duk_push_c_lightfunc(ctx, native_tcp_set_timeout, 3, 3, 0);
         duk_put_prop_lstring(ctx, -2, "tcp_setTimeout", 14);
+        duk_push_c_lightfunc(ctx, native_tcp_set_priority, 2, 2, 0);
+        duk_put_prop_lstring(ctx, -2, "tcp_setPriority", 15);
+        duk_push_c_lightfunc(ctx, native_tcp_get_priority, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "tcp_getPriority", 15);
+
         // websocket
         native_iotjs_net_deps_http(ctx, 0);
     }

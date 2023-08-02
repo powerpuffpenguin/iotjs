@@ -68,6 +68,8 @@ declare namespace deps {
     }
     export function make_request(opts: MakeRequestOptions): void
     export function cancel_request(req: Request): void
+    export function setPriority(conn: Conn, pri: number): void
+    export function getPriority(conn: Conn): number
 }
 
 export class HTTPError extends _iotjs.IotError {
@@ -170,6 +172,9 @@ export class Client {
     onClose?: () => boolean
 
     do(opts: RequestOptions, cb?: (resp?: deps.Response, e?: any) => void): Cancel {
+        if (this.closed_) {
+            throw new HTTPError("http conn already closed")
+        }
         let body: undefined | string | Uint8Array | ArrayBuffer
         const method = opts.method ?? "GET"
         switch (method) {
@@ -259,6 +264,19 @@ export class Client {
             })
         })
         return cancel
+    }
+
+    setPriority(pri: number) {
+        if (this.closed_) {
+            throw new HTTPError("http conn already closed")
+        }
+        deps.setPriority(this.conn_, pri)
+    }
+    getPriority(): number {
+        if (this.closed_) {
+            throw new HTTPError("http conn already closed")
+        }
+        return deps.getPriority(this.conn_)
     }
 }
 export class Cancel {

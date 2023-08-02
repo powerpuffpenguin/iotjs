@@ -106,6 +106,9 @@ declare namespace deps {
      */
     export function tcp_setTimeout(conn: TCPConn, read: number, write: number): void
 
+    export function tcp_setPriority(conn: TCPConn, pri: number): void
+    export function tcp_getPriority(conn: TCPConn): number
+
     /**
      * 爲 websocket 連接生成隨機密鑰
      */
@@ -675,6 +678,18 @@ export class TCPConn {
     getTimeout(): [number, number] {
         return [this.tr_, this.tw_]
     }
+    setPriority(pri: number) {
+        if (this.closed_) {
+            throw new NetError("TCPConn already closed")
+        }
+        deps.tcp_setPriority(this.conn_, pri)
+    }
+    getPriority(): number {
+        if (this.closed_) {
+            throw new NetError("TCPConn already closed")
+        }
+        return deps.tcp_getPriority(this.conn_)
+    }
 }
 export class Cancel {
     constructor(
@@ -1132,4 +1147,17 @@ Sec-WebSocket-Key: ${key}
     }
 
     private recv_?: Array<Cancel>
+
+    setPriority(pri: number) {
+        if (this.conn_.isClosed) {
+            throw new NetError("TCPConn already closed")
+        }
+        deps.tcp_setPriority(this.conn_.conn_, pri)
+    }
+    getPriority(): number {
+        if (this.conn_.isClosed) {
+            throw new NetError("TCPConn already closed")
+        }
+        return deps.tcp_getPriority(this.conn_.conn_)
+    }
 }

@@ -658,6 +658,16 @@ declare module "iotjs/net" {
          * 當收到數據時回調
          */
         onMessage?: undefined | ((data: Uint8Array) => void)
+
+        /**
+         * 設置在事件系統中的優先級
+         * @param pri 
+         */
+        setPriority(pri: number)
+        /**
+         * 返回在事件系統中的優先級
+         */
+        getPriority(): number
     }
     export interface WebsocketConnOptions {
         /**
@@ -810,6 +820,16 @@ declare module "iotjs/net" {
          * 當收到一個完整消息時回調
          */
         onMessage?: undefined | ((data: string | Uint8Array) => void)
+
+        /**
+         * 設置在事件系統中的優先級
+         * @param pri 
+         */
+        setPriority(pri: number)
+        /**
+         * 返回在事件系統中的優先級
+         */
+        getPriority(): number
     }
 }
 declare module "iotjs/net/http" {
@@ -872,6 +892,15 @@ declare module "iotjs/net/http" {
          * 發送一個 http 請求 
          */
         do(req: RequestOptions, cb?: (resp?: Response, e?: any) => void): Cancel
+        /**
+         * 設置在事件系統中的優先級
+         * @param pri 
+         */
+        setPriority(pri: number)
+        /**
+         * 返回在事件系統中的優先級
+         */
+        getPriority(): number
     }
     export interface RequestOptions {
         /**

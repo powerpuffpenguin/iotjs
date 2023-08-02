@@ -481,6 +481,23 @@ static duk_ret_t _native_cancel_request(duk_context *ctx)
     evhttp_cancel_request(req->req0);
     return 0;
 }
+static duk_ret_t _native_set_priority(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, http_conn_free);
+    http_conn_t *p = finalizer->p;
+    duk_int_t v = duk_require_int(ctx, 1);
+    bufferevent_priority_set(evhttp_connection_get_bufferevent(p->conn), v);
+    return 0;
+}
+static duk_ret_t _native_get_priority(duk_context *ctx)
+{
+    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, http_conn_free);
+    http_conn_t *p = finalizer->p;
+    duk_pop(ctx);
+    int v = bufferevent_get_priority(evhttp_connection_get_bufferevent(p->conn));
+    duk_push_number(ctx, v);
+    return 1;
+}
 duk_ret_t native_iotjs_net_http_init(duk_context *ctx)
 {
     duk_swap(ctx, 0, 1);
@@ -508,6 +525,11 @@ duk_ret_t native_iotjs_net_http_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "make_request", 12);
         duk_push_c_lightfunc(ctx, _native_cancel_request, 1, 1, 0);
         duk_put_prop_lstring(ctx, -2, "cancel_request", 14);
+
+        duk_push_c_lightfunc(ctx, _native_set_priority, 2, 2, 0);
+        duk_put_prop_lstring(ctx, -2, "setPriority", 11);
+        duk_push_c_lightfunc(ctx, _native_get_priority, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "getPriority", 11);
 
         native_iotjs_net_deps_http(ctx, 1);
     }
