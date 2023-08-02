@@ -532,7 +532,9 @@ static duk_ret_t native_tcp_set_priority(duk_context *ctx)
     finalizer_t *finalizer = vm_require_finalizer(ctx, 0, tcp_connection_free);
     tcp_connection_t *p = finalizer->p;
     duk_int_t v = duk_require_int(ctx, 1);
-    bufferevent_priority_set(p->bev, v);
+    int ret = bufferevent_priority_set(p->bev, v);
+    printf("bufferevent_priority_set(%d) %d\n", v, ret);
+
     return 0;
 }
 static duk_ret_t native_tcp_get_priority(duk_context *ctx)

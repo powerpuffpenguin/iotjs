@@ -146,6 +146,9 @@ int main(int argc, char *argv[])
         goto EXIT_ERROR;
     }
     duk_pop(ctx);
+
+    struct event_base *base = vm_base(ctx);
+    event_base_priority_init(base, 10);
     if (vm_loop(ctx))
     {
         printf("iotjs_loop: %s\n", duk_safe_to_string(ctx, -1));

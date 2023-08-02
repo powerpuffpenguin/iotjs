@@ -291,8 +291,30 @@ duk_int_t vm_loop(duk_context *ctx)
         duk_push_error_object(ctx, DUK_ERR_EVAL_ERROR, "duk_check_stack_top error");
         return DUK_EXEC_ERROR;
     }
-    duk_push_c_function(ctx, _native_vm_loop, 0);
+    duk_push_c_lightfunc(ctx, _native_vm_loop, 0, 0, 0);
     return duk_pcall(ctx, 0);
+}
+static duk_ret_t _native_vm_base(duk_context *ctx)
+{
+    vm_context_t *vm = (vm_context_t *)vm_get_context(ctx);
+    duk_push_pointer(ctx, vm->eb);
+    return 1;
+}
+struct event_base *vm_base(duk_context *ctx)
+{
+    if (!duk_check_stack_top(ctx, 2))
+    {
+        duk_push_error_object(ctx, DUK_ERR_EVAL_ERROR, "duk_check_stack_top error");
+        return 0;
+    }
+    duk_push_c_lightfunc(ctx, _native_vm_base, 0, 0, 0);
+    if (duk_pcall(ctx, 0))
+    {
+        return NULL;
+    }
+    struct event_base *ret = (struct event_base *)duk_require_pointer(ctx, -1);
+    duk_pop(ctx);
+    return ret;
 }
 duk_ret_t _native_vm_c_stat(duk_context *ctx)
 {
