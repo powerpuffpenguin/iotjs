@@ -112,7 +112,7 @@ static void iotjs_mtd_fd_handler(evutil_socket_t fd, short events, void *args)
     duk_context *ctx = job->vm->ctx;
 
     async_out_t *out = job->out;
-    vm_restore(ctx, VM_SNAPSHOT_MTD, p, 0);
+    vm_snapshot_restore(ctx, VM_SNAPSHOT_MTD, p, 0, 1);
     duk_pop(ctx);
     duk_push_number(ctx, out->evt);
     if (out->ret == -1)
@@ -171,7 +171,7 @@ static duk_ret_t native_open(duk_context *ctx)
     }
 
     // cb, finalizer
-    vm_snapshot_copy(ctx, VM_SNAPSHOT_MTD, p, 2);
+    vm_snapshot_create(ctx, VM_SNAPSHOT_MTD, p, 2, 0);
     return 1;
 }
 static duk_ret_t native_close(duk_context *ctx)
@@ -187,9 +187,8 @@ static duk_ret_t native_close(duk_context *ctx)
 }
 static duk_ret_t native_free(duk_context *ctx)
 {
-    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_fd_free);
-    vm_remove_snapshot(ctx, VM_SNAPSHOT_MTD, finalizer->p);
-    vm_finalizer_free(ctx, 0, iotjs_mtd_fd_free);
+    vm_snapshot_remove(ctx, VM_SNAPSHOT_MTD,
+                       vm_finalizer_free(ctx, 0, iotjs_mtd_fd_free));
     return 0;
 }
 static duk_ret_t native_info(duk_context *ctx)
@@ -561,7 +560,7 @@ static void iotjs_mtd_db_handler(evutil_socket_t fd, short events, void *args)
 
     async_db_out_t *out = job->out;
     duk_uint8_t evt = out->evt;
-    vm_restore(ctx, VM_SNAPSHOT_MTD_KV, p, 0);
+    vm_snapshot_restore(ctx, VM_SNAPSHOT_MTD_KV, p, 0, 1);
     duk_pop(ctx);
     duk_push_number(ctx, evt);
     if (out->ok)
@@ -801,7 +800,7 @@ static duk_ret_t native_db(duk_context *ctx)
         break;
     }
     // cb, finalizer
-    vm_snapshot_copy(ctx, VM_SNAPSHOT_MTD_KV, p, 2);
+    vm_snapshot_create(ctx, VM_SNAPSHOT_MTD_KV, p, 2, 0);
     return 1;
 }
 static duk_ret_t native_db_close(duk_context *ctx)
@@ -822,9 +821,8 @@ static duk_ret_t native_db_close(duk_context *ctx)
 }
 static duk_ret_t native_db_free(duk_context *ctx)
 {
-    finalizer_t *finalizer = vm_require_finalizer(ctx, 0, iotjs_mtd_db_free);
-    vm_remove_snapshot(ctx, VM_SNAPSHOT_MTD, finalizer->p);
-    vm_finalizer_free(ctx, 0, iotjs_mtd_db_free);
+    vm_snapshot_remove(ctx, VM_SNAPSHOT_MTD,
+                       vm_finalizer_free(ctx, 0, iotjs_mtd_db_free));
     return 0;
 }
 static duk_ret_t native_key_encode(duk_context *ctx)

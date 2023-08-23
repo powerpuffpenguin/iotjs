@@ -94,14 +94,24 @@ static duk_ret_t native_tcp_connect_cb(duk_context *ctx)
     {
         duk_remove(ctx, 0);
     }
-    duk_context *snapshot = vm_restore(ctx, VM_SNAPSHOT_TCPCONN, conn, err == IOTJS_NET_TCPCONN_CONNECT_SUCCESS ? 0 : 1);
+    if (err == IOTJS_NET_TCPCONN_CONNECT_SUCCESS)
+    {
+        vm_snapshot_array(ctx, VM_SNAPSHOT_TCPCONN, conn, 0, 1);
+        duk_get_prop_index(ctx, -1, 1);
+        duk_get_prop_index(ctx, -2, 2);
+        duk_call(ctx, 1);
+        duk_put_prop_index(ctx, -2, 0);
+
+        duk_set_length(ctx, -1, 1);
+        duk_pop(ctx);
+        return 0;
+    }
+    else
+    {
+        vm_snapshot_remove(ctx, VM_SNAPSHOT_TCPCONN, conn);
+    }
     switch (err)
     {
-    case IOTJS_NET_TCPCONN_CONNECT_SUCCESS:
-        duk_call(ctx, 1);
-        duk_swap_top(snapshot, 0);
-        duk_pop_2(snapshot);
-        return 0;
     case -1989:
         duk_swap_top(ctx, -2);
         duk_push_undefined(ctx);
@@ -145,19 +155,20 @@ static void tcp_connection_read_cb(struct bufferevent *bev, void *args)
 {
     tcp_connection_t *conn = args;
     duk_context *ctx = conn->vm->ctx;
-    duk_context *snapshot = vm_require_snapshot(ctx, VM_SNAPSHOT_TCPCONN, conn);
-    duk_push_lstring(snapshot, "onRead", 6);
-    duk_call_prop(snapshot, 0, 0);
-    duk_pop(snapshot);
+    duk_size_t n = vm_snapshot_restore(ctx, VM_SNAPSHOT_TCPCONN, conn, 0, 1);
+    duk_push_lstring(ctx, "onRead", 6);
+    duk_call_prop(ctx, 0, 0);
+    duk_pop_n(ctx, n + 1);
 }
 void tcp_connection_write_cb(struct bufferevent *bev, void *args)
 {
     tcp_connection_t *conn = args;
     duk_context *ctx = conn->vm->ctx;
-    duk_context *snapshot = vm_require_snapshot(ctx, VM_SNAPSHOT_TCPCONN, conn);
-    duk_push_lstring(snapshot, "onWrite", 7);
-    duk_call_prop(snapshot, 0, 0);
-    duk_pop(snapshot);
+
+    duk_size_t n = vm_snapshot_restore(ctx, VM_SNAPSHOT_TCPCONN, conn, 0, 1);
+    duk_push_lstring(ctx, "onWrite", 7);
+    duk_call_prop(ctx, 0, 0);
+    duk_pop_n(ctx, n + 1);
 }
 
 void tcp_connection_event_cb(struct bufferevent *bev, short what, void *args)
@@ -182,11 +193,11 @@ void tcp_connection_event_cb(struct bufferevent *bev, short what, void *args)
         return;
     }
     duk_context *ctx = conn->vm->ctx;
-    duk_context *snapshot = vm_require_snapshot(ctx, VM_SNAPSHOT_TCPCONN, conn);
-    duk_push_lstring(snapshot, "onEvent", 7);
-    duk_push_number(snapshot, what);
-    duk_call_prop(snapshot, 0, 1);
-    duk_pop(snapshot);
+    duk_size_t n = vm_snapshot_restore(ctx, VM_SNAPSHOT_TCPCONN, conn, 0, 1);
+    duk_push_lstring(ctx, "onEvent", 7);
+    duk_push_number(ctx, what);
+    duk_call_prop(ctx, 0, 1);
+    duk_pop_n(ctx, n + 1);
 }
 static duk_ret_t native_tcp_connect(duk_context *ctx)
 {
@@ -306,13 +317,13 @@ static duk_ret_t native_tcp_connect(duk_context *ctx)
         }
     }
     // opts, cb, finalizer
-    duk_context *snapshot = vm_snapshot(ctx, VM_SNAPSHOT_TCPCONN, conn, 3);
+    vm_snapshot_create(ctx, VM_SNAPSHOT_TCPCONN, conn, 3, 0);
     return 1;
 }
 static duk_ret_t native_tcp_free(duk_context *ctx)
 {
-    finalizer_t *finalizer = vm_finalizer_free(ctx, 0, tcp_connection_free);
-    vm_remove_snapshot(ctx, VM_SNAPSHOT_TCPCONN, finalizer->p);
+    vm_snapshot_remove(ctx, VM_SNAPSHOT_TCPCONN,
+                       vm_finalizer_free(ctx, 0, tcp_connection_free));
     return 0;
 }
 static duk_ret_t native_tcp_write(duk_context *ctx)
@@ -546,6 +557,11 @@ static duk_ret_t native_tcp_get_priority(duk_context *ctx)
     duk_push_number(ctx, v);
     return 1;
 }
+static void native_do_free(void *p)
+{
+    puts("native_do_free");
+}
+
 duk_ret_t native_iotjs_net_init(duk_context *ctx)
 {
     duk_swap(ctx, 0, 1);
@@ -593,5 +609,6 @@ duk_ret_t native_iotjs_net_init(duk_context *ctx)
         native_iotjs_net_deps_http(ctx, 0);
     }
     duk_call(ctx, 3);
+
     return 0;
 }

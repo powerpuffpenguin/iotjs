@@ -236,6 +236,7 @@ export class TCPConn {
                     return
                 }
                 runSync(() => cb(ok), true)
+                return conn
             } else {
                 runSync(() => cb(undefined, getError(e)), true)
             }

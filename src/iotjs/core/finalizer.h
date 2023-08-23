@@ -24,6 +24,6 @@ finalizer_t *vm_create_finalizer_n(duk_context *ctx, size_t n);
 // 如果 終結器 一致 返回 finalizer_t*，否則 duk_throw
 finalizer_t *vm_require_finalizer(duk_context *ctx, duk_idx_t idx, void (*freef)(void *p));
 // 立刻調用 終結器 釋放資源
-finalizer_t *vm_finalizer_free(duk_context *ctx, duk_idx_t idx, void (*freef)(void *p));
+void *vm_finalizer_free(duk_context *ctx, duk_idx_t idx, void (*freef)(void *p));
 
 #endif

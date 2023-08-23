@@ -3,35 +3,19 @@
 #include <iotjs/core/js.h>
 #include <iotjs/core/memory.h>
 #include <stdio.h>
-static duk_context *vm_snapshot_impl(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_size_t n, duk_uint8_t copy)
+void vm_snapshot_create(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_size_t n, duk_bool_t move)
 {
-    // duk_idx_t id = duk_push_thread(ctx);
-    duk_push_thread(ctx);
-    duk_context *snapshot = duk_require_context(ctx, -1);
-    if (n)
+    duk_idx_t arr = duk_push_bare_array(ctx);
+    if (n > arr)
     {
-        if (copy)
-        {
-            duk_swap_top(ctx, -n - 1);
-            duk_xcopy_top(snapshot, ctx, n);
-            if (n > 1)
-            {
-                duk_insert(snapshot, 0);
-            }
-            duk_swap_top(ctx, -n - 1);
-        }
-        else
-        {
-            duk_swap_top(ctx, -n - 1);
-            duk_xmove_top(snapshot, ctx, 1);
-            if (n > 1)
-            {
-                duk_xmove_top(snapshot, ctx, n - 1);
-            }
-        }
+        duk_error(ctx, DUK_ERR_ERROR, "snapshot(%d), but top(%d)", n, arr);
     }
-    // duk_push_number(ctx, id);
-    // duk_put_prop_string(ctx, -2, "snapshot");
+    duk_idx_t offset = arr - n;
+    for (duk_size_t i = 0; i < n; i++)
+    {
+        duk_dup(ctx, offset + i);
+        duk_put_prop_index(ctx, arr, i);
+    }
 
     // ... snapshot
     duk_push_heap_stash(ctx);
@@ -62,84 +46,18 @@ static duk_context *vm_snapshot_impl(duk_context *ctx, const char *bucket, duk_s
     duk_push_pointer(ctx, key);
     duk_swap_top(ctx, -2);
     duk_put_prop(ctx, -3);
-
     // bucket
-    duk_pop(ctx);
-
-    return snapshot;
-}
-
-duk_context *vm_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_size_t n)
-{
-    return vm_snapshot_impl(ctx, bucket, sz_bucket, key, n, 0);
-}
-duk_context *vm_snapshot_copy(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_size_t n)
-{
-    return vm_snapshot_impl(ctx, bucket, sz_bucket, key, n, 1);
-}
-
-duk_context *vm_restore(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_bool_t del_snapshot)
-{
-    // ...
-    duk_push_heap_stash(ctx);
-    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_SNAPSHOTS);
-    if (duk_is_undefined(ctx, -1))
+    if (move)
     {
-        duk_pop_2(ctx);
-        return NULL;
-    }
-    duk_swap_top(ctx, -2);
-    duk_pop(ctx);
-
-    // ... snapshots
-    duk_get_prop_lstring(ctx, -1, bucket, sz_bucket);
-    if (duk_is_undefined(ctx, -1))
-    {
-        duk_pop_2(ctx);
-        return NULL;
-    }
-    duk_swap_top(ctx, -2);
-    duk_pop(ctx);
-
-    // ... bucket
-    duk_push_pointer(ctx, key);
-    duk_get_prop(ctx, -2);
-    // ... bucket, snapshot
-    if (duk_is_undefined(ctx, -1))
-    {
-        duk_pop_2(ctx);
-        return NULL;
-    }
-    duk_context *snapshot = duk_require_context(ctx, -1);
-    duk_idx_t n = duk_get_top(snapshot);
-    if (n > 0)
-    {
-        if (del_snapshot)
-        {
-            duk_xmove_top(ctx, snapshot, n);
-        }
-        else
-        {
-            duk_xcopy_top(ctx, snapshot, n);
-        }
-    }
-    duk_remove(ctx, -n - 1);
-
-    // bucket, v0, v1, ... vn-1
-    if (del_snapshot)
-    {
-        duk_push_pointer(ctx, key);
-        duk_del_prop(ctx, -n - 2);
-        duk_remove(ctx, -n - 1);
-        return NULL;
+        duk_pop_n(ctx, n + 1);
     }
     else
     {
-        duk_remove(ctx, -n - 1);
-        return snapshot;
+        duk_pop(ctx);
     }
 }
-duk_context *vm_require_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key)
+
+duk_bool_t vm_snapshot_array(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_bool_t del_snapshot, duk_bool_t require)
 {
     // ...
     duk_push_heap_stash(ctx);
@@ -147,7 +65,11 @@ duk_context *vm_require_snapshot(duk_context *ctx, const char *bucket, duk_size_
     if (duk_is_undefined(ctx, -1))
     {
         duk_pop_2(ctx);
-        duk_error(ctx, DUK_ERR_ERROR, "snapshot not exists");
+        if (require)
+        {
+            duk_error(ctx, DUK_ERR_ERROR, "snapshot not exists");
+        }
+        return 0;
     }
     duk_swap_top(ctx, -2);
     duk_pop(ctx);
@@ -157,7 +79,11 @@ duk_context *vm_require_snapshot(duk_context *ctx, const char *bucket, duk_size_
     if (duk_is_undefined(ctx, -1))
     {
         duk_pop_2(ctx);
-        duk_error(ctx, DUK_ERR_ERROR, "snapshot not exists");
+        if (require)
+        {
+            duk_error(ctx, DUK_ERR_ERROR, "snapshot not exists");
+        }
+        return 0;
     }
     duk_swap_top(ctx, -2);
     duk_pop(ctx);
@@ -166,16 +92,26 @@ duk_context *vm_require_snapshot(duk_context *ctx, const char *bucket, duk_size_
     duk_push_pointer(ctx, key);
     duk_get_prop(ctx, -2);
     // ... bucket, snapshot
-    if (duk_is_undefined(ctx, -1))
+    if (!duk_is_array(ctx, -1))
     {
         duk_pop_2(ctx);
-        duk_error(ctx, DUK_ERR_ERROR, "snapshot not exists");
+        if (require)
+        {
+            duk_error(ctx, DUK_ERR_ERROR, "snapshot not exists");
+        }
+        return 0;
     }
-    duk_context *snapshot = duk_require_context(ctx, -1);
-    duk_pop_2(ctx);
-    return snapshot;
+
+    duk_swap_top(ctx, -2);
+    if (del_snapshot)
+    {
+        duk_push_pointer(ctx, key);
+        duk_del_prop(ctx, -2);
+    }
+    duk_pop(ctx);
+    return 1;
 }
-void vm_remove_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key)
+duk_size_t vm_snapshot_restore(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key, duk_bool_t del_snapshot, duk_bool_t require)
 {
     // ...
     duk_push_heap_stash(ctx);
@@ -183,6 +119,82 @@ void vm_remove_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_buck
     if (duk_is_undefined(ctx, -1))
     {
         duk_pop_2(ctx);
+        if (require)
+        {
+            duk_error(ctx, DUK_ERR_ERROR, "snapshot not exists");
+        }
+        return 0;
+    }
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
+
+    // ... snapshots
+    duk_get_prop_lstring(ctx, -1, bucket, sz_bucket);
+    if (duk_is_undefined(ctx, -1))
+    {
+        duk_pop_2(ctx);
+        if (require)
+        {
+            duk_error(ctx, DUK_ERR_ERROR, "snapshot not exists");
+        }
+        return 0;
+    }
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
+    // ... bucket
+    duk_push_pointer(ctx, key);
+    duk_get_prop(ctx, -2);
+    // ... bucket, snapshot
+    if (!duk_is_array(ctx, -1))
+    {
+        duk_pop_2(ctx);
+        if (require)
+        {
+            duk_error(ctx, DUK_ERR_ERROR, "snapshot not exists");
+        }
+        return 0;
+    }
+    duk_idx_t arr = duk_get_top_index(ctx);
+    duk_size_t len = duk_get_length(ctx, arr);
+    for (duk_size_t i = 2; i < len; i++)
+    {
+        duk_get_prop_index(ctx, arr, i);
+    }
+    switch (len)
+    {
+    case 0:
+        break;
+    case 1:
+        duk_get_prop_index(ctx, arr, 0);
+        duk_swap(ctx, -2, -3);
+        duk_swap_top(ctx, -3);
+        break;
+    default:
+        duk_get_prop_index(ctx, arr, 0);
+        duk_get_prop_index(ctx, arr, 1);
+        duk_swap(ctx, -1, arr);
+        duk_swap(ctx, -2, arr - 1);
+        break;
+    }
+
+    if (del_snapshot)
+    {
+        duk_push_pointer(ctx, key);
+        duk_del_prop(ctx, -2);
+    }
+    duk_pop_2(ctx);
+    return len;
+}
+
+void vm_snapshot_remove(duk_context *ctx, const char *bucket, duk_size_t sz_bucket, void *key)
+{
+    // ...
+    duk_push_heap_stash(ctx);
+    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_SNAPSHOTS);
+    if (duk_is_undefined(ctx, -1))
+    {
+        duk_swap_top(ctx, -2);
+        duk_pop(ctx);
         return;
     }
     duk_swap_top(ctx, -2);
@@ -192,7 +204,8 @@ void vm_remove_snapshot(duk_context *ctx, const char *bucket, duk_size_t sz_buck
     duk_get_prop_lstring(ctx, -1, bucket, sz_bucket);
     if (duk_is_undefined(ctx, -1))
     {
-        duk_pop_2(ctx);
+        duk_swap_top(ctx, -2);
+        duk_pop(ctx);
         return;
     }
     duk_swap_top(ctx, -2);

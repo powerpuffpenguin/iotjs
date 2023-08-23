@@ -139,14 +139,15 @@ finalizer_t *vm_require_finalizer(duk_context *ctx, duk_idx_t idx, void (*freef)
 
     return finalizer;
 }
-finalizer_t *vm_finalizer_free(duk_context *ctx, duk_idx_t idx, void (*freef)(void *p))
+void *vm_finalizer_free(duk_context *ctx, duk_idx_t idx, void (*freef)(void *p))
 {
     finalizer_t *finalizer = vm_require_finalizer(ctx, idx, freef);
+    void *p = finalizer->p;
     duk_del_prop_lstring(ctx, -1, "_p", 2);
     if (finalizer->free)
     {
         finalizer->free(finalizer->p);
     }
     vm_free(finalizer);
-    return finalizer;
+    return p;
 }

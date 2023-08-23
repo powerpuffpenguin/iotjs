@@ -153,13 +153,13 @@ static duk_ret_t _native_connect(duk_context *ctx)
     duk_dup_top(ctx);
 
     // opts, cb, finalizer
-    duk_context *snapshot = vm_snapshot(ctx, VM_SNAPSHOT_HTTP_CONN, p, 1);
+    vm_snapshot_create(ctx, VM_SNAPSHOT_HTTP_CONN, p, 1, 0);
     return 1;
 }
 static duk_ret_t _native_close(duk_context *ctx)
 {
-    finalizer_t *finalizer = vm_finalizer_free(ctx, 0, http_conn_free);
-    vm_remove_snapshot(ctx, VM_SNAPSHOT_HTTP_CONN, finalizer->p);
+    vm_snapshot_remove(ctx, VM_SNAPSHOT_HTTP_CONN,
+                       vm_finalizer_free(ctx, 0, http_conn_free));
     return 0;
 }
 
@@ -192,7 +192,7 @@ static duk_ret_t native_http_cb(duk_context *ctx)
     struct evhttp_request *req = duk_require_pointer(ctx, 0);
     http_request_t *p = duk_require_pointer(ctx, 1);
     duk_pop_2(ctx);
-    vm_restore(ctx, VM_SNAPSHOT_HTTP_REQUEST, p, 1);
+    vm_snapshot_restore(ctx, VM_SNAPSHOT_HTTP_REQUEST, p, 1, 1);
     vm_finalizer_free(ctx, -1, http_request_free);
     if (duk_get_top(ctx) == 2)
     {
@@ -371,7 +371,7 @@ static duk_ret_t _native_new_request(duk_context *ctx)
         }
     }
 
-    vm_snapshot_copy(ctx, VM_SNAPSHOT_HTTP_REQUEST, p, undefined ? 2 : 3);
+    vm_snapshot_create(ctx, VM_SNAPSHOT_HTTP_REQUEST, p, undefined ? 2 : 3, 0);
     return 1;
 }
 static duk_ret_t _native_add_header(duk_context *ctx)

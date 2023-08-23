@@ -159,7 +159,7 @@ static duk_ret_t native_expand_ws_ec(duk_context *ctx)
     {
         duk_remove(ctx, 0);
     }
-    vm_restore(ctx, VM_SNAPSHOT_TCPCONN, conn, 0);
+    vm_snapshot_restore(ctx, VM_SNAPSHOT_TCPCONN, conn, 0, 1);
 
     duk_get_prop_lstring(ctx, -1, "cb", 2);
     duk_swap_top(ctx, -2);
@@ -349,7 +349,7 @@ static duk_ret_t native_ws_notify_error(duk_context *ctx)
 {
     tcp_connection_t *conn = duk_require_pointer(ctx, 1);
     duk_pop(ctx);
-    vm_restore(ctx, VM_SNAPSHOT_TCPCONN, conn, 1);
+    vm_snapshot_restore(ctx, VM_SNAPSHOT_TCPCONN, conn, 1, 1);
     duk_get_prop_lstring(ctx, -1, "onError", 7);
     duk_swap_top(ctx, -2);
     duk_pop(ctx);
@@ -544,10 +544,10 @@ static uint8_t ws_expand_read_ws_cb_data(tcp_connection_t *conn, http_expand_ws_
 
     // 通知設備可讀
     duk_context *ctx = conn->vm->ctx;
-    duk_context *snapshot = vm_require_snapshot(ctx, VM_SNAPSHOT_TCPCONN, conn);
-    duk_push_lstring(snapshot, "onRead", 6);
-    duk_call_prop(snapshot, 0, 0);
-    duk_pop(snapshot);
+    duk_size_t n = vm_snapshot_restore(ctx, VM_SNAPSHOT_TCPCONN, conn, 0, 1);
+    duk_push_lstring(ctx, "onRead", 6);
+    duk_call_prop(ctx, 0, 0);
+    duk_pop_n(ctx, n + 1);
     return 1;
 }
 static void ws_expand_read_ws_cb(tcp_connection_t *conn, http_expand_ws_t *expand, struct evbuffer *buf)
@@ -591,10 +591,10 @@ static void ws_expand_read_cb(struct bufferevent *bev, void *args)
         {
             // 有未讀取的完整消息，通知設備可讀
             duk_context *ctx = conn->vm->ctx;
-            duk_context *snapshot = vm_require_snapshot(ctx, VM_SNAPSHOT_TCPCONN, conn);
-            duk_push_lstring(snapshot, "onRead", 6);
-            duk_call_prop(snapshot, 0, 0);
-            duk_pop(snapshot);
+            duk_size_t n = vm_snapshot_restore(ctx, VM_SNAPSHOT_TCPCONN, conn, 0, 1);
+            duk_push_lstring(ctx, "onRead", 6);
+            duk_call_prop(ctx, 0, 0);
+            duk_pop_n(ctx, n + 1);
         }
         else
         {
