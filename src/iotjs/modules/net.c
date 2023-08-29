@@ -104,12 +104,11 @@ static duk_ret_t native_tcp_connect_cb(duk_context *ctx)
 
         duk_set_length(ctx, -1, 1);
         duk_pop(ctx);
+
         return 0;
     }
-    else
-    {
-        vm_snapshot_remove(ctx, VM_SNAPSHOT_TCPCONN, conn);
-    }
+    // opts, cb, finalizer
+    vm_snapshot_restore(ctx, VM_SNAPSHOT_TCPCONN, conn, 1, 1);
     switch (err)
     {
     case -1989:

@@ -7,7 +7,7 @@ var net = require("iotjs/net")
 var WebsocketConn = net.WebsocketConn
 try {
     WebsocketConn.connect(
-        "wss://xsd-kb2022-dev.cdnewstar.cn:3443/api/v1/player/listen?player_token=Bearer%20CEUSFDUxMzM1Njc4OTAxMjM0NTY3OTY3GhQxMjM0NTY3ODkwMTIzNDU2Nzg3OCCorJanBg.pEkDMZDs9P_6fVjEf-zJ2A",
+        "wss://xsd-kb2022-dev.cdnewstar.cn:8001/api/v1/player/listen?player_token=Bearer%20CEUSFDUxMzM1Njc4OTAxMjM0NTY3OTY3GhQxMjM0NTY3ODkwMTIzNDU2Nzg3OCCorJanBg.pEkDMZDs9P_6fVjEf-zJ2A",
         {
             timeout: 1000,
             insecure: true,
