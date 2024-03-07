@@ -114,7 +114,7 @@ static duk_ret_t native_compare(duk_context *ctx)
         }
     }
     duk_pop_2(ctx);
-    duk_push_int(ctx, 0);
+    duk_push_int(ctx, sz_dst == sz_src ? 0 : (sz_dst < sz_dst ? -1 : 1));
     return 1;
 }
 static duk_ret_t native_fill(duk_context *ctx)
