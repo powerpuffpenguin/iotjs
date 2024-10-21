@@ -53,6 +53,15 @@ declare namespace deps {
     }
     export function ofb(opts: OFBOptions): [OFB, number]
     export function ofb_memory(state: deps.OFB, dst: Uint8Array, src: Uint8Array | string, enc: boolean): number
+
+    const CTR_COUNTER_LITTLE_ENDIAN: number
+    const CTR_COUNTER_BIG_ENDIAN: number
+    const LTC_CTR_RFC3686: number
+    export class CTR {
+        readonly __id = "ctr"
+    }
+    export function ctr(opts: CTROptions): [CTR, number]
+    export function ctr_memory(state: deps.CTR, dst: Uint8Array, src: Uint8Array | string, enc: boolean): number
 }
 
 export const AES = deps.AES
@@ -294,6 +303,49 @@ export class OFBDecryptor {
     }
     decrypt(dst: Uint8Array, src: Uint8Array | string): void {
         const e = deps.ofb_memory(this.state_, dst, src, false)
+        if (e != deps.CRYPT_OK) {
+            throw new CipherError(e)
+        }
+    }
+}
+export const CTR_COUNTER_LITTLE_ENDIAN = deps.CTR_COUNTER_LITTLE_ENDIAN
+export const CTR_COUNTER_BIG_ENDIAN = deps.CTR_COUNTER_BIG_ENDIAN
+export const LTC_CTR_RFC3686 = deps.LTC_CTR_RFC3686
+export interface CTROptions extends CBCOptions {
+    mode?: number
+}
+function createCTR(opts: CTROptions): deps.CTR {
+    const v = deps.ctr({
+        cipher: opts.cipher ?? AES,
+        key: opts.key,
+        rounds: opts.rounds ?? 0,
+        iv: opts?.iv,
+        mode: opts?.mode ?? CTR_COUNTER_BIG_ENDIAN,
+    })
+    if (v[1] != deps.CRYPT_OK) {
+        throw new CipherError(v[1])
+    }
+    return v[0]
+}
+export class CTREncryptor {
+    private readonly state_: deps.CTR
+    constructor(opts: CTROptions) {
+        this.state_ = createCTR(opts)
+    }
+    encrypt(dst: Uint8Array, src: Uint8Array | string): void {
+        const e = deps.ctr_memory(this.state_, dst, src, true)
+        if (e != deps.CRYPT_OK) {
+            throw new CipherError(e)
+        }
+    }
+}
+export class CTRDecryptor {
+    private readonly state_: deps.CTR
+    constructor(opts: CTROptions) {
+        this.state_ = createCTR(opts)
+    }
+    decrypt(dst: Uint8Array, src: Uint8Array | string): void {
+        const e = deps.ctr_memory(this.state_, dst, src, false)
         if (e != deps.CRYPT_OK) {
             throw new CipherError(e)
         }

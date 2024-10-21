@@ -230,6 +230,54 @@ static duk_ret_t native_ofb_memory(duk_context *ctx)
     return 1;
 }
 
+static duk_ret_t native_ctr(duk_context *ctx)
+{
+    __IOTJS_CRYPTO_GET_ECH__(ctx);
+    __IOTJS_CRYPTO_GET_IV__(ctx);
+
+    duk_get_prop_lstring(ctx, 0, "mode", 4);
+    int mode = duk_require_int(ctx, -1);
+    duk_pop(ctx);
+
+    duk_push_array(ctx);
+    symmetric_CTR *ctr = duk_push_fixed_buffer(ctx, sizeof(symmetric_CTR));
+    duk_put_prop_index(ctx, -2, 0);
+    duk_push_int(ctx, ctr_start(cipher,
+                                iv,
+                                key, key_len, rounds, mode, ctr));
+    duk_put_prop_index(ctx, -2, 1);
+    return 1;
+}
+static duk_ret_t native_ctr_memory(duk_context *ctx)
+{
+    symmetric_CTR *ctr = duk_require_buffer_data(ctx, 0, 0);
+
+    duk_size_t dst_len;
+    void *dst = duk_require_buffer_data(ctx, 1, &dst_len);
+
+    duk_size_t src_len;
+    const void *src;
+    if (duk_is_string(ctx, 2))
+    {
+        src = duk_require_lstring(ctx, 2, &src_len);
+    }
+    else
+    {
+        src = duk_require_buffer_data(ctx, 2, &src_len);
+    }
+    if (dst_len < src_len)
+    {
+        duk_pop_3(ctx);
+        duk_push_number(ctx, CRYPT_BUFFER_OVERFLOW);
+        return 1;
+    }
+
+    int ret = duk_require_boolean(ctx, 3) ? ctr_encrypt(src, dst, src_len, ctr) : ctr_decrypt(src, dst, src_len, ctr);
+    duk_pop_n(ctx, 4);
+    duk_push_number(ctx, ret);
+    return 1;
+}
+
 duk_ret_t native_iotjs_crypto_cipher_init(duk_context *ctx)
 {
     duk_swap(ctx, 0, 1);
@@ -302,6 +350,13 @@ duk_ret_t native_iotjs_crypto_cipher_init(duk_context *ctx)
         duk_push_int(ctx, CRYPT_INVALID_IVSIZE);
         duk_put_prop_string(ctx, -2, "CRYPT_INVALID_IVSIZE");
 
+        duk_push_int(ctx, CTR_COUNTER_BIG_ENDIAN);
+        duk_put_prop_string(ctx, -2, "CTR_COUNTER_BIG_ENDIAN");
+        duk_push_int(ctx, CTR_COUNTER_LITTLE_ENDIAN);
+        duk_put_prop_string(ctx, -2, "CTR_COUNTER_LITTLE_ENDIAN");
+        duk_push_int(ctx, LTC_CTR_RFC3686);
+        duk_put_prop_string(ctx, -2, "LTC_CTR_RFC3686");
+
         duk_push_c_lightfunc(ctx, native_ecb, 1, 1, 0);
         duk_put_prop_lstring(ctx, -2, "ecb", 3);
         duk_push_c_lightfunc(ctx, native_ecb_memory, 4, 4, 0);
@@ -321,6 +376,11 @@ duk_ret_t native_iotjs_crypto_cipher_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "ofb", 3);
         duk_push_c_lightfunc(ctx, native_ofb_memory, 4, 4, 0);
         duk_put_prop_lstring(ctx, -2, "ofb_memory", 10);
+
+        duk_push_c_lightfunc(ctx, native_ctr, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "ctr", 3);
+        duk_push_c_lightfunc(ctx, native_ctr_memory, 4, 4, 0);
+        duk_put_prop_lstring(ctx, -2, "ctr_memory", 10);
     }
 
     duk_call(ctx, 3);

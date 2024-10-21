@@ -52,8 +52,8 @@ var opts = {
     key: sha256.sum("12345678901"),
     iv: md5.sum("this is iv"),
 }
-var encoder = new cipher.OFBEncryptor(opts)
-var decryptor = new cipher.OFBDecryptor(opts)
+var encoder = new cipher.CTREncryptor(opts)
+var decryptor = new cipher.CTRDecryptor(opts)
 
 var s = "123草7890123草1"
 var b = new TextEncoder().encode(s)

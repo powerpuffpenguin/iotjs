@@ -472,6 +472,20 @@ declare module "iotjs/crypto/cipher" {
         constructor(opts: OFBOptions)
         decrypt(dst: Uint8Array, src: Uint8Array | string): void
     }
+    export const CTR_COUNTER_LITTLE_ENDIAN: number
+    export const CTR_COUNTER_BIG_ENDIAN: number
+    export const LTC_CTR_RFC3686: number
+    export interface CTROptions extends CBCOptions {
+        mode?: number
+    }
+    export class CTREncryptor {
+        constructor(opts: CTROptions)
+        encrypt(dst: Uint8Array, src: Uint8Array | string): void
+    }
+    export class CTRDecryptor {
+        constructor(opts: CTROptions)
+        decrypt(dst: Uint8Array, src: Uint8Array | string): void
+    }
 }
 declare module "iotjs/fs" {
     export enum FileMode {
