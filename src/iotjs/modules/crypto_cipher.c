@@ -4,6 +4,10 @@
 #include <iotjs/core/memory.h>
 #include <tomcrypt.h>
 
+#ifndef CRYPT_INVALID_IVSIZE
+#define CRYPT_INVALID_IVSIZE 100
+#endif
+
 #define __IOTJS_CRYPTO_GET_ECH__(ctx)                         \
     duk_get_prop_lstring(ctx, 0, "cipher", 6);                \
     int cipher = find_cipher_id(duk_require_number(ctx, -1)); \
@@ -32,6 +36,27 @@
     int rounds = duk_require_number(ctx, -1);                 \
     duk_pop(ctx)
 
+#define __IOTJS_CRYPTO_GET_IV__(ctx)                      \
+    const void *iv;                                       \
+    duk_size_t iv_len;                                    \
+    duk_get_prop_lstring(ctx, 0, "iv", 2);                \
+    if (duk_is_string(ctx, -1))                           \
+    {                                                     \
+        iv = duk_require_lstring(ctx, -1, &iv_len);       \
+    }                                                     \
+    else                                                  \
+    {                                                     \
+        iv = duk_require_buffer_data(ctx, -1, &iv_len);   \
+    }                                                     \
+    duk_pop(ctx);                                         \
+    if (iv_len != cipher_descriptor[cipher].block_length) \
+    {                                                     \
+        duk_push_array(ctx);                              \
+        duk_push_int(ctx, CRYPT_INVALID_IVSIZE);          \
+        duk_put_prop_index(ctx, -2, 1);                   \
+        return 1;                                         \
+    }
+
 static duk_ret_t native_ecb(duk_context *ctx)
 {
     __IOTJS_CRYPTO_GET_ECH__(ctx);
@@ -43,7 +68,7 @@ static duk_ret_t native_ecb(duk_context *ctx)
     duk_put_prop_index(ctx, -2, 1);
     return 1;
 }
-static duk_ret_t native_ecb_encrypt_memory(duk_context *ctx, duk_bool_t enc)
+static duk_ret_t native_ecb_memory(duk_context *ctx)
 {
     symmetric_ECB *ecb = duk_require_buffer_data(ctx, 0, 0);
 
@@ -67,18 +92,54 @@ static duk_ret_t native_ecb_encrypt_memory(duk_context *ctx, duk_bool_t enc)
         return 1;
     }
 
-    int ret = enc ? ecb_encrypt(src, dst, src_len, ecb) : ecb_decrypt(src, dst, src_len, ecb);
-    duk_pop_3(ctx);
+    int ret = duk_require_boolean(ctx, 3) ? ecb_encrypt(src, dst, src_len, ecb) : ecb_decrypt(src, dst, src_len, ecb);
+    duk_pop_n(ctx, 4);
     duk_push_number(ctx, ret);
     return 1;
 }
-static duk_ret_t native_ecb_encrypt(duk_context *ctx)
+
+static duk_ret_t native_cbc(duk_context *ctx)
 {
-    return native_ecb_encrypt_memory(ctx, 1);
+    __IOTJS_CRYPTO_GET_ECH__(ctx);
+    __IOTJS_CRYPTO_GET_IV__(ctx);
+
+    duk_push_array(ctx);
+    symmetric_CBC *cbc = duk_push_fixed_buffer(ctx, sizeof(symmetric_CBC));
+    duk_put_prop_index(ctx, -2, 0);
+    duk_push_int(ctx, cbc_start(cipher,
+                                iv,
+                                key, key_len, rounds, cbc));
+    duk_put_prop_index(ctx, -2, 1);
+    return 1;
 }
-static duk_ret_t native_ecb_decrypt(duk_context *ctx)
+static duk_ret_t native_cbc_memory(duk_context *ctx)
 {
-    return native_ecb_encrypt_memory(ctx, 0);
+    symmetric_CBC *cbc = duk_require_buffer_data(ctx, 0, 0);
+
+    duk_size_t dst_len;
+    void *dst = duk_require_buffer_data(ctx, 1, &dst_len);
+
+    duk_size_t src_len;
+    const void *src;
+    if (duk_is_string(ctx, 2))
+    {
+        src = duk_require_lstring(ctx, 2, &src_len);
+    }
+    else
+    {
+        src = duk_require_buffer_data(ctx, 2, &src_len);
+    }
+    if (dst_len < src_len)
+    {
+        duk_pop_3(ctx);
+        duk_push_number(ctx, CRYPT_BUFFER_OVERFLOW);
+        return 1;
+    }
+
+    int ret = duk_require_boolean(ctx, 3) ? cbc_encrypt(src, dst, src_len, cbc) : cbc_decrypt(src, dst, src_len, cbc);
+    duk_pop_n(ctx, 4);
+    duk_push_number(ctx, ret);
+    return 1;
 }
 duk_ret_t native_iotjs_crypto_cipher_init(duk_context *ctx)
 {
@@ -149,12 +210,18 @@ duk_ret_t native_iotjs_crypto_cipher_init(duk_context *ctx)
         duk_push_int(ctx, CRYPT_HASH_OVERFLOW);
         duk_put_prop_string(ctx, -2, "CRYPT_HASH_OVERFLOW");
 
+        duk_push_int(ctx, CRYPT_INVALID_IVSIZE);
+        duk_put_prop_string(ctx, -2, "CRYPT_INVALID_IVSIZE");
+
         duk_push_c_lightfunc(ctx, native_ecb, 1, 1, 0);
         duk_put_prop_lstring(ctx, -2, "ecb", 3);
-        duk_push_c_lightfunc(ctx, native_ecb_encrypt, 3, 3, 0);
-        duk_put_prop_lstring(ctx, -2, "ecb_encrypt", 11);
-        duk_push_c_lightfunc(ctx, native_ecb_decrypt, 3, 3, 0);
-        duk_put_prop_lstring(ctx, -2, "ecb_decrypt", 11);
+        duk_push_c_lightfunc(ctx, native_ecb_memory, 4, 4, 0);
+        duk_put_prop_lstring(ctx, -2, "ecb_memory", 10);
+
+        duk_push_c_lightfunc(ctx, native_cbc, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "cbc", 3);
+        duk_push_c_lightfunc(ctx, native_cbc_memory, 4, 4, 0);
+        duk_put_prop_lstring(ctx, -2, "cbc_memory", 10);
     }
 
     duk_call(ctx, 3);

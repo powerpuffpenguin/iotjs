@@ -406,22 +406,17 @@ declare module "iotjs/crypto/sha512_256" {
 }
 declare module "iotjs/crypto/cipher" {
     import { BufferData } from "iotjs";
+
+    export const AES: number
+
     export class CipherError extends Error {
         readonly code: number
     }
-    export interface Encryptor {
-        /**
-         * 將 src 加密爲 dst
-         */
-        encrypt(dst: BufferData, src: BufferData | string): void
-    }
-    export interface Decryptor {
-        /**
-         * 將 src 加密爲 dst
-         */
-        decrypt(dst: BufferData, src: BufferData | string): void
-    }
     interface ECBOptions {
+        /**
+         * 算法索引，默認爲 AES
+         */
+        cipher?: number
         /**
          * 密鑰
          */
@@ -431,8 +426,21 @@ declare module "iotjs/crypto/cipher" {
          */
         rounds?: number
     }
-    export function createECBEncryptor(opts: ECBOptions): Encryptor
-    export function createECBDecryptor(opts: ECBOptions): Decryptor
+    export class ECBEncryptor {
+        constructor(opts: ECBOptions)
+        /**
+         * 將 src 加密爲 dst
+         */
+        encrypt(dst: BufferData, src: BufferData | string): void
+    }
+    export class ECBDecryptor {
+        constructor(opts: ECBOptions)
+        /**
+         * 將 src 加密爲 dst
+         */
+        decrypt(dst: BufferData, src: BufferData | string): void
+    }
+
 }
 declare module "iotjs/fs" {
     export enum FileMode {

@@ -28,21 +28,21 @@ declare namespace deps {
     const CRYPT_PK_INVALID_PADDING: number
     const CRYPT_HASH_OVERFLOW: number
 
+    const CRYPT_INVALID_IVSIZE: number
+
     export class ECB {
         readonly __id = "ecb"
     }
     export function ecb(opts: ECBOptions): [ECB, number]
-    export function ecb_encrypt(state: deps.ECB, dst: Uint8Array, src: Uint8Array | string): number
-    export function ecb_decrypt(state: deps.ECB, dst: Uint8Array, src: Uint8Array | string): number
+    export function ecb_memory(state: deps.ECB, dst: Uint8Array, src: Uint8Array | string, enc: boolean): number
 
+    export class CBC {
+        readonly __id = "cbc"
+    }
+    export function cbc(opts: CBCOptions): [CBC, number]
+    export function cbc_memory(state: deps.CBC, dst: Uint8Array, src: Uint8Array | string, enc: boolean): number
+}
 
-}
-export interface Encryptor {
-    encrypt(dst: Uint8Array, src: Uint8Array | string): void
-}
-export interface Decryptor {
-    decrypt(dst: Uint8Array, src: Uint8Array | string): void
-}
 export const AES = deps.AES
 
 function get(code: number): string {
@@ -99,6 +99,9 @@ function get(code: number): string {
             return 'invalid padding on input'
         case deps.CRYPT_HASH_OVERFLOW:
             return 'hash applied to too many bits'
+
+        case deps.CRYPT_INVALID_IVSIZE:
+            return 'invalid iv size given'
     }
     return `unknow ${code}`
 }
@@ -117,7 +120,7 @@ export class CipherError extends Error {
     }
 }
 
-interface ECBOptions {
+export interface ECBOptions {
     /**
      * 算法索引，默認爲 AES
      */
@@ -131,43 +134,82 @@ interface ECBOptions {
      */
     rounds?: number
 }
-class ECBEncryptor {
-    constructor(readonly state: deps.ECB) { }
+
+export function createECB(opts: ECBOptions): deps.ECB {
+    const v = deps.ecb({
+        cipher: opts.cipher ?? AES,
+        key: opts.key,
+        rounds: opts.rounds ?? 0,
+    })
+    if (v[1] != deps.CRYPT_OK) {
+        throw new CipherError(v[1])
+    }
+    return v[0]
+}
+export class ECBEncryptor {
+    private readonly state_: deps.ECB
+    constructor(opts: ECBOptions) {
+        this.state_ = createECB(opts)
+    }
     encrypt(dst: Uint8Array, src: Uint8Array | string): void {
-        const e = deps.ecb_encrypt(this.state, dst, src)
+        const e = deps.ecb_memory(this.state_, dst, src, true)
         if (e != deps.CRYPT_OK) {
             throw new CipherError(e)
         }
     }
 }
-class ECBDecryptor {
-    constructor(readonly state: deps.ECB) { }
+export class ECBDecryptor {
+    private readonly state_: deps.ECB
+    constructor(opts: ECBOptions) {
+        this.state_ = createECB(opts)
+    }
     decrypt(dst: Uint8Array, src: Uint8Array | string): void {
-        const e = deps.ecb_decrypt(this.state, dst, src)
+        const e = deps.ecb_memory(this.state_, dst, src, false)
         if (e != deps.CRYPT_OK) {
             throw new CipherError(e)
         }
     }
 }
-export function createECBEncryptor(opts: ECBOptions): Encryptor {
-    const v = deps.ecb({
-        cipher: opts.cipher ?? AES,
-        key: opts.key,
-        rounds: opts.rounds ?? 0,
-    })
-    if (v[1] != deps.CRYPT_OK) {
-        throw new CipherError(v[1])
-    }
-    return new ECBEncryptor(v[0])
+
+export interface CBCOptions extends ECBOptions {
+    /**
+     * 初始化向量
+     */
+    iv: Uint8Array | string
 }
-export function createECBDecryptor(opts: ECBOptions): Decryptor {
-    const v = deps.ecb({
+export function createCBC(opts: CBCOptions): deps.CBC {
+    const v = deps.cbc({
         cipher: opts.cipher ?? AES,
         key: opts.key,
         rounds: opts.rounds ?? 0,
+        iv: opts?.iv,
     })
     if (v[1] != deps.CRYPT_OK) {
         throw new CipherError(v[1])
     }
-    return new ECBDecryptor(v[0])
+    return v[0]
+}
+export class CBCEncryptor {
+    private readonly state_: deps.CBC
+    constructor(opts: CBCOptions) {
+        this.state_ = createCBC(opts)
+    }
+    encrypt(dst: Uint8Array, src: Uint8Array | string): void {
+        const e = deps.cbc_memory(this.state_, dst, src, true)
+        if (e != deps.CRYPT_OK) {
+            throw new CipherError(e)
+        }
+    }
+}
+export class CBCDecryptor {
+    private readonly state_: deps.CBC
+    constructor(opts: CBCOptions) {
+        this.state_ = createCBC(opts)
+    }
+    decrypt(dst: Uint8Array, src: Uint8Array | string): void {
+        const e = deps.cbc_memory(this.state_, dst, src, false)
+        if (e != deps.CRYPT_OK) {
+            throw new CipherError(e)
+        }
+    }
 }

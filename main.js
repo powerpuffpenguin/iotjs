@@ -46,18 +46,20 @@ var net = require("iotjs/net")
 // }
 var hex = require("iotjs/encoding/hex")
 var sha256 = require("iotjs/crypto/sha256")
+var md5 = require("iotjs/crypto/md5")
 var cipher = require("iotjs/crypto/cipher")
 var opts = {
     key: sha256.sum("cerberus is an idea"),
+    iv: md5.sum("cerberus is an idea"),
 }
-var encoder = cipher.createECBEncryptor(opts)
-var decryptor = cipher.createECBDecryptor(opts)
+var encoder = new cipher.CBCEncryptor(opts)
+var decryptor = new cipher.CBCDecryptor(opts)
 
 var s = "123草7890123草"
-
-var enc = new Uint8Array(s.length + 4)
-encoder.encrypt(enc, s)
-console.log(s)
+var b = new TextEncoder().encode(s)
+var enc = new Uint8Array(b.length)
+encoder.encrypt(enc, b)
+console.log(s, hex.encodeToString(s))
 console.log(hex.encodeToString(enc))
 
 decryptor.decrypt(enc, enc)
