@@ -47,6 +47,12 @@ declare namespace deps {
     }
     export function cfb(opts: CFBOptions): [CFB, number]
     export function cfb_memory(state: deps.CFB, dst: Uint8Array, src: Uint8Array | string, enc: boolean): number
+
+    export class OFB {
+        readonly __id = "ofb"
+    }
+    export function ofb(opts: OFBOptions): [OFB, number]
+    export function ofb_memory(state: deps.OFB, dst: Uint8Array, src: Uint8Array | string, enc: boolean): number
 }
 
 export const AES = deps.AES
@@ -251,6 +257,43 @@ export class CFBDecryptor {
     }
     decrypt(dst: Uint8Array, src: Uint8Array | string): void {
         const e = deps.cfb_memory(this.state_, dst, src, false)
+        if (e != deps.CRYPT_OK) {
+            throw new CipherError(e)
+        }
+    }
+}
+export type OFBOptions = CBCOptions
+function createOFB(opts: OFBOptions): deps.OFB {
+    const v = deps.ofb({
+        cipher: opts.cipher ?? AES,
+        key: opts.key,
+        rounds: opts.rounds ?? 0,
+        iv: opts?.iv,
+    })
+    if (v[1] != deps.CRYPT_OK) {
+        throw new CipherError(v[1])
+    }
+    return v[0]
+}
+export class OFBEncryptor {
+    private readonly state_: deps.OFB
+    constructor(opts: OFBOptions) {
+        this.state_ = createOFB(opts)
+    }
+    encrypt(dst: Uint8Array, src: Uint8Array | string): void {
+        const e = deps.ofb_memory(this.state_, dst, src, true)
+        if (e != deps.CRYPT_OK) {
+            throw new CipherError(e)
+        }
+    }
+}
+export class OFBDecryptor {
+    private readonly state_: deps.OFB
+    constructor(opts: OFBOptions) {
+        this.state_ = createOFB(opts)
+    }
+    decrypt(dst: Uint8Array, src: Uint8Array | string): void {
+        const e = deps.ofb_memory(this.state_, dst, src, false)
         if (e != deps.CRYPT_OK) {
             throw new CipherError(e)
         }

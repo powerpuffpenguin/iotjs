@@ -463,6 +463,15 @@ declare module "iotjs/crypto/cipher" {
         constructor(opts: CFBOptions)
         decrypt(dst: Uint8Array, src: Uint8Array | string): void
     }
+    export type OFBOptions = CBCOptions
+    export class OFBEncryptor {
+        constructor(opts: OFBOptions)
+        encrypt(dst: Uint8Array, src: Uint8Array | string): void
+    }
+    export class OFBDecryptor {
+        constructor(opts: OFBOptions)
+        decrypt(dst: Uint8Array, src: Uint8Array | string): void
+    }
 }
 declare module "iotjs/fs" {
     export enum FileMode {

@@ -49,13 +49,13 @@ var sha256 = require("iotjs/crypto/sha256")
 var md5 = require("iotjs/crypto/md5")
 var cipher = require("iotjs/crypto/cipher")
 var opts = {
-    key: sha256.sum("cerberus is an idea"),
-    iv: md5.sum("cerberus is an idea"),
+    key: sha256.sum("12345678901"),
+    iv: md5.sum("this is iv"),
 }
-var encoder = new cipher.CFBEncryptor(opts)
-var decryptor = new cipher.CFBDecryptor(opts)
+var encoder = new cipher.OFBEncryptor(opts)
+var decryptor = new cipher.OFBDecryptor(opts)
 
-var s = "123草7890123草"
+var s = "123草7890123草1"
 var b = new TextEncoder().encode(s)
 var enc = new Uint8Array(b.length)
 encoder.encrypt(enc, b)
