@@ -141,6 +141,13 @@ export class CipherError extends Error {
     }
 }
 
+export interface Encryptor {
+    encrypt(dst: Uint8Array, src: Uint8Array | string): void
+}
+export interface Decryptor {
+    decrypt(dst: Uint8Array, src: Uint8Array | string): void
+}
+
 export interface ECBOptions {
     /**
      * 算法索引，默認爲 AES
@@ -167,7 +174,7 @@ function createECB(opts: ECBOptions): deps.ECB {
     }
     return v[0]
 }
-export class ECBEncryptor {
+export class ECBEncryptor implements Encryptor {
     private readonly state_: deps.ECB
     constructor(opts: ECBOptions) {
         this.state_ = createECB(opts)
@@ -179,7 +186,7 @@ export class ECBEncryptor {
         }
     }
 }
-export class ECBDecryptor {
+export class ECBDecryptor implements Decryptor {
     private readonly state_: deps.ECB
     constructor(opts: ECBOptions) {
         this.state_ = createECB(opts)
@@ -210,7 +217,7 @@ function createCBC(opts: CBCOptions): deps.CBC {
     }
     return v[0]
 }
-export class CBCEncryptor {
+export class CBCEncryptor implements Encryptor {
     private readonly state_: deps.CBC
     constructor(opts: CBCOptions) {
         this.state_ = createCBC(opts)
@@ -222,7 +229,7 @@ export class CBCEncryptor {
         }
     }
 }
-export class CBCDecryptor {
+export class CBCDecryptor implements Decryptor {
     private readonly state_: deps.CBC
     constructor(opts: CBCOptions) {
         this.state_ = createCBC(opts)
@@ -247,7 +254,7 @@ function createCFB(opts: CBCOptions): deps.CFB {
     }
     return v[0]
 }
-export class CFBEncryptor {
+export class CFBEncryptor implements Encryptor {
     private readonly state_: deps.CFB
     constructor(opts: CFBOptions) {
         this.state_ = createCFB(opts)
@@ -259,7 +266,7 @@ export class CFBEncryptor {
         }
     }
 }
-export class CFBDecryptor {
+export class CFBDecryptor implements Decryptor {
     private readonly state_: deps.CFB
     constructor(opts: CFBOptions) {
         this.state_ = createCFB(opts)
@@ -284,7 +291,7 @@ function createOFB(opts: OFBOptions): deps.OFB {
     }
     return v[0]
 }
-export class OFBEncryptor {
+export class OFBEncryptor implements Encryptor {
     private readonly state_: deps.OFB
     constructor(opts: OFBOptions) {
         this.state_ = createOFB(opts)
@@ -296,7 +303,7 @@ export class OFBEncryptor {
         }
     }
 }
-export class OFBDecryptor {
+export class OFBDecryptor implements Decryptor {
     private readonly state_: deps.OFB
     constructor(opts: OFBOptions) {
         this.state_ = createOFB(opts)
@@ -327,7 +334,7 @@ function createCTR(opts: CTROptions): deps.CTR {
     }
     return v[0]
 }
-export class CTREncryptor {
+export class CTREncryptor implements Encryptor {
     private readonly state_: deps.CTR
     constructor(opts: CTROptions) {
         this.state_ = createCTR(opts)
@@ -339,7 +346,7 @@ export class CTREncryptor {
         }
     }
 }
-export class CTRDecryptor {
+export class CTRDecryptor implements Decryptor {
     private readonly state_: deps.CTR
     constructor(opts: CTROptions) {
         this.state_ = createCTR(opts)

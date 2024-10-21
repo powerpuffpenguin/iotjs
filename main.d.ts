@@ -412,6 +412,13 @@ declare module "iotjs/crypto/cipher" {
     export class CipherError extends Error {
         readonly code: number
     }
+    export interface Encryptor {
+        encrypt(dst: Uint8Array, src: Uint8Array | string): void
+    }
+    export interface Decryptor {
+        decrypt(dst: Uint8Array, src: Uint8Array | string): void
+    }
+
     interface ECBOptions {
         /**
          * 算法索引，默認爲 AES
@@ -426,14 +433,14 @@ declare module "iotjs/crypto/cipher" {
          */
         rounds?: number
     }
-    export class ECBEncryptor {
+    export class ECBEncryptor implements Encryptor {
         constructor(opts: ECBOptions)
         /**
          * 將 src 加密爲 dst
          */
         encrypt(dst: BufferData, src: BufferData | string): void
     }
-    export class ECBDecryptor {
+    export class ECBDecryptor implements Decryptor {
         constructor(opts: ECBOptions)
         /**
          * 將 src 加密爲 dst
@@ -446,29 +453,29 @@ declare module "iotjs/crypto/cipher" {
          */
         iv: Uint8Array | string
     }
-    export class CBCEncryptor {
+    export class CBCEncryptor implements Encryptor {
         constructor(opts: CBCOptions)
         encrypt(dst: Uint8Array, src: Uint8Array | string): void
     }
-    export class CBCDecryptor {
+    export class CBCDecryptor implements Decryptor {
         constructor(opts: CBCOptions)
         decrypt(dst: Uint8Array, src: Uint8Array | string): void
     }
     export type CFBOptions = CBCOptions
-    export class CFBEncryptor {
+    export class CFBEncryptor implements Encryptor {
         constructor(opts: CFBOptions)
         encrypt(dst: Uint8Array, src: Uint8Array | string): void
     }
-    export class CFBDecryptor {
+    export class CFBDecryptor implements Decryptor {
         constructor(opts: CFBOptions)
         decrypt(dst: Uint8Array, src: Uint8Array | string): void
     }
     export type OFBOptions = CBCOptions
-    export class OFBEncryptor {
+    export class OFBEncryptor implements Encryptor {
         constructor(opts: OFBOptions)
         encrypt(dst: Uint8Array, src: Uint8Array | string): void
     }
-    export class OFBDecryptor {
+    export class OFBDecryptor implements Decryptor {
         constructor(opts: OFBOptions)
         decrypt(dst: Uint8Array, src: Uint8Array | string): void
     }
@@ -478,11 +485,11 @@ declare module "iotjs/crypto/cipher" {
     export interface CTROptions extends CBCOptions {
         mode?: number
     }
-    export class CTREncryptor {
+    export class CTREncryptor implements Encryptor {
         constructor(opts: CTROptions)
         encrypt(dst: Uint8Array, src: Uint8Array | string): void
     }
-    export class CTRDecryptor {
+    export class CTRDecryptor implements Decryptor {
         constructor(opts: CTROptions)
         decrypt(dst: Uint8Array, src: Uint8Array | string): void
     }
