@@ -62,6 +62,9 @@ declare namespace deps {
     }
     export function ctr(opts: CTROptions): [CTR, number]
     export function ctr_memory(state: deps.CTR, dst: Uint8Array, src: Uint8Array | string, enc: boolean): number
+
+    export function gcm_valid(cipher: number, key: Uint8Array | string): [number, number]
+    export function gcm_memory(cipher: number, key: Uint8Array | string, iv: Uint8Array | string, adata: Uint8Array | string | undefined, dst: Uint8Array, src: Uint8Array | string, enc: boolean): number
 }
 
 export const AES = deps.AES
@@ -358,3 +361,48 @@ export class CTRDecryptor implements Decryptor {
         }
     }
 }
+
+export interface GCMOptions {
+    /**
+       * 算法索引，默認爲 AES
+       */
+    cipher?: number
+    /**
+     * 密鑰
+     */
+    key: Uint8Array | string
+}
+export class GCM {
+    private readonly idx_: number
+    private readonly key_: Uint8Array | string
+    constructor(readonly opts: GCMOptions) {
+        const cipher = opts.cipher ?? AES
+        const key = opts.key
+        const [idx, e] = deps.gcm_valid(cipher, key)
+        if (e != deps.CRYPT_OK) {
+            throw new CipherError(e)
+        }
+
+        this.idx_ = idx
+        this.key_ = key
+    }
+    encrypt(dst: Uint8Array, iv: Uint8Array | string, src: Uint8Array | string, adata?: Uint8Array | string): void {
+        const e = deps.gcm_memory(this.idx_,
+            this.key_, iv, adata,
+            dst, src,
+            true)
+        if (e != deps.CRYPT_OK) {
+            throw new CipherError(e)
+        }
+    }
+    decrypt(dst: Uint8Array, iv: Uint8Array | string, src: Uint8Array | string, adata?: Uint8Array | string): void {
+        const e = deps.gcm_memory(this.idx_,
+            this.key_, iv, adata,
+            dst, src,
+            false)
+        if (e != deps.CRYPT_OK) {
+            throw new CipherError(e)
+        }
+    }
+}
+

@@ -3,6 +3,7 @@
 #include <iotjs/core/module.h>
 #include <iotjs/core/memory.h>
 #include <tomcrypt.h>
+#include <iotjs/core/debug.h>
 
 #ifndef CRYPT_INVALID_IVSIZE
 #define CRYPT_INVALID_IVSIZE 100
@@ -278,6 +279,164 @@ static duk_ret_t native_ctr_memory(duk_context *ctx)
     return 1;
 }
 
+static duk_ret_t native_gcm_valid(duk_context *ctx)
+{
+    int cipher = duk_require_number(ctx, 0);
+    if (cipher != aes_desc.ID)
+    {
+        duk_pop_2(ctx);
+        duk_push_array(ctx);
+        duk_push_int(ctx, CRYPT_INVALID_CIPHER);
+        duk_put_prop_index(ctx, -2, 1);
+        return 1;
+    }
+    int idx = find_cipher_id(cipher);
+    if (idx < 0)
+    {
+        duk_pop_2(ctx);
+        duk_push_array(ctx);
+        duk_push_int(ctx, CRYPT_INVALID_CIPHER);
+        duk_put_prop_index(ctx, -2, 1);
+        return 1;
+    }
+
+    duk_size_t sz;
+    if (duk_is_string(ctx, 1))
+    {
+        duk_require_lstring(ctx, 1, &sz);
+    }
+    else
+    {
+        duk_require_buffer_data(ctx, 1, &sz);
+    }
+    switch (sz)
+    {
+    case 16:
+        break;
+    case 24:
+        break;
+    case 32:
+        break;
+    default:
+        duk_pop_2(ctx);
+        duk_push_array(ctx);
+        duk_push_int(ctx, CRYPT_INVALID_KEYSIZE);
+        duk_put_prop_index(ctx, -2, 1);
+        return 1;
+    }
+
+    duk_push_array(ctx);
+    duk_push_int(ctx, idx);
+    duk_put_prop_index(ctx, -2, 0);
+    duk_push_int(ctx, CRYPT_OK);
+    duk_put_prop_index(ctx, -2, 1);
+    return 1;
+}
+static duk_ret_t native_gcm_memory(duk_context *ctx)
+{
+    int cipher = duk_require_int(ctx, 0);
+
+    const void *key;
+    duk_size_t keylen;
+    if (duk_is_string(ctx, 1))
+    {
+        key = duk_require_lstring(ctx, 1, &keylen);
+    }
+    else
+    {
+        key = duk_require_buffer_data(ctx, 1, &keylen);
+    }
+
+    const void *iv;
+    duk_size_t ivlen;
+    if (duk_is_string(ctx, 2))
+    {
+        iv = duk_require_lstring(ctx, 2, &ivlen);
+    }
+    else
+    {
+        iv = duk_require_buffer_data(ctx, 2, &ivlen);
+    }
+
+    const void *adata = 0;
+    duk_size_t adatalen = 0;
+    if (duk_is_null_or_undefined(ctx, 3))
+    {
+    }
+    else if (duk_is_string(ctx, 3))
+    {
+        adata = duk_require_lstring(ctx, 3, &adatalen);
+    }
+    else
+    {
+        adata = duk_require_buffer_data(ctx, 3, &adatalen);
+    }
+
+    duk_size_t dst_len;
+    void *dst = duk_require_buffer_data(ctx, 4, &dst_len);
+    duk_size_t src_len;
+    const void *src;
+    if (duk_is_string(ctx, 5))
+    {
+        src = duk_require_lstring(ctx, 5, &src_len);
+    }
+    else
+    {
+        src = duk_require_buffer_data(ctx, 5, &src_len);
+    }
+    int direction = duk_require_boolean(ctx, 6) ? GCM_ENCRYPT : GCM_DECRYPT;
+    unsigned char *pt;
+    unsigned long ptlen;
+    unsigned char *ct;
+    unsigned char *tag;
+    unsigned long taglen = 0;
+    if (direction == GCM_ENCRYPT)
+    {
+        if (dst_len < src_len + 16)
+        {
+            duk_pop_n(ctx, 7);
+            duk_push_number(ctx, CRYPT_BUFFER_OVERFLOW);
+            return 1;
+        }
+        pt = (unsigned char *)src;
+        ptlen = src_len;
+        ct = dst;
+        tag = ct + 16;
+    }
+    else
+    {
+        if (src_len < 16)
+        {
+            duk_pop_n(ctx, 7);
+            duk_push_number(ctx, CRYPT_INVALID_PACKET);
+            return 1;
+        }
+        src_len -= 16;
+        if (dst_len < src_len)
+        {
+            duk_pop_n(ctx, 7);
+            duk_push_number(ctx, CRYPT_BUFFER_OVERFLOW);
+            return 1;
+        }
+        pt = dst;
+        ptlen = src_len;
+        ct = (unsigned char *)src;
+        tag = ct + 16;
+        taglen = 16;
+    }
+    int ret = gcm_memory(cipher,
+                         key, keylen,
+                         iv, ivlen,
+                         adata, adatalen,
+                         pt, ptlen,
+                         ct,
+                         tag, &taglen,
+                         direction);
+    duk_pop_n(ctx, 7);
+    duk_push_number(ctx, ret);
+    return 1;
+}
+
 duk_ret_t native_iotjs_crypto_cipher_init(duk_context *ctx)
 {
     duk_swap(ctx, 0, 1);
@@ -381,6 +540,11 @@ duk_ret_t native_iotjs_crypto_cipher_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "ctr", 3);
         duk_push_c_lightfunc(ctx, native_ctr_memory, 4, 4, 0);
         duk_put_prop_lstring(ctx, -2, "ctr_memory", 10);
+
+        duk_push_c_lightfunc(ctx, native_gcm_valid, 2, 2, 0);
+        duk_put_prop_lstring(ctx, -2, "gcm_valid", 9);
+        duk_push_c_lightfunc(ctx, native_gcm_memory, 7, 7, 0);
+        duk_put_prop_lstring(ctx, -2, "gcm_memory", 10);
     }
 
     duk_call(ctx, 3);

@@ -493,6 +493,21 @@ declare module "iotjs/crypto/cipher" {
         constructor(opts: CTROptions)
         decrypt(dst: Uint8Array, src: Uint8Array | string): void
     }
+
+    export interface GCMOptions {
+        /**
+           * 算法索引，默認爲 AES
+           */
+        cipher?: number
+        /**
+         * 密鑰
+         */
+        key: Uint8Array | string
+    }
+    export class GCM {
+        encrypt(dst: Uint8Array, iv: Uint8Array | string, src: Uint8Array | string, adata?: Uint8Array | string): void
+        decrypt(dst: Uint8Array, iv: Uint8Array | string, src: Uint8Array | string, adata?: Uint8Array | string): void
+    }
 }
 declare module "iotjs/fs" {
     export enum FileMode {

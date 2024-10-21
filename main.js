@@ -48,20 +48,22 @@ var hex = require("iotjs/encoding/hex")
 var sha256 = require("iotjs/crypto/sha256")
 var md5 = require("iotjs/crypto/md5")
 var cipher = require("iotjs/crypto/cipher")
-var opts = {
+
+var iv = md5.sum("this is iv").subarray(0, 12)
+var encoder = new cipher.GCM({
     key: sha256.sum("12345678901"),
-    iv: md5.sum("this is iv"),
-}
-var encoder = new cipher.CTREncryptor(opts)
-var decryptor = new cipher.CTRDecryptor(opts)
+})
+var decryptor = encoder
 
 var s = "123草7890123草1"
 var b = new TextEncoder().encode(s)
-var enc = new Uint8Array(b.length)
-encoder.encrypt(enc, b)
+var enc = new Uint8Array(b.length + 16)
+encoder.encrypt(enc, iv, b)
 console.log(s, hex.encodeToString(s))
 console.log(hex.encodeToString(enc))
+console.log(b.length, enc.length)
 
-decryptor.decrypt(enc, enc)
-console.log(new TextDecoder().decode(enc))
+var dec = new Uint8Array(b.length)
+decryptor.decrypt(dec, iv, enc)
+console.log(new TextDecoder().decode(dec))
 
