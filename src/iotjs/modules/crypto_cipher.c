@@ -141,6 +141,51 @@ static duk_ret_t native_cbc_memory(duk_context *ctx)
     duk_push_number(ctx, ret);
     return 1;
 }
+
+static duk_ret_t native_cfb(duk_context *ctx)
+{
+    __IOTJS_CRYPTO_GET_ECH__(ctx);
+    __IOTJS_CRYPTO_GET_IV__(ctx);
+
+    duk_push_array(ctx);
+    symmetric_CFB *cfb = duk_push_fixed_buffer(ctx, sizeof(symmetric_CFB));
+    duk_put_prop_index(ctx, -2, 0);
+    duk_push_int(ctx, cfb_start(cipher,
+                                iv,
+                                key, key_len, rounds, cfb));
+    duk_put_prop_index(ctx, -2, 1);
+    return 1;
+}
+static duk_ret_t native_cfb_memory(duk_context *ctx)
+{
+    symmetric_CFB *cfb = duk_require_buffer_data(ctx, 0, 0);
+
+    duk_size_t dst_len;
+    void *dst = duk_require_buffer_data(ctx, 1, &dst_len);
+
+    duk_size_t src_len;
+    const void *src;
+    if (duk_is_string(ctx, 2))
+    {
+        src = duk_require_lstring(ctx, 2, &src_len);
+    }
+    else
+    {
+        src = duk_require_buffer_data(ctx, 2, &src_len);
+    }
+    if (dst_len < src_len)
+    {
+        duk_pop_3(ctx);
+        duk_push_number(ctx, CRYPT_BUFFER_OVERFLOW);
+        return 1;
+    }
+
+    int ret = duk_require_boolean(ctx, 3) ? cfb_encrypt(src, dst, src_len, cfb) : cfb_decrypt(src, dst, src_len, cfb);
+    duk_pop_n(ctx, 4);
+    duk_push_number(ctx, ret);
+    return 1;
+}
+
 duk_ret_t native_iotjs_crypto_cipher_init(duk_context *ctx)
 {
     duk_swap(ctx, 0, 1);
@@ -222,6 +267,11 @@ duk_ret_t native_iotjs_crypto_cipher_init(duk_context *ctx)
         duk_put_prop_lstring(ctx, -2, "cbc", 3);
         duk_push_c_lightfunc(ctx, native_cbc_memory, 4, 4, 0);
         duk_put_prop_lstring(ctx, -2, "cbc_memory", 10);
+
+        duk_push_c_lightfunc(ctx, native_cfb, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "cfb", 3);
+        duk_push_c_lightfunc(ctx, native_cfb_memory, 4, 4, 0);
+        duk_put_prop_lstring(ctx, -2, "cfb_memory", 10);
     }
 
     duk_call(ctx, 3);

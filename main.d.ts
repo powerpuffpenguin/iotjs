@@ -440,7 +440,29 @@ declare module "iotjs/crypto/cipher" {
          */
         decrypt(dst: BufferData, src: BufferData | string): void
     }
-
+    export interface CBCOptions extends ECBOptions {
+        /**
+         * 初始化向量
+         */
+        iv: Uint8Array | string
+    }
+    export class CBCEncryptor {
+        constructor(opts: CBCOptions)
+        encrypt(dst: Uint8Array, src: Uint8Array | string): void
+    }
+    export class CBCDecryptor {
+        constructor(opts: CBCOptions)
+        decrypt(dst: Uint8Array, src: Uint8Array | string): void
+    }
+    export type CFBOptions = CBCOptions
+    export class CFBEncryptor {
+        constructor(opts: CFBOptions)
+        encrypt(dst: Uint8Array, src: Uint8Array | string): void
+    }
+    export class CFBDecryptor {
+        constructor(opts: CFBOptions)
+        decrypt(dst: Uint8Array, src: Uint8Array | string): void
+    }
 }
 declare module "iotjs/fs" {
     export enum FileMode {

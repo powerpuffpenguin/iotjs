@@ -41,6 +41,12 @@ declare namespace deps {
     }
     export function cbc(opts: CBCOptions): [CBC, number]
     export function cbc_memory(state: deps.CBC, dst: Uint8Array, src: Uint8Array | string, enc: boolean): number
+
+    export class CFB {
+        readonly __id = "cfb"
+    }
+    export function cfb(opts: CFBOptions): [CFB, number]
+    export function cfb_memory(state: deps.CFB, dst: Uint8Array, src: Uint8Array | string, enc: boolean): number
 }
 
 export const AES = deps.AES
@@ -135,7 +141,7 @@ export interface ECBOptions {
     rounds?: number
 }
 
-export function createECB(opts: ECBOptions): deps.ECB {
+function createECB(opts: ECBOptions): deps.ECB {
     const v = deps.ecb({
         cipher: opts.cipher ?? AES,
         key: opts.key,
@@ -177,7 +183,7 @@ export interface CBCOptions extends ECBOptions {
      */
     iv: Uint8Array | string
 }
-export function createCBC(opts: CBCOptions): deps.CBC {
+function createCBC(opts: CBCOptions): deps.CBC {
     const v = deps.cbc({
         cipher: opts.cipher ?? AES,
         key: opts.key,
@@ -208,6 +214,43 @@ export class CBCDecryptor {
     }
     decrypt(dst: Uint8Array, src: Uint8Array | string): void {
         const e = deps.cbc_memory(this.state_, dst, src, false)
+        if (e != deps.CRYPT_OK) {
+            throw new CipherError(e)
+        }
+    }
+}
+export type CFBOptions = CBCOptions
+function createCFB(opts: CBCOptions): deps.CFB {
+    const v = deps.cfb({
+        cipher: opts.cipher ?? AES,
+        key: opts.key,
+        rounds: opts.rounds ?? 0,
+        iv: opts?.iv,
+    })
+    if (v[1] != deps.CRYPT_OK) {
+        throw new CipherError(v[1])
+    }
+    return v[0]
+}
+export class CFBEncryptor {
+    private readonly state_: deps.CFB
+    constructor(opts: CFBOptions) {
+        this.state_ = createCFB(opts)
+    }
+    encrypt(dst: Uint8Array, src: Uint8Array | string): void {
+        const e = deps.cfb_memory(this.state_, dst, src, true)
+        if (e != deps.CRYPT_OK) {
+            throw new CipherError(e)
+        }
+    }
+}
+export class CFBDecryptor {
+    private readonly state_: deps.CFB
+    constructor(opts: CFBOptions) {
+        this.state_ = createCFB(opts)
+    }
+    decrypt(dst: Uint8Array, src: Uint8Array | string): void {
+        const e = deps.cfb_memory(this.state_, dst, src, false)
         if (e != deps.CRYPT_OK) {
             throw new CipherError(e)
         }

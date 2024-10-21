@@ -52,8 +52,8 @@ var opts = {
     key: sha256.sum("cerberus is an idea"),
     iv: md5.sum("cerberus is an idea"),
 }
-var encoder = new cipher.CBCEncryptor(opts)
-var decryptor = new cipher.CBCDecryptor(opts)
+var encoder = new cipher.CFBEncryptor(opts)
+var decryptor = new cipher.CFBDecryptor(opts)
 
 var s = "123草7890123草"
 var b = new TextEncoder().encode(s)
