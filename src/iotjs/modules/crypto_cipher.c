@@ -1,0 +1,162 @@
+#include <iotjs/core/defines.h>
+#include <iotjs/modules/js/crypto_cipher.h>
+#include <iotjs/core/module.h>
+#include <iotjs/core/memory.h>
+#include <tomcrypt.h>
+
+#define __IOTJS_CRYPTO_GET_ECH__(ctx)                         \
+    duk_get_prop_lstring(ctx, 0, "cipher", 6);                \
+    int cipher = find_cipher_id(duk_require_number(ctx, -1)); \
+    if (cipher < 0)                                           \
+    {                                                         \
+        duk_pop_2(ctx);                                       \
+        duk_push_array(ctx);                                  \
+        duk_push_int(ctx, CRYPT_INVALID_CIPHER);              \
+        duk_put_prop_index(ctx, -2, 1);                       \
+        return 1;                                             \
+    }                                                         \
+    duk_pop(ctx);                                             \
+    const void *key;                                          \
+    duk_size_t key_len;                                       \
+    duk_get_prop_lstring(ctx, 0, "key", 3);                   \
+    if (duk_is_string(ctx, -1))                               \
+    {                                                         \
+        key = duk_require_lstring(ctx, -1, &key_len);         \
+    }                                                         \
+    else                                                      \
+    {                                                         \
+        key = duk_require_buffer_data(ctx, -1, &key_len);     \
+    }                                                         \
+    duk_pop(ctx);                                             \
+    duk_get_prop_lstring(ctx, 0, "rounds", 6);                \
+    int rounds = duk_require_number(ctx, -1);                 \
+    duk_pop(ctx)
+
+static duk_ret_t native_ecb(duk_context *ctx)
+{
+    __IOTJS_CRYPTO_GET_ECH__(ctx);
+
+    duk_push_array(ctx);
+    symmetric_ECB *ecb = duk_push_fixed_buffer(ctx, sizeof(symmetric_ECB));
+    duk_put_prop_index(ctx, -2, 0);
+    duk_push_int(ctx, ecb_start(cipher, key, key_len, rounds, ecb));
+    duk_put_prop_index(ctx, -2, 1);
+    return 1;
+}
+static duk_ret_t native_ecb_encrypt_memory(duk_context *ctx, duk_bool_t enc)
+{
+    symmetric_ECB *ecb = duk_require_buffer_data(ctx, 0, 0);
+
+    duk_size_t dst_len;
+    void *dst = duk_require_buffer_data(ctx, 1, &dst_len);
+
+    duk_size_t src_len;
+    const void *src;
+    if (duk_is_string(ctx, 2))
+    {
+        src = duk_require_lstring(ctx, 2, &src_len);
+    }
+    else
+    {
+        src = duk_require_buffer_data(ctx, 2, &src_len);
+    }
+    if (dst_len < src_len)
+    {
+        duk_pop_3(ctx);
+        duk_push_number(ctx, CRYPT_BUFFER_OVERFLOW);
+        return 1;
+    }
+
+    int ret = enc ? ecb_encrypt(src, dst, src_len, ecb) : ecb_decrypt(src, dst, src_len, ecb);
+    duk_pop_3(ctx);
+    duk_push_number(ctx, ret);
+    return 1;
+}
+static duk_ret_t native_ecb_encrypt(duk_context *ctx)
+{
+    return native_ecb_encrypt_memory(ctx, 1);
+}
+static duk_ret_t native_ecb_decrypt(duk_context *ctx)
+{
+    return native_ecb_encrypt_memory(ctx, 0);
+}
+duk_ret_t native_iotjs_crypto_cipher_init(duk_context *ctx)
+{
+    duk_swap(ctx, 0, 1);
+    duk_pop_2(ctx);
+
+    duk_eval_lstring(ctx, (const char *)js_iotjs_modules_js_crypto_cipher_min_js, js_iotjs_modules_js_crypto_cipher_min_js_len);
+    duk_swap_top(ctx, -2);
+    duk_push_heap_stash(ctx);
+    duk_get_prop_lstring(ctx, -1, VM_STASH_KEY_PRIVATE);
+    duk_swap_top(ctx, -2);
+    duk_pop(ctx);
+    duk_push_object(ctx);
+    {
+        duk_push_number(ctx, aes_desc.ID);
+        duk_put_prop_lstring(ctx, -2, "AES", 3);
+
+        duk_push_int(ctx, CRYPT_OK);
+        duk_put_prop_string(ctx, -2, "CRYPT_OK");
+        duk_push_int(ctx, CRYPT_ERROR);
+        duk_put_prop_string(ctx, -2, "CRYPT_ERROR");
+        duk_push_int(ctx, CRYPT_NOP);
+        duk_put_prop_string(ctx, -2, "CRYPT_NOP");
+        duk_push_int(ctx, CRYPT_INVALID_KEYSIZE);
+        duk_put_prop_string(ctx, -2, "CRYPT_INVALID_KEYSIZE");
+        duk_push_int(ctx, CRYPT_INVALID_ROUNDS);
+        duk_put_prop_string(ctx, -2, "CRYPT_INVALID_ROUNDS");
+        duk_push_int(ctx, CRYPT_FAIL_TESTVECTOR);
+        duk_put_prop_string(ctx, -2, "CRYPT_FAIL_TESTVECTOR");
+        duk_push_int(ctx, CRYPT_BUFFER_OVERFLOW);
+        duk_put_prop_string(ctx, -2, "CRYPT_BUFFER_OVERFLOW");
+        duk_push_int(ctx, CRYPT_INVALID_PACKET);
+        duk_put_prop_string(ctx, -2, "CRYPT_INVALID_PACKET");
+        duk_push_int(ctx, CRYPT_INVALID_PRNGSIZE);
+        duk_put_prop_string(ctx, -2, "CRYPT_INVALID_PRNGSIZE");
+        duk_push_int(ctx, CRYPT_ERROR_READPRNG);
+        duk_put_prop_string(ctx, -2, "CRYPT_ERROR_READPRNG");
+        duk_push_int(ctx, CRYPT_INVALID_CIPHER);
+        duk_put_prop_string(ctx, -2, "CRYPT_INVALID_CIPHER");
+        duk_push_int(ctx, CRYPT_INVALID_HASH);
+        duk_put_prop_string(ctx, -2, "CRYPT_INVALID_HASH");
+        duk_push_int(ctx, CRYPT_INVALID_PRNG);
+        duk_put_prop_string(ctx, -2, "CRYPT_INVALID_PRNG");
+        duk_push_int(ctx, CRYPT_MEM);
+        duk_put_prop_string(ctx, -2, "CRYPT_MEM");
+        duk_push_int(ctx, CRYPT_PK_TYPE_MISMATCH);
+        duk_put_prop_string(ctx, -2, "CRYPT_PK_TYPE_MISMATCH");
+        duk_push_int(ctx, CRYPT_PK_NOT_PRIVATE);
+        duk_put_prop_string(ctx, -2, "CRYPT_PK_NOT_PRIVATE");
+        duk_push_int(ctx, CRYPT_INVALID_ARG);
+        duk_put_prop_string(ctx, -2, "CRYPT_INVALID_ARG");
+        duk_push_int(ctx, CRYPT_FILE_NOTFOUND);
+        duk_put_prop_string(ctx, -2, "CRYPT_FILE_NOTFOUND");
+        duk_push_int(ctx, CRYPT_PK_INVALID_TYPE);
+        duk_put_prop_string(ctx, -2, "CRYPT_PK_INVALID_TYPE");
+        duk_push_int(ctx, CRYPT_OVERFLOW);
+        duk_put_prop_string(ctx, -2, "CRYPT_OVERFLOW");
+        duk_push_int(ctx, CRYPT_UNUSED1);
+        duk_put_prop_string(ctx, -2, "CRYPT_UNUSED1");
+        duk_push_int(ctx, CRYPT_INPUT_TOO_LONG);
+        duk_put_prop_string(ctx, -2, "CRYPT_INPUT_TOO_LONG");
+        duk_push_int(ctx, CRYPT_PK_INVALID_SIZE);
+        duk_put_prop_string(ctx, -2, "CRYPT_PK_INVALID_SIZE");
+        duk_push_int(ctx, CRYPT_INVALID_PRIME_SIZE);
+        duk_put_prop_string(ctx, -2, "CRYPT_INVALID_PRIME_SIZE");
+        duk_push_int(ctx, CRYPT_PK_INVALID_PADDING);
+        duk_put_prop_string(ctx, -2, "CRYPT_PK_INVALID_PADDING");
+        duk_push_int(ctx, CRYPT_HASH_OVERFLOW);
+        duk_put_prop_string(ctx, -2, "CRYPT_HASH_OVERFLOW");
+
+        duk_push_c_lightfunc(ctx, native_ecb, 1, 1, 0);
+        duk_put_prop_lstring(ctx, -2, "ecb", 3);
+        duk_push_c_lightfunc(ctx, native_ecb_encrypt, 3, 3, 0);
+        duk_put_prop_lstring(ctx, -2, "ecb_encrypt", 11);
+        duk_push_c_lightfunc(ctx, native_ecb_decrypt, 3, 3, 0);
+        duk_put_prop_lstring(ctx, -2, "ecb_decrypt", 11);
+    }
+
+    duk_call(ctx, 3);
+    return 0;
+}

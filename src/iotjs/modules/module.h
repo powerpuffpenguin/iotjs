@@ -17,6 +17,8 @@ duk_ret_t native_iotjs_crypto_sha512_init(duk_context *ctx);
 duk_ret_t native_iotjs_crypto_sha512_224_init(duk_context *ctx);
 duk_ret_t native_iotjs_crypto_sha512_256_init(duk_context *ctx);
 
+duk_ret_t native_iotjs_crypto_cipher_init(duk_context *ctx);
+
 duk_ret_t native_iotjs_fs_init(duk_context *ctx);
 duk_ret_t native_iotjs_net_init(duk_context *ctx);
 duk_ret_t native_iotjs_net_http_init(duk_context *ctx);

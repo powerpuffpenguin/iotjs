@@ -12,7 +12,15 @@ static duk_ret_t native_iotjs_encoding_hex__encodeLen(duk_context *ctx)
 static duk_ret_t native_iotjs_encoding_hex__encodeToString(duk_context *ctx)
 {
     duk_size_t sz_src;
-    duk_uint8_t *src = duk_require_buffer_data(ctx, 0, &sz_src);
+    const duk_uint8_t *src;
+    if (duk_is_string(ctx, 0))
+    {
+        src = duk_require_lstring(ctx, 0, &sz_src);
+    }
+    else
+    {
+        src = duk_require_buffer_data(ctx, 0, &sz_src);
+    }
     if (!sz_src)
     {
         duk_push_lstring(ctx, "", 0);
@@ -41,7 +49,15 @@ static duk_ret_t native_iotjs_encoding_hex__encode(duk_context *ctx)
 {
     duk_size_t sz_dst, sz_src;
     duk_uint8_t *dst = duk_require_buffer_data(ctx, 0, &sz_dst);
-    duk_uint8_t *src = duk_require_buffer_data(ctx, 1, &sz_src);
+    const duk_uint8_t *src;
+    if (duk_is_string(ctx, 1))
+    {
+        src = duk_require_lstring(ctx, 1, &sz_src);
+    }
+    else
+    {
+        src = duk_require_buffer_data(ctx, 1, &sz_src);
+    }
     if (!sz_src)
     {
         duk_push_uint(ctx, 0);

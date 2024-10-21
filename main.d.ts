@@ -149,6 +149,7 @@ declare module "iotjs/coroutine" {
 
 }
 declare module "iotjs/encoding/hex" {
+    import { BufferData } from "iotjs";
     export function encodeLen(n: number): number
     export function encodeToString(src: BufferData | string): string
     export function encode(dst: BufferData, src: BufferData | string): number
@@ -402,6 +403,36 @@ declare module "iotjs/crypto/sha512_256" {
      * 創建一個 hash 對象用於計算大量數據的 hash 值
      */
     export function hash(): Hash
+}
+declare module "iotjs/crypto/cipher" {
+    import { BufferData } from "iotjs";
+    export class CipherError extends Error {
+        readonly code: number
+    }
+    export interface Encryptor {
+        /**
+         * 將 src 加密爲 dst
+         */
+        encrypt(dst: BufferData, src: BufferData | string): void
+    }
+    export interface Decryptor {
+        /**
+         * 將 src 加密爲 dst
+         */
+        decrypt(dst: BufferData, src: BufferData | string): void
+    }
+    interface ECBOptions {
+        /**
+         * 密鑰
+         */
+        key: BufferData | string
+        /**
+         * 加密輪數，不設置或爲 0 則使用默認輪數
+         */
+        rounds?: number
+    }
+    export function createECBEncryptor(opts: ECBOptions): Encryptor
+    export function createECBDecryptor(opts: ECBOptions): Decryptor
 }
 declare module "iotjs/fs" {
     export enum FileMode {

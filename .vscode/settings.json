@@ -123,6 +123,9 @@
     "__memory": "cpp",
     "random": "cpp",
     "numeric": "c",
-    "future": "c"
+    "future": "c",
+    "vm.h": "c",
+    "limits.h": "c",
+    "crypto_cipher.h": "c"
   }
 }
