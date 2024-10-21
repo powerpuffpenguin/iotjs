@@ -58,12 +58,16 @@ var decryptor = encoder
 var s = "123草7890123草1"
 var b = new TextEncoder().encode(s)
 var enc = new Uint8Array(b.length + 16)
+var last = Date.now()
 encoder.encrypt(enc, iv, b)
+console.log('used', (Date.now() - last) / 1000)
 console.log(s, hex.encodeToString(s))
 console.log(hex.encodeToString(enc))
 console.log(b.length, enc.length)
 
 var dec = new Uint8Array(b.length)
+encoder.encrypt(enc, iv, b)
 decryptor.decrypt(dec, iv, enc)
+console.log('used', (Date.now() - last) / 1000)
 console.log(new TextDecoder().decode(dec))
 

@@ -389,7 +389,6 @@ static duk_ret_t native_gcm_memory(duk_context *ctx)
     unsigned long ptlen;
     unsigned char *ct;
     unsigned char *tag;
-    unsigned long taglen = 0;
     if (direction == GCM_ENCRYPT)
     {
         if (dst_len < src_len + 16)
@@ -401,7 +400,7 @@ static duk_ret_t native_gcm_memory(duk_context *ctx)
         pt = (unsigned char *)src;
         ptlen = src_len;
         ct = dst;
-        tag = ct + 16;
+        tag = ct + src_len;
     }
     else
     {
@@ -421,9 +420,9 @@ static duk_ret_t native_gcm_memory(duk_context *ctx)
         pt = dst;
         ptlen = src_len;
         ct = (unsigned char *)src;
-        tag = ct + 16;
-        taglen = 16;
+        tag = ct + src_len;
     }
+    unsigned long taglen = 16;
     int ret = gcm_memory(cipher,
                          key, keylen,
                          iv, ivlen,
