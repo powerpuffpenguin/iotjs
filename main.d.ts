@@ -505,6 +505,7 @@ declare module "iotjs/crypto/cipher" {
         key: Uint8Array | string
     }
     export class GCM {
+        constructor(readonly opts: GCMOptions)
         encrypt(dst: Uint8Array, iv: Uint8Array | string, src: Uint8Array | string, adata?: Uint8Array | string): void
         decrypt(dst: Uint8Array, iv: Uint8Array | string, src: Uint8Array | string, adata?: Uint8Array | string): void
     }
